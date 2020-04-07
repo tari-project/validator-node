@@ -1,0 +1,20 @@
+[package]
+name = "tari_validator_node"
+version = "0.1.0"
+authors = ["The Tari Development Community"]
+description = "The tari validation node implementation"
+repository = "https://github.com/tari-labs/validator-node"
+license = "BSD-3-Clause"
+edition = "2018"
+
+[dependencies]
+tari_common = version= "^0.0"
+tari_comms = version = "^0.0"
+tari_comms_dht = version = "^0.0"
+tari_core = version= "^0.0"
+tari_p2p = version= "^0.0"
+tari_service_framework = version = "^0.0"
+tari_shutdown = version = "^0.0"
+tari_mmr = version = "^0.0"
+tari_wallet = version = "^0.0"
+tari_broadcast_channel = "^0.1"
