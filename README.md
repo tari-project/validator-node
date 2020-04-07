@@ -1,1 +1,1 @@
-
+# Tari Validator Node
