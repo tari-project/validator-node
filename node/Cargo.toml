@@ -19,7 +19,7 @@ tari_mmr = "^0.0"
 tari_wallet = "^0.0"
 tari_broadcast_channel = "^0.1"
 
-config = { version = "0.10", default_features = false, features = ["toml"] }
+config = { version = "0.9.3" }
 structopt = { version = "0.3", default_features = false }
 serde = { version = "1", features = ["derive"] }
 serde_with = { version = "1", default_features = false }

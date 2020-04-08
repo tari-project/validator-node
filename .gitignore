@@ -22,6 +22,7 @@ tags
 
 # On development branch only. This should be removed for point releases
 Cargo.lock
+log
 
 # local config overload
 config/local.toml
