@@ -19,7 +19,10 @@ tari_mmr = "^0.0"
 tari_wallet = "^0.0"
 tari_broadcast_channel = "^0.1"
 
-config = "0.10"
-structopt = "0.3"
+config = { version = "0.10", default_features = false, features = ["toml"] }
+structopt = { version = "0.3", default_features = false }
 serde = { version = "1", features = ["derive"] }
+serde_with = { version = "1", default_features = false }
 log = "0.4"
+anyhow = "1"
+multiaddr = {version = "0.7.0", package = "parity-multiaddr"}

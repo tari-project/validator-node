@@ -1,23 +1,16 @@
-use config::Config;
 use serde::Deserialize;
-use multiaddr::{Multiaddr, Protocol};
+use multiaddr::Multiaddr;
 use tari_common::TorControlAuthentication;
 
-#[derive(Deserialize)]
-enum Transport {
-    Tor({
-        control_address: Multiaddr,
-        control_auth: TorControlAuthentication,
-        onion_port: u16,
-        forward_address: Multiaddr,
-        socks_address_override: Option<Multiaddr>,
-    }),
-}
-
-impl Transport {
-    fn connect(&self) {
-        match self {
-            Tor(conn) => {},
-        };
-    }
+#[derive(Deserialize, Debug)]
+#[serde(tag = "transport", rename_all = "lowercase")]
+pub enum Transport {
+    Tor {
+        tor_control_address: Multiaddr,
+        #[serde(with = "serde_with::rust::display_fromstr")]
+        tor_control_auth: TorControlAuthentication,
+        tor_onion_port: u16,
+        tor_forward_address: Multiaddr,
+        tor_socks_address_override: Option<Multiaddr>,
+    },
 }

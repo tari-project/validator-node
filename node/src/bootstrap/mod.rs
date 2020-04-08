@@ -1,5 +1,5 @@
 mod transport;
 mod config;
 
-pub use config::Config;
-pub use transport::Transport;
+pub use self::config::NodeConfig as Config;
+pub use self::transport::Transport;
