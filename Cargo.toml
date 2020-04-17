@@ -3,3 +3,6 @@
 members = [
     "node"
 ]
+
+[patch.crates-io]
+tari_common = { version = "0.0.10", git = "https://github.com/dunnock/tari", branch = "dunnock-config-extractor-auto-impl" }

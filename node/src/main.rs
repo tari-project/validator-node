@@ -1,16 +1,24 @@
-use tari_validator_node::cli::Arguments;
+use tari_validator_node::{
+    cli::Arguments,
+    config::NodeConfig,
+    server::actix_main,
+};
 use structopt::StructOpt;
+use tari_common::DefaultConfigLoader;
 
 fn main() -> anyhow::Result<()> {
-    let args = Arguments::from_args();
+    let mut args = Arguments::from_args();
 
-    // Initialise the logger
-    args.initialize_logging()?;
+    // initialize configuration files if needed
+    args.bootstrap.init_dirs()?;
+    args.bootstrap.initialize_logging()?;
+    let config = args.bootstrap.load_configuration()?;
 
-    // Load and apply configuration file
-    args.load_configuration()?;
+    // deriving our app configs
+    let node_config = <NodeConfig as DefaultConfigLoader>::load_from(&config)?;
 
-    dbg!(args);
-    
+    actix_main(node_config.clone())?;
+
     Ok(())
 }
+
