@@ -13,13 +13,13 @@ pub struct NodeConfig {
 
 impl NetworkConfigPath for NodeConfig {
     fn main_key_prefix() -> &'static str {
-        "bigneon_node"
+        "validator"
     }
 }
 
 // Database default parameters
 fn default_postgres_config<S: Serializer>(_: &DeadpoolConfig, s: S) -> Result<S::Ok, S::Error> {
     let mut db = s.serialize_map(None)?;
-    db.serialize_entry("dbname", "bigneon_vn")?;
+    db.serialize_entry("dbname", "validator")?;
     db.end()
 }
