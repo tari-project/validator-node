@@ -3,7 +3,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use super::config::NodeConfig;
 use std::net::{ToSocketAddrs, IpAddr};
 use tokio_postgres::{NoTls};
-use std::sync::Arc;
+use deadpool_postgres::Pool;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ActixConfig {
@@ -28,13 +28,15 @@ impl ActixConfig {
 
 #[actix_rt::main]
 pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
-    let pool = Arc::new(config.postgres.create_pool(NoTls).unwrap());
+    let pool = web::Data::new(config.postgres.create_pool(NoTls).unwrap());
+
+    println!("Server starting at {}", config.actix.addr().to_socket_addrs()?.next().unwrap());
 
     let server = HttpServer::new(move || 
         App::new()
-            .data(pool.clone())
+            .app_data(pool.clone())
             .service(
-                web::resource("/status").to(|| HttpResponse::Ok())
+                web::resource("/status").to(|db: web::Data<Pool>| HttpResponse::Ok().body(format!("{:?}", db.status())))
             )
         )
         .bind(config.actix.addr())?;
