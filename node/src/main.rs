@@ -6,7 +6,6 @@ use self::{cli::Arguments, config::NodeConfig, server::actix_main};
 use actix_rt::Runtime;
 use db::migrations;
 use structopt::StructOpt;
-use tari_common::DefaultConfigLoader;
 
 fn main() -> anyhow::Result<()> {
     let mut args = Arguments::from_args();
@@ -17,7 +16,7 @@ fn main() -> anyhow::Result<()> {
     let config = args.bootstrap.load_configuration()?;
 
     // deriving our app configs
-    let node_config = <NodeConfig as DefaultConfigLoader>::load_from(&config)?;
+    let node_config = NodeConfig::load_from(&config)?;
 
     // Run any migrations that are outstanding
     if args.run_migrations {

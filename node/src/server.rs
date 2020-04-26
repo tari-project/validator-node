@@ -3,9 +3,12 @@ use crate::db::pool::build_pool;
 use actix_web::{web, App, HttpResponse, HttpServer};
 use deadpool_postgres::Pool;
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 
-#[derive(Clone, Serialize, Deserialize)]
+pub const DEFAULT_PORT: u16 = 3001;
+pub const DEFAULT_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActixConfig {
     pub host: IpAddr,
     pub port: u16,
@@ -14,8 +17,8 @@ pub struct ActixConfig {
 impl Default for ActixConfig {
     fn default() -> Self {
         Self {
-            host: [127, 0, 0, 1].into(),
-            port: 3001,
+            host: DEFAULT_ADDR.into(),
+            port: DEFAULT_PORT,
             workers: None,
         }
     }
