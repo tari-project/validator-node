@@ -25,5 +25,6 @@ log = "0.4"
 anyhow = "1"
 deadpool-postgres = { version = "0.5.5", features = ["config"] }
 tokio-postgres = "0.5.3"
+refinery = { version = "0.2", features = ["tokio-postgres"]}
 actix-web = "2.0.0"
 actix-rt = "1.1.0"

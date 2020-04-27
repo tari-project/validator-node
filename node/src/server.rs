@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use actix_web::{web, App, HttpResponse, HttpServer};
 use super::config::NodeConfig;
-use std::net::{ToSocketAddrs, IpAddr};
-use tokio_postgres::{NoTls};
+use crate::db::pool::build_pool;
+use actix_web::{web, App, HttpResponse, HttpServer};
 use deadpool_postgres::Pool;
+use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, ToSocketAddrs};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ActixConfig {
@@ -28,24 +28,25 @@ impl ActixConfig {
 
 #[actix_rt::main]
 pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
-    let pool = web::Data::new(config.postgres.create_pool(NoTls).unwrap());
+    let pool = web::Data::new(build_pool(config.clone()));
 
-    println!("Server starting at {}", config.actix.addr().to_socket_addrs()?.next().unwrap());
+    println!(
+        "Server starting at {}",
+        config.actix.addr().to_socket_addrs()?.next().unwrap()
+    );
 
-    let server = HttpServer::new(move || 
-        App::new()
-            .app_data(pool.clone())
-            .service(
-                web::resource("/status").to(|db: web::Data<Pool>| HttpResponse::Ok().body(format!("{:?}", db.status())))
-            )
+    let server = HttpServer::new(move || {
+        App::new().app_data(pool.clone()).service(
+            web::resource("/status").to(|db: web::Data<Pool>| HttpResponse::Ok().body(format!("{:?}", db.status()))),
         )
-        .bind(config.actix.addr())?;
+    })
+    .bind(config.actix.addr())?;
     match config.actix.workers {
         Some(workers) => server.workers(workers),
         None => server,
     }
-        .run()
-        .await?;
+    .run()
+    .await?;
 
     Ok(())
 }

@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
-use tari_common::NetworkConfigPath;
-use super::server::ActixConfig;
+use crate::server::ActixConfig;
 use deadpool_postgres::config::Config as DeadpoolConfig;
+use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
+use tari_common::NetworkConfigPath;
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct NodeConfig {
