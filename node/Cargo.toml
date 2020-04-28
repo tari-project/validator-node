@@ -8,7 +8,7 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_common = "^0.0"
+tari_common = "^0.1"
 tari_comms = "^0.0"
 tari_comms_dht = "^0.0"
 tari_core = "^0.0"
@@ -28,3 +28,7 @@ tokio-postgres = "0.5.3"
 refinery = { version = "0.2", features = ["tokio-postgres"]}
 actix-web = "2.0.0"
 actix-rt = "1.1.0"
+config = { version = "0.9.3", default_features = false }
+
+[dev-dependencies]
+lazy_static = "1.4"

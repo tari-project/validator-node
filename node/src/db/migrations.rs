@@ -1,11 +1,9 @@
 use crate::{config::NodeConfig, db::pool::build_pool};
-use deadpool_postgres::{ClientWrapper, Pool};
-use std::ops::DerefMut;
-use tokio_postgres::Client;
+use deadpool_postgres::Pool;
 
 mod embedded {
     use refinery::embed_migrations;
-    embed_migrations!("node/migrations");
+    embed_migrations!();
 }
 
 pub async fn migrate(node_config: NodeConfig) {
