@@ -23,12 +23,14 @@ impl NetworkConfigPath for NodeConfig {
 }
 
 impl NodeConfig {
-    pub fn load_from(config: &Config) -> Result<Self, ConfigurationError> {
-        let actix = Environment::with_prefix("ACTIX").collect()?;
-        let pg = Environment::with_prefix("PG").collect()?;
+    pub fn load_from(config: &Config, env: bool) -> Result<Self, ConfigurationError> {
         let mut config = config.clone();
-        config.set("validator.actix", actix)?;
-        config.set("validator.postgres", pg)?;
+        if env {
+            let actix = Environment::with_prefix("ACTIX").collect()?;
+            let pg = Environment::with_prefix("PG").collect()?;
+            config.set("validator.actix", actix)?;
+            config.set("validator.postgres", pg)?;
+        }
         <Self as DefaultConfigLoader>::load_from(&config)
     }
 }
@@ -53,7 +55,7 @@ mod test {
     #[test]
     fn default_config() -> Result<(), ConfigurationError> {
         let _guard = LOCK_ENV.read().unwrap();
-        let cfg = NodeConfig::load_from(&Config::new())?;
+        let cfg = NodeConfig::load_from(&Config::new(), false)?;
         assert_eq!(cfg.actix.port, DEFAULT_PORT);
         assert_eq!(cfg.actix.host, DEFAULT_ADDR);
         assert_eq!(cfg.postgres.host, None);
@@ -73,7 +75,7 @@ mod test {
         let mut settings = Config::new();
         settings.merge(File::from_str(TEST_CONFIG, Toml))?;
 
-        let cfg = NodeConfig::load_from(&settings)?;
+        let cfg = NodeConfig::load_from(&settings, false)?;
         assert_eq!(cfg.actix.port, 9999);
         assert_eq!(cfg.actix.host, DEFAULT_ADDR);
         assert_eq!(cfg.actix.workers, Some(3));
@@ -100,7 +102,7 @@ mod test {
         let cfg_with_network = format!("{}{}", TEST_CONFIG, TEST_CONFIG_NETWORK);
         settings.merge(File::from_str(cfg_with_network.as_str(), Toml))?;
 
-        let cfg = NodeConfig::load_from(&settings)?;
+        let cfg = NodeConfig::load_from(&settings, false)?;
         assert_eq!(cfg.actix.port, 9999);
         assert_eq!(cfg.actix.host, "10.0.0.1".parse::<IpAddr>().unwrap());
         assert_eq!(cfg.actix.workers, Some(3));
@@ -117,12 +119,14 @@ mod test {
         let _guard = LOCK_ENV.write().unwrap();
         let mut settings = Config::new();
         settings.merge(File::from_str(TEST_CONFIG, Toml))?;
+        std::env::remove_var("PG_USER");
+        std::env::remove_var("PG_DBNAME");
         std::env::set_var("PG_HOST", "postgres");
         std::env::set_var("PG_PASSWORD", "pass");
         std::env::set_var("ACTIX_WORKERS", "5");
         std::env::set_var("ACTIX_PORT", "5000");
 
-        let cfg = NodeConfig::load_from(&settings)?;
+        let cfg = NodeConfig::load_from(&settings, true)?;
         assert_eq!(cfg.actix.port, 5000);
         assert_eq!(cfg.actix.host, DEFAULT_ADDR);
         assert_eq!(cfg.actix.workers, Some(5));
@@ -131,8 +135,8 @@ mod test {
         assert_eq!(cfg.postgres.user, Some("postgres".into()));
         assert_eq!(cfg.postgres.password, Some("pass".into()));
 
-        std::env::remove_var("PG_HOST");
         std::env::remove_var("PG_PASSWORD");
+        std::env::remove_var("PG_HOST");
         std::env::remove_var("ACTIX_WORKERS");
         std::env::remove_var("ACTIX_PORT");
 

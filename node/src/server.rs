@@ -31,7 +31,7 @@ impl ActixConfig {
 
 #[actix_rt::main]
 pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
-    let pool = web::Data::new(build_pool(config.clone()));
+    let pool = web::Data::new(build_pool(&config.postgres)?);
 
     println!(
         "Server starting at {}",

@@ -26,3 +26,4 @@ log
 
 # local config overload
 config/local.toml
+.env
