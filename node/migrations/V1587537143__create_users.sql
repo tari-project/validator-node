@@ -1,7 +1,7 @@
 CREATE TABLE access (
                        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
                        pub_key TEXT NOT NULL UNIQUE,
-                       granted BOOL NOT NULL,
+                       deleted_at TIMESTAMPTZ NULL,
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

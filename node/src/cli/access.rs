@@ -46,6 +46,7 @@ impl AccessCommands {
                     SelectAccess {
                         id: None,
                         pub_key: pubkey,
+                        include_deleted: None,
                     },
                     &client,
                 )

@@ -8,9 +8,9 @@ pub const DEFAULT_DBNAME: &'static str = "validator";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NodeConfig {
-    /// will load form [validator.actix], overloaded with ACTIX_* env vars
+    /// will load from [validator.actix], overloaded with ACTIX_* env vars
     pub actix: ActixConfig,
-    /// will load form [validator.postgres], overloaded with PG_* env vars
+    /// will load from [validator.postgres], overloaded with PG_* env vars
     /// see [deadpool_postgres::config::Config] on env + config vars details
     #[serde(serialize_with = "default_postgres_config")]
     pub postgres: DeadpoolConfig,
