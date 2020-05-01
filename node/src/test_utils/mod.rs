@@ -3,6 +3,8 @@ use config::Source;
 use deadpool_postgres::{config::Config as DeadpoolConfig, Pool};
 use tokio_postgres::NoTls;
 
+pub(crate) mod builders;
+
 /// Generate a standard test config
 pub fn build_test_config() -> anyhow::Result<NodeConfig> {
     let mut config = config::Config::new();
@@ -28,5 +30,6 @@ pub async fn reset_db(config: &NodeConfig, pool: &Pool) -> anyhow::Result<()> {
     client.query("GRANT ALL ON SCHEMA public TO postgres;", &[]).await?;
     client.query("GRANT ALL ON SCHEMA public TO public;", &[]).await?;
     migrate(config.clone()).await?;
+
     Ok(())
 }

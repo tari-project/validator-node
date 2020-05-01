@@ -1,4 +1,4 @@
-use super::errors::DBError;
+use crate::db::errors::DBError;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::fmt::{Display, Formatter};

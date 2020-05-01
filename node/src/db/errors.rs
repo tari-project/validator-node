@@ -21,6 +21,8 @@ pub enum DBError {
     Migration(#[from] MigrationsError),
     #[error("Bad query: {msg}")]
     BadQuery { msg: String },
+    #[error("Not found")]
+    NotFound,
 }
 
 impl DBError {

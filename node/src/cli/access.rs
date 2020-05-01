@@ -1,7 +1,7 @@
 use crate::{
     config::NodeConfig,
     db::{
-        access::{Access, NewAccess, SelectAccess},
+        models::{Access, NewAccess, SelectAccess},
         pool::build_pool,
     },
 };
