@@ -3,11 +3,10 @@
 
 ## Cheatsheet
 
-### DB
-Assumes that DBs `validator` and `validator_test` exist
+### Init DB
 ```
-CREATE DATABASE validator;
-CREATE DATABASE validator_test;
+cargo run -- init
+PG_DBNAME=validator_test cargo run -- init
 ```
 
 ### Toml config ~/.tari/config.toml
@@ -16,7 +15,7 @@ CREATE DATABASE validator_test;
 postgres = { host = "localhost", user = "postgres", password = "password123" }
 ```
 
-### Env vars overloading 
+### Env vars overloading
 - PG_DBNAME - database
 - PG_USER - db user
 - PG_PASSWORD - db password
@@ -27,6 +26,12 @@ Tests expect same
 ```
 cargo run -- migrate
 PG_DBNAME=validator_test cargo run -- migrate
+```
+
+### Reset DBs
+```
+cargo run -- wipe -y
+PG_DBNAME=validator_test cargo run -- wipe
 ```
 
 ### Access management
