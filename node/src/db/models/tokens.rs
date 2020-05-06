@@ -1,5 +1,5 @@
 use super::TokenStatus;
-use crate::db::errors::DBError;
+use crate::db::utils::errors::DBError;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -59,18 +59,14 @@ impl Token {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{build_test_config, builders::*, reset_db, test_pool};
+    use crate::test_utils::{builders::*, test_db_client};
     use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
-        // TODO build out factory support for creating required test data
         dotenv::dotenv().unwrap();
-        let db = test_pool().await;
-        let config = build_test_config().unwrap();
-        reset_db(&config, &db).await.unwrap();
-        let client = db.get().await.unwrap();
+        let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
         let asset2 = AssetStateBuilder::default().build(&client).await?;
         let mut additional_data_json = HashMap::new();
@@ -80,6 +76,7 @@ mod test {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
             additional_data_json: serde_json::to_value(additional_data_json.clone())?,
+            ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
         let token = Token::load(token_id, &client).await?;
@@ -91,6 +88,7 @@ mod test {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
             additional_data_json: serde_json::to_value(additional_data_json.clone())?,
+            ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
         let token = Token::load(token_id, &client).await?;
@@ -102,6 +100,7 @@ mod test {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset2.id,
             additional_data_json: serde_json::to_value(additional_data_json)?,
+            ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
         let token = Token::load(token_id, &client).await?;

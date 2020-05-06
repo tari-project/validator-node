@@ -1,5 +1,5 @@
 use super::AssetStatus;
-use crate::db::errors::DBError;
+use crate::db::utils::{errors::DBError, validation::ValidationErrors};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -43,9 +43,30 @@ pub struct NewAssetState {
     pub digital_asset_id: uuid::Uuid,
 }
 
+impl NewAssetState {
+    pub async fn validate_record(&self, client: &Client) -> Result<(), DBError> {
+        let mut validation_errors = ValidationErrors::default();
+        if AssetState::find_by_asset_id(self.asset_id.clone(), client)
+            .await?
+            .is_some()
+        {
+            validation_errors.append_validation_error(
+                "uniqueness",
+                "asset_id",
+                "New asset state must have unique asset ID.",
+            );
+        }
+        validation_errors.validate()?;
+
+        Ok(())
+    }
+}
+
 impl AssetState {
     /// Add asset record
     pub async fn insert(params: NewAssetState, client: &Client) -> Result<uuid::Uuid, DBError> {
+        params.validate_record(client).await?;
+
         const QUERY: &'static str = "
             INSERT INTO asset_states (
                 name,
@@ -88,27 +109,27 @@ impl AssetState {
     }
 
     /// Find asset state record by asset id )
-    pub async fn find_by_asset_id(asset_id: String, client: &Client) -> Result<AssetState, DBError> {
+    pub async fn find_by_asset_id(asset_id: String, client: &Client) -> Result<Option<AssetState>, DBError> {
         let stmt = "SELECT * FROM asset_states WHERE asset_id = $1";
-        let result = client.query_one(stmt, &[&asset_id]).await?;
-        Ok(AssetState::from_row(result)?)
+        let result = client.query_opt(stmt, &[&asset_id]).await?;
+        Ok(result.map(AssetState::from_row).transpose()?)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{build_test_config, builders::*, reset_db, test_pool};
+    use crate::{
+        db::utils::validation::*,
+        test_utils::{builders::*, test_db_client},
+    };
     use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
         dotenv::dotenv().unwrap();
-        let db = test_pool().await;
-        let config = build_test_config().unwrap();
-        reset_db(&config, &db).await.unwrap();
-        let client = db.get().await.unwrap();
+        let (client, _lock) = test_db_client().await;
         let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
         let tari_asset_id = "asset-id-placeholder-0976544466643335678667765432355555555445544".to_string();
 
@@ -117,15 +138,11 @@ mod test {
         let params = NewAssetState {
             name: "AssetName".to_string(),
             description: "Description".to_string(),
-            limit_per_wallet: None,
-            allow_transfers: false,
             asset_issuer_pub_key: PUBKEY.to_string(),
-            authorized_signers: Vec::new(),
-            expiry_date: None,
-            initial_permission_bitflag: 0,
             additional_data_json: serde_json::to_value(additional_data_json)?,
             asset_id: tari_asset_id.clone(),
             digital_asset_id: digital_asset.id,
+            ..NewAssetState::default()
         };
         let asset_id = AssetState::insert(params, &client).await?;
         let asset = AssetState::load(asset_id, &client).await?;
@@ -136,7 +153,39 @@ mod test {
         assert_eq!(asset.asset_id, tari_asset_id.clone());
 
         let found_asset = AssetState::find_by_asset_id(tari_asset_id, &client).await?;
-        assert_eq!(found_asset, asset);
+        assert_eq!(found_asset, Some(asset));
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn asset_id_uniqueness() -> anyhow::Result<()> {
+        dotenv::dotenv().unwrap();
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await?;
+
+        let params = NewAssetState {
+            name: "AssetName".to_string(),
+            description: "Description".to_string(),
+            asset_issuer_pub_key: PUBKEY.to_string(),
+            asset_id: asset.asset_id.clone(),
+            digital_asset_id: asset.digital_asset_id,
+            ..NewAssetState::default()
+        };
+        let mut expected_validation_errors = ValidationErrors::default();
+        let expected_error = ValidationError {
+            code: "uniqueness".into(),
+            message: "New asset state must have unique asset ID.".into(),
+        };
+        expected_validation_errors.0.insert("asset_id", vec![expected_error]);
+
+        let result = AssetState::insert(params, &client).await;
+        assert!(result.is_err());
+        if let Err(DBError::Validation(validation_errors)) = result {
+            assert_eq!(validation_errors, expected_validation_errors);
+        } else {
+            panic!("Expected an error result response from validation test");
+        }
 
         Ok(())
     }

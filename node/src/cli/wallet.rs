@@ -1,6 +1,6 @@
 use crate::{
     config::NodeConfig,
-    db::utils::db_client,
+    db::utils::db::db_client,
     wallet::{WalletID, WalletStore},
 };
 use structopt::StructOpt;

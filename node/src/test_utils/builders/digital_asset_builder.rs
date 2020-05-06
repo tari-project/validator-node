@@ -36,7 +36,7 @@ impl DigitalAssetBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<DigitalAsset> {
         let params = NewDigitalAsset {
             template_type: self.template_type.to_owned(),
-            committee_mode: Some(self.committee_mode),
+            committee_mode: self.committee_mode,
             node_threshold: self.node_threshold,
             minimum_collateral: self.minimum_collateral,
             consensus_strategy: self.consensus_strategy,

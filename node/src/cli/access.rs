@@ -2,7 +2,7 @@ use crate::{
     config::NodeConfig,
     db::{
         models::{Access, AccessResource, NewAccess, SelectAccess},
-        utils::db_client,
+        utils::db::db_client,
     },
 };
 use structopt::StructOpt;

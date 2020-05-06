@@ -1,4 +1,4 @@
-use crate::db::errors::DBError;
+use crate::db::utils::errors::DBError;
 use chrono::{DateTime, Utc};
 use deadpool_postgres::{Client, Transaction};
 use serde::{Deserialize, Serialize};
@@ -83,6 +83,7 @@ mod test {
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
+        dotenv::dotenv().unwrap();
         let (mut client, _lock) = test_db_client().await;
 
         let new_wallet_params = NewWallet {
@@ -114,6 +115,7 @@ mod test {
 
     #[actix_rt::test]
     async fn transaction_abort() -> anyhow::Result<()> {
+        dotenv::dotenv().unwrap();
         let (mut client, _lock) = test_db_client().await;
 
         let new_wallet_params = NewWallet {
@@ -135,6 +137,7 @@ mod test {
 
     #[actix_rt::test]
     async fn insert_duplicate() -> anyhow::Result<()> {
+        dotenv::dotenv().unwrap();
         let (mut client, _lock) = test_db_client().await;
 
         let new_wallet_params = NewWallet {

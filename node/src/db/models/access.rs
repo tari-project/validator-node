@@ -1,5 +1,5 @@
 use super::AccessResource;
-use crate::db::errors::DBError;
+use crate::db::utils::errors::DBError;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
@@ -151,7 +151,7 @@ impl Access {
 #[cfg(test)]
 mod test {
     use super::{Access, AccessResource, NewAccess, SelectAccess};
-    use crate::test_utils::{test_db_client, test_pool};
+    use crate::test_utils::test_db_client;
     use chrono::Utc;
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
@@ -214,6 +214,7 @@ mod test {
 
     #[actix_rt::test]
     async fn crud_wallet() -> anyhow::Result<()> {
+        dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
 
         let new_access_params = NewAccess {
@@ -262,8 +263,7 @@ mod test {
     #[actix_rt::test]
     async fn delete_constraints() {
         dotenv::dotenv().unwrap();
-        let db = test_pool().await;
-        let client = db.get().await.unwrap();
+        let (client, _lock) = test_db_client().await;
         let res = Access::revoke(SelectAccess::default(), &client).await;
         assert!(res.is_err());
     }

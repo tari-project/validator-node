@@ -73,6 +73,12 @@ string_enum! { CommitteeMode [Public, Creator]}
 string_enum! { TokenStatus [Active, Retired]}
 string_enum! { AccessResource [Api, Wallet]}
 
+impl Default for CommitteeMode {
+    fn default() -> CommitteeMode {
+        CommitteeMode::Public
+    }
+}
+
 #[test]
 fn display() {
     assert_eq!(AssetStatus::Active.to_string(), "Active");

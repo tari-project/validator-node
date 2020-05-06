@@ -1,5 +1,5 @@
-use super::errors::DBError;
-use crate::{config::NodeConfig, db::utils::db_client};
+use super::utils::errors::DBError;
+use crate::{config::NodeConfig, db::utils::db::db_client};
 
 mod embedded {
     use refinery::embed_migrations;

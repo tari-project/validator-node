@@ -1,4 +1,4 @@
-use crate::db::errors::DBError;
+use crate::db::utils::errors::DBError;
 use config::ConfigError as ConfigStateError;
 use tari_common::{ConfigError as BootstrapConfigError, ConfigurationError};
 use thiserror::Error;

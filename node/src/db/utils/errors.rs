@@ -1,3 +1,4 @@
+use crate::db::utils::validation::ValidationErrors;
 use deadpool_postgres::{config::ConfigError as PoolConfigError, PoolError};
 use refinery::Error as MigrationsError;
 use tari_crypto::tari_utilities::hex::HexError;
@@ -23,6 +24,8 @@ pub enum DBError {
     BadQuery { msg: String },
     #[error("Not found")]
     NotFound,
+    #[error("Validation error: {0}")]
+    Validation(#[from] ValidationErrors),
 }
 
 impl DBError {

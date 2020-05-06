@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Start => actix_main(node_config).await?,
         Commands::Init => {
             println!("Initializing database {:?}", node_config.postgres.dbname);
-            utils::create_database(node_config).await?;
+            utils::db::create_database(node_config).await?;
         },
         Commands::Migrate => {
             println!("Running migrations on database {:?}", node_config.postgres.dbname);
@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             println!("Resetting database {:?}", node_config.postgres.dbname);
-            utils::reset_database(node_config).await?;
+            utils::db::reset_database(node_config).await?;
         },
     };
 
