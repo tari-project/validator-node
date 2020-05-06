@@ -59,7 +59,7 @@ impl Token {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{build_test_config, build_test_pool, builders::*, reset_db};
+    use crate::test_utils::{build_test_config, builders::*, reset_db, test_pool};
     use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
@@ -67,7 +67,7 @@ mod test {
     async fn crud() -> anyhow::Result<()> {
         // TODO build out factory support for creating required test data
         dotenv::dotenv().unwrap();
-        let db = build_test_pool().unwrap();
+        let db = test_pool().await;
         let config = build_test_config().unwrap();
         reset_db(&config, &db).await.unwrap();
         let client = db.get().await.unwrap();

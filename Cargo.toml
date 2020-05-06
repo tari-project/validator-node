@@ -3,3 +3,6 @@
 members = [
     "node"
 ]
+
+[patch.crates-io]
+tari_common = { version = "0.1.0", git = "https://github.com/tari-project/tari", branch = "development" }

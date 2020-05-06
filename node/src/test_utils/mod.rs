@@ -1,25 +1,46 @@
 use crate::{config::NodeConfig, db::migrations::migrate};
 use config::Source;
-use deadpool_postgres::{config::Config as DeadpoolConfig, Pool};
+use deadpool_postgres::{Client, Pool};
+use tokio::sync::{Mutex, MutexGuard};
 use tokio_postgres::NoTls;
 
 pub(crate) mod builders;
+
+lazy_static::lazy_static! {
+    static ref LOCK_DB_POOL: Mutex<Pool> = {
+        let config = build_test_config().expect("LOCK_DB_POOL: failed to create test config");
+        let pool = config.postgres.create_pool(NoTls).expect("LOCK_DB_POOL: failed to create DB pool");
+        Mutex::new(pool)
+    };
+}
+
+/// Create DB pool, reset DB, lock DB fo concurrent access, returns client and lock
+pub async fn test_db_client<'a>() -> (Client, MutexGuard<'a, Pool>) {
+    dotenv::dotenv().unwrap();
+    let db = test_pool().await;
+    let config = build_test_config().unwrap();
+    reset_db(&config, &db).await.unwrap();
+    (db.get().await.unwrap(), db)
+}
 
 /// Generate a standard test config
 pub fn build_test_config() -> anyhow::Result<NodeConfig> {
     let mut config = config::Config::new();
     let pg = config::Environment::with_prefix("PG_TEST").collect()?;
     config.set("validator.postgres", pg)?;
+    config.set(
+        "validator.wallets_keys_path",
+        format!("{}/wallets", option_env!("OUT_DIR").unwrap_or("./.tari")),
+    )?;
     Ok(NodeConfig::load_from(&config, false)?)
 }
 
-/// Create DB pool for automated tests
-/// Pool is configured via PG_TEST_* env vars prefix
+/// Return DB pool for automated tests.
+/// Pool is wrapped in Mutex to avoid DB tests race conditions.
+/// Test pool is configured via PG_TEST_* env vars prefix
 /// See [`deadpool_postgres::config::Config`] for full list of params
-pub fn build_test_pool() -> anyhow::Result<Pool> {
-    let config = build_test_config()?;
-    let config: DeadpoolConfig = config.postgres;
-    Ok(config.create_pool(NoTls)?)
+pub async fn test_pool<'a>() -> MutexGuard<'a, Pool> {
+    LOCK_DB_POOL.lock().await
 }
 
 /// Drops the db in the Config, creates it and runs the migrations

@@ -1,7 +1,8 @@
 pub use self::{access::*, asset_states::*, digital_assets::*, enums::*, tokens::*};
 
-mod access;
-mod asset_states;
-mod digital_assets;
-mod enums;
-mod tokens;
+pub mod access;
+pub mod asset_states;
+pub mod digital_assets;
+pub mod enums;
+pub mod tokens;
+pub(crate) mod wallet;

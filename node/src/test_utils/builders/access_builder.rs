@@ -24,13 +24,13 @@ impl AccessBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<Access> {
         let params = NewAccess {
             pub_key: self.pub_key.to_owned(),
+            ..NewAccess::default()
         };
         Access::grant(params, client).await?;
 
         let query = SelectAccess {
-            id: None,
             pub_key: Some(self.pub_key.to_owned()),
-            include_deleted: None,
+            ..SelectAccess::default()
         };
         Ok(Access::select(query.clone(), client).await?.pop().unwrap())
     }

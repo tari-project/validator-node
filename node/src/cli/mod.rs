@@ -1,14 +1,25 @@
+use crate::errors::ConfigError;
 use structopt::StructOpt;
-use tari_common::{ConfigBootstrap, ConfigError};
+use tari_common::{
+    dir_utils::{create_data_directory, default_path},
+    ConfigBootstrap,
+};
 
 mod access;
 pub use access::AccessCommands;
+mod wallet;
+pub use wallet::WalletCommands;
 
 #[derive(StructOpt, Default, Debug)]
 /// The reference Tari cryptocurrency validation node implementation
 pub struct Arguments {
     #[structopt(flatten)]
     pub bootstrap: ConfigBootstrap,
+    /// Path to directory for storing wallets keys.
+    /// Can be overloaded via env `VALIDATION_NODE_WALLETS`.
+    /// Defaults to `~/.tari/wallets`.
+    #[structopt(short, long, env = "VALIDATION_NODE_WALLETS")]
+    pub wallets_keys_path: Option<std::path::PathBuf>,
     #[structopt(subcommand)]
     pub command: Commands,
 }
@@ -23,6 +34,8 @@ pub enum Commands {
     Migrate,
     /// API access management
     Access(AccessCommands),
+    /// Manage wallets
+    Wallet(WalletCommands),
     /// Recreate and migrate database,  *DANGER!* it will wipe all data
     Wipe {
         /// Don't prompt for confirmation
@@ -46,6 +59,21 @@ impl Arguments {
         };
         self.bootstrap.init_dirs()?;
         self.bootstrap.initialize_logging()?;
+        let wallet_path = self
+            .wallets_keys_path
+            .get_or_insert(default_path("wallets", Some(&self.bootstrap.base_path)));
+        create_data_directory(Some(wallet_path))?;
         Ok(())
     }
+
+    pub fn load_configuration(&self) -> Result<config::Config, ConfigError> {
+        let mut config = self.bootstrap.load_configuration()?;
+        if config.get_str("validator.wallets_keys_path").is_err() && self.wallets_keys_path.is_some() {
+            let wallet_path = self.wallets_keys_path.clone().unwrap();
+            config.set("validator.wallets_keys_path", wallet_path.to_str())?;
+        };
+        Ok(config)
+    }
 }
+
+// TODO: test - load_configuration should set validator.wallets_keys_path to <base_path>/wallets

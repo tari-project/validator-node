@@ -14,6 +14,8 @@ pub struct NodeConfig {
     /// see [deadpool_postgres::config::Config] on env + config vars details
     #[serde(serialize_with = "default_postgres_config")]
     pub postgres: DeadpoolConfig,
+    /// Path to directory for storing wallets keys. Defaults to `~/.tari/wallets`.
+    pub wallets_keys_path: std::path::PathBuf,
 }
 
 impl NetworkConfigPath for NodeConfig {

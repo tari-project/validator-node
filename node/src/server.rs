@@ -1,5 +1,5 @@
 use super::config::NodeConfig;
-use crate::db::pool::build_pool;
+use crate::db::utils::build_pool;
 use actix_web::{web, App, HttpResponse, HttpServer};
 use deadpool_postgres::Pool;
 use serde::{Deserialize, Serialize};

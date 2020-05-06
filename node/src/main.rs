@@ -1,4 +1,5 @@
 use structopt::StructOpt;
+use tari_common::GlobalConfig;
 use tari_validator_node::{
     cli::{Arguments, Commands},
     config::NodeConfig,
@@ -12,7 +13,9 @@ async fn main() -> anyhow::Result<()> {
 
     // initialize configuration files if needed
     args.init_configs()?;
-    let config = args.bootstrap.load_configuration()?;
+    let config = args.load_configuration()?;
+
+    let global_config = GlobalConfig::convert_from(config.clone())?;
 
     // deriving our app configs
     let node_config = NodeConfig::load_from(&config, true)?;
@@ -30,6 +33,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Access(cmd) => {
             println!("Access -> {:?}", cmd);
             cmd.run(node_config).await?;
+        },
+        Commands::Wallet(cmd) => {
+            println!("Wallet -> {:?}", cmd);
+            cmd.run(node_config, global_config).await?;
         },
         Commands::Wipe { y } => {
             if !y && !prompt("Do you really want to wipe all data (Y/n)?") {

@@ -1,4 +1,4 @@
-use anyhow::Error as AnyhowError;
+use anyhow::{anyhow, Error as AnyhowError};
 use postgres::types::*;
 use postgres_types::{private::BytesMut, FromSql, IsNull, ToSql};
 use serde::{Deserialize, Serialize};
@@ -71,11 +71,13 @@ macro_rules! string_enum {
 string_enum! { AssetStatus [Active, Retired]}
 string_enum! { CommitteeMode [Public, Creator]}
 string_enum! { TokenStatus [Active, Retired]}
+string_enum! { AccessResource [Api, Wallet]}
 
 #[test]
 fn display() {
     assert_eq!(AssetStatus::Active.to_string(), "Active");
     assert_eq!(AssetStatus::Retired.to_string(), "Retired");
+    assert_eq!(AccessResource::Api.to_string(), "Api");
 }
 
 #[test]
@@ -84,4 +86,5 @@ fn parse() {
     assert_eq!(AssetStatus::Retired, "Retired".parse().unwrap());
     assert_eq!(AssetStatus::Retired, "retired".parse().unwrap());
     assert!("Invalid".parse::<AssetStatus>().is_err());
+    assert_eq!(AccessResource::Wallet, "wallet".parse().unwrap());
 }

@@ -76,12 +76,12 @@ impl DigitalAsset {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{build_test_config, build_test_pool, reset_db};
+    use crate::test_utils::{build_test_config, reset_db, test_pool};
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
         dotenv::dotenv().unwrap();
-        let db = build_test_pool().unwrap();
+        let db = test_pool().await;
         let config = build_test_config().unwrap();
         reset_db(&config, &db).await.unwrap();
         let client = db.get().await.unwrap();
