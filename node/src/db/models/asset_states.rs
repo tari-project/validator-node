@@ -109,7 +109,7 @@ mod test {
         let config = build_test_config().unwrap();
         reset_db(&config, &db).await.unwrap();
         let client = db.get().await.unwrap();
-        let digital_asset = DigitalAssetBuilder::new(&client).finish().await?;
+        let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
         let tari_asset_id = "asset-id-placeholder-0976544466643335678667765432355555555445544".to_string();
 
         let mut additional_data_json = HashMap::new();

@@ -27,7 +27,7 @@ pub enum Commands {
     Wipe {
         /// Don't prompt for confirmation
         #[structopt(short)]
-        y: bool
+        y: bool,
     },
 }
 impl Default for Commands {

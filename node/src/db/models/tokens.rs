@@ -71,8 +71,8 @@ mod test {
         let config = build_test_config().unwrap();
         reset_db(&config, &db).await.unwrap();
         let client = db.get().await.unwrap();
-        let asset = AssetStateBuilder::new(&client).finish().await?;
-        let asset2 = AssetStateBuilder::new(&client).finish().await?;
+        let asset = AssetStateBuilder::default().build(&client).await?;
+        let asset2 = AssetStateBuilder::default().build(&client).await?;
         let mut additional_data_json = HashMap::new();
         additional_data_json.insert("value", true);
 
