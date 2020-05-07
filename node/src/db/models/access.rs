@@ -153,6 +153,7 @@ mod test {
     use super::{Access, AccessResource, NewAccess, SelectAccess};
     use crate::test_utils::test_db_client;
     use chrono::Utc;
+    use dotenv;
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
     const EMOJI: &'static str = "🍉🐭👄🍎🙃🐇💻🙄🆘🐫🍫👕🎌👔👽🍫🤝🍷👤💫🐫🌈😍⛺🤑🛸🎤🎾🤴👖🧦😛📡";

@@ -1,4 +1,4 @@
-use crate::server::ActixConfig;
+use crate::api::server::{ActixConfig, CorsConfig};
 use config::{Config, Environment, Source};
 use deadpool_postgres::config::Config as DeadpoolConfig;
 use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
@@ -16,6 +16,8 @@ pub struct NodeConfig {
     pub postgres: DeadpoolConfig,
     /// Path to directory for storing wallets keys. Defaults to `~/.tari/wallets`.
     pub wallets_keys_path: std::path::PathBuf,
+    /// will load from [validator.cors], overloaded with CORS_* env vars
+    pub cors: CorsConfig,
 }
 
 impl NetworkConfigPath for NodeConfig {
@@ -30,8 +32,10 @@ impl NodeConfig {
         if env {
             let actix = Environment::with_prefix("ACTIX").collect()?;
             let pg = Environment::with_prefix("PG").collect()?;
+            let cors = Environment::with_prefix("CORS").collect()?;
             config.set("validator.actix", actix)?;
             config.set("validator.postgres", pg)?;
+            config.set("validator.cors", cors)?;
         }
         <Self as DefaultConfigLoader>::load_from(&config)
     }
@@ -47,7 +51,7 @@ fn default_postgres_config<S: Serializer>(_: &DeadpoolConfig, s: S) -> Result<S:
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::server::*;
+    use crate::api::server::*;
     use config::{Config, File, FileFormat::Toml};
 
     lazy_static::lazy_static! {
@@ -62,6 +66,7 @@ mod test {
         assert_eq!(cfg.actix.host, DEFAULT_ADDR);
         assert_eq!(cfg.postgres.host, None);
         assert_eq!(cfg.postgres.dbname, Some(DEFAULT_DBNAME.into()));
+        assert_eq!(cfg.cors.allowed_origins, "*");
         Ok(())
     }
 
@@ -69,6 +74,7 @@ mod test {
     [validator]
     actix = { workers = 3, port = 9999 }
     postgres = { host = "localhost", user = "postgres" }
+    cors = { allowed_origins = "https://www.tari.com"}
     "#;
 
     #[test]
@@ -85,6 +91,7 @@ mod test {
         assert_eq!(cfg.postgres.dbname, Some(DEFAULT_DBNAME.into()));
         assert_eq!(cfg.postgres.user, Some("postgres".into()));
         assert_eq!(cfg.postgres.password, None);
+        assert_eq!(cfg.cors.allowed_origins, "https://www.tari.com".to_string());
         Ok(())
     }
 
