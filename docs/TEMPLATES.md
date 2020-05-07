@@ -19,12 +19,13 @@ Assumptions: AssetID is registered with creator_sig, tokens might be created onl
 Validation node will support communication via HTTP allowing RPC calls, where RPC calls would vary depending on template. To achieve that Validation Node might use layered protocols architecture, where message consist of fixed set of layer's headers and wrapped message for the next layer.
 
 ### Proposed layers:
-- Application layer - handle RPC calls
-- Routing Layer - actix handler on HTTP endpoint - decodes RPC method signature and locates matching trait implementation based on TemplateID header and RPC method signature. Will compose context information, e.g. wallet pubkey, template data, request headers, JWT headers
-- HTTP layer - actix middleware - generic HTTP handler, will enrich context with information extracted from JWT
-
+- Application layer - handles RPC calls and business logic
+- Routing Layer - actix handler on HTTP endpoint - decodes RPC method signature and locates matching trait implementation based on TemplateID header and RPC method signature. Will pass context information, e.g. wallet pubkey, template data, request headers, JWT headers
+- Middleware layer - actix middleware - generic HTTP handler, will enrich context with information extracted from JWT
 
 ### Authorization by layers:
 - Application layer - business logic authorization based on rpc calls params and context, e.g. pubkey is authorized to issue tokens on asset OR pubkey is owner of a token OR pubkey is creator of asset
-- Routing layer - pubkey has access to TemplateID?
-- HTTP layer - pubkey has access to API, JWT token integrity
+- Routing layer - pubkey has been authorized to access TemplateID?
+- Middleware layer - pubkey has been authorized to access to API, JWT token integrity
+
+Details in [RPC_AUTHORIZATION.md](./RPC_AUTHORIZATION.md)
