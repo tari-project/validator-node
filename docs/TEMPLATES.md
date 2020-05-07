@@ -25,6 +25,6 @@ Validation node will support communication via HTTP allowing RPC calls, where RP
 
 
 ### Authorization by layers:
-- Application layer - business logic authorization based on rpc calls params and context, e.g. given pubkey is authorized to issue tokens on given asset, based on asset details
-- Routing layer - pubkey access to TemplateID and any other common validations based on information stored in database
-- HTTP layer - pubkey access to API, JWT token integrity
+- Application layer - business logic authorization based on rpc calls params and context, e.g. pubkey is authorized to issue tokens on asset OR pubkey is owner of a token OR pubkey is creator of asset
+- Routing layer - pubkey has access to TemplateID?
+- HTTP layer - pubkey has access to API, JWT token integrity
