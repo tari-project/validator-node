@@ -113,11 +113,14 @@ impl DigitalAsset {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{db::utils::validation::*, test_utils::test_db_client};
+    use crate::{
+        db::utils::validation::*,
+        test_utils::{load_env, test_db_client},
+    };
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (client, _lock) = test_db_client().await;
         let params = NewDigitalAsset {
             template_type: "SingleUseDigitalAsset".to_string(),
@@ -134,7 +137,7 @@ mod test {
 
     #[actix_rt::test]
     async fn public_committee_required_fields() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (client, _lock) = test_db_client().await;
         let params = NewDigitalAsset {
             template_type: "SingleUseDigitalAsset".to_string(),

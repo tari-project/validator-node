@@ -1,0 +1,53 @@
+on: [push]
+name: CI - Test
+jobs:
+  build_and_test:
+    name: Rust project
+    runs-on: ubuntu-latest
+    # Service containers to run with `container-job`
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: validator_test
+        ports:
+          - 5432:5432
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: set environment variables
+        uses: allenevans/set-env@v1.0.0
+        with:
+          RUST_TEST_THREADS: 1
+          RUST_BACKTRACE: 1
+          PG_TEST_DBNAME: validator_test
+          PG_TEST_HOST: postgres
+          PG_TEST_USER: postgres
+          PG_TEST_PASSWORD: postgres
+      - name: Install dependencies
+        run: |
+          printenv && sudo apt update && sudo apt install openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          components: rustfmt, clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -- --nocapture --exact

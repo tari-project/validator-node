@@ -1,15 +1,23 @@
+use dotenv::dotenv;
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
 use tari_validator_node::{
+    api::server::actix_main,
     cli::{Arguments, Commands},
     config::NodeConfig,
     db::{migrations, utils},
-    server::actix_main,
 };
+
+// TODO: install into actix
+fn install_templates(app: &mut actix_web::web::ServiceConfig) {
+    use tari_validator_node::template::{actix::install_template, single_use_tokens};
+    install_template::<single_use_tokens::SingleUseTokenTemplate>(app);
+}
 
 #[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
     let mut args = Arguments::from_args();
+    dotenv().ok();
 
     // initialize configuration files if needed
     args.init_configs()?;

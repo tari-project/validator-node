@@ -72,10 +72,18 @@ string_enum! { AssetStatus [Active, Retired]}
 string_enum! { CommitteeMode [Public, Creator]}
 string_enum! { TokenStatus [Active, Retired]}
 string_enum! { AccessResource [Api, Wallet]}
+#[doc(hide)]
+string_enum! { TransactionStatus [Prepare, PreCommit, Commit]}
 
 impl Default for CommitteeMode {
     fn default() -> CommitteeMode {
         CommitteeMode::Public
+    }
+}
+
+impl Default for TransactionStatus {
+    fn default() -> Self {
+        Self::Prepare
     }
 }
 

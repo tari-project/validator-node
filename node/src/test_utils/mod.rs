@@ -1,4 +1,5 @@
 use crate::{config::NodeConfig, db::migrations::migrate};
+use actix_web::web;
 use config::Source;
 use deadpool_postgres::{Client, Pool};
 use tokio::sync::{Mutex, MutexGuard};
@@ -12,14 +13,22 @@ lazy_static::lazy_static! {
         let pool = config.postgres.create_pool(NoTls).expect("LOCK_DB_POOL: failed to create DB pool");
         Mutex::new(pool)
     };
+    static ref ACTIX_DB_POOL: web::Data<Pool> = {
+        let config = build_test_config().expect("ACTIX_DB_POOL: failed to create test config");
+        let pool = config.postgres.create_pool(NoTls).expect("ACTIX_DB_POOL: failed to create DB pool");
+        web::Data::new(pool)
+    };
 }
 
+pub fn load_env() {
+    let _ = dotenv::dotenv();
+}
 /// Create DB pool, reset DB, lock DB fo concurrent access, returns client and lock
 pub async fn test_db_client<'a>() -> (Client, MutexGuard<'a, Pool>) {
-    dotenv::dotenv().unwrap();
+    load_env();
     let db = test_pool().await;
     let config = build_test_config().unwrap();
-    reset_db(&config, &db).await.unwrap();
+    reset_db(&config, &db).await;
     (db.get().await.unwrap(), db)
 }
 
@@ -46,11 +55,9 @@ pub async fn test_pool<'a>() -> MutexGuard<'a, Pool> {
 /// Drops the db in the Config, creates it and runs the migrations
 pub async fn reset_db(config: &NodeConfig, pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
-    client.query("DROP SCHEMA public CASCADE;", &[]).await?;
-    client.query("CREATE SCHEMA public;", &[]).await?;
+    client.query("DROP SCHEMA IF EXISTS public CASCADE;", &[]).await?;
+    client.query("CREATE SCHEMA IF NOT EXISTS public;", &[]).await?;
     client.query("GRANT ALL ON SCHEMA public TO postgres;", &[]).await?;
     client.query("GRANT ALL ON SCHEMA public TO public;", &[]).await?;
     migrate(config.clone()).await?;
-
-    Ok(())
 }

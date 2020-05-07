@@ -3,6 +3,7 @@ CREATE TABLE tokens (
                        issue_number BIGINT NOT NULL,
                        owner_pub_key TEXT NOT NULL,
                        status TEXT NOT NULL DEFAULT 'Active',
+                       token_id char(96) NOT NULL UNIQUE,
                        asset_state_id uuid NOT NULL references asset_states(id),
                        additional_data_json JSONB NOT NULL DEFAULT '{}',
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

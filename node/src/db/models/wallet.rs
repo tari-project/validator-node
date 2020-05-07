@@ -77,13 +77,13 @@ impl Wallet {
 #[cfg(test)]
 mod test {
     use super::{NewWallet, SelectWallet, Wallet};
-    use crate::test_utils::test_db_client;
+    use crate::test_utils::{load_env, test_db_client};
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (mut client, _lock) = test_db_client().await;
 
         let new_wallet_params = NewWallet {
@@ -115,7 +115,7 @@ mod test {
 
     #[actix_rt::test]
     async fn transaction_abort() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (mut client, _lock) = test_db_client().await;
 
         let new_wallet_params = NewWallet {
@@ -137,7 +137,7 @@ mod test {
 
     #[actix_rt::test]
     async fn insert_duplicate() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (mut client, _lock) = test_db_client().await;
 
         let new_wallet_params = NewWallet {
