@@ -20,7 +20,7 @@ Validation node will support communication via HTTP allowing RPC calls, where RP
 
 ### Proposed layers:
 - Application layer - handle RPC calls
-- Routing Layer - locate matching trait implementation based on TemplateID header and RPC method signature, compose and pass additional context information, e.g. wallet pubkey, template data, request headers - this will be actix handler for the rpc endpoint
+- Routing Layer - decode RPC method signature, locate matching trait implementation based on TemplateID header and RPC method signature, compose and pass additional context information, e.g. wallet pubkey, template data, request headers - this will be actix handler for the rpc endpoint
 - HTTP layer - provide generic endpoint to issue RPC calls, enrich context with information from JWT, next layer implementation might be chosen based on endpoint parameters (or maybe we would have single routing layer implementation) - this will be actix middleware
 
 
