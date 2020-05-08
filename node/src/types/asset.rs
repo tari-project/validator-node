@@ -1,0 +1,89 @@
+use super::{errors::TypeError, RaidID, TemplateID};
+use anyhow::{anyhow, ensure};
+use bytes::BytesMut;
+use postgres_protocol::types::text_from_sql;
+use std::{error::Error, str::FromStr};
+use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
+
+#[derive(Debug, Clone)]
+pub struct AssetID {
+    template_id: TemplateID,
+    features: u16,
+    raid_id: RaidID,
+    hash: String,
+}
+
+impl<'a> FromSql<'a> for AssetID {
+    accepts!(TEXT);
+
+    fn from_sql(_: &Type, raw: &'a [u8]) -> Result<AssetID, Box<dyn Error + Sync + Send>> {
+        Ok(text_from_sql(raw)?.parse()?)
+    }
+}
+
+impl<'a> ToSql for AssetID {
+    accepts!(TEXT);
+
+    to_sql_checked!();
+
+    fn to_sql(&self, ty: &Type, w: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        <&str as ToSql>::to_sql(&self.to_string().as_str(), ty, w)
+    }
+}
+
+/// Converts AssetID to string according to rfc https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification
+impl ToString for AssetID {
+    fn to_string(&self) -> String {
+        format!(
+            "{}{:04X}{}.{}",
+            self.template_id.to_hex(),
+            self.features,
+            self.raid_id.to_base58(),
+            self.hash
+        )
+    }
+}
+
+/// Converts AssetID from string according to rfc https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification
+impl FromStr for AssetID {
+    type Err = TypeError;
+
+    fn from_str(hex: &str) -> Result<Self, TypeError> {
+        let invalid_hex = |hex| anyhow!("AssetID is invalid '{}'", hex);
+
+        ensure!(
+            hex.len() == 64,
+            "AssetID should be 64 byte string, got '{}' instead",
+            hex
+        );
+
+        let template_id = match hex.get(0..12) {
+            None => Err(TypeError::parse_field("AssetID::template_id", invalid_hex(hex))),
+            Some(buf) => TemplateID::from_hex(buf),
+        }?;
+
+        let features = match hex.get(12..16) {
+            None => Err(TypeError::parse_field("AssetID::features", invalid_hex(hex))),
+            Some(buf) => {
+                u16::from_str_radix(buf, 16).map_err(|err| TypeError::parse_field("AssetID::features", err.into()))
+            },
+        }?;
+
+        let raid_id = match hex.get(16..31) {
+            None => Err(TypeError::parse_field("AssetID::raid_id", invalid_hex(hex))),
+            Some(buf) => RaidID::from_base58(buf),
+        }?;
+
+        let hash = match hex.get(32..64) {
+            None => Err(TypeError::parse_field("AssetID::hash", invalid_hex(hex)))?,
+            Some(buf) => buf.to_string(),
+        };
+
+        Ok(Self {
+            template_id,
+            features,
+            raid_id,
+            hash,
+        })
+    }
+}
