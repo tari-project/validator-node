@@ -1,14 +1,19 @@
 use super::errors::TypeError;
 
-#[derive(Debug, Clone, Copy)]
-pub struct RaidID;
+#[derive(Debug, Clone)]
+pub struct RaidID(String);
 
 impl RaidID {
     pub fn from_base58(raw: &str) -> Result<Self, TypeError> {
-        unimplemented!()
+        if raw.len() != 15 {
+            return Err(TypeError::source_len("RaidID", 12, raw));
+        }
+        Ok(Self(raw.to_owned()))
     }
 
     pub fn to_base58(&self) -> String {
-        unimplemented!()
+        self.0.clone()
     }
 }
+
+

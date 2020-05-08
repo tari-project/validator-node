@@ -1,5 +1,4 @@
 use super::errors::TypeError;
-use anyhow::ensure;
 use core::cmp::PartialEq;
 use std::{
     fmt,
@@ -98,11 +97,9 @@ impl TemplateID {
 
     /// Convert from 12-char hex, considering beta and confidential is false
     pub fn from_hex(hex: &str) -> Result<Self, TypeError> {
-        ensure!(
-            hex.len() == 12,
-            "TemplateID expected 12-char hex string, got {}",
-            hex.len()
-        );
+        if hex.len() != 12 {
+            return Err(TypeError::source_len("TemplateID", 12, hex));
+        }
 
         let template_type = u32::from_str_radix(&hex[0..8], 16)
             .map_err(|err| TypeError::parse_field("TemplateID::type", err.into()))?;
