@@ -89,7 +89,7 @@ impl TemplateID {
         format!("{:X}", self.template_version)
     }
 
-    /// Convert from 12-char hex, considering beta and confidential is false
+    /// Convert to 12-char hex, losing beta and confidential flag info
     #[inline]
     pub fn to_hex(&self) -> String {
         format!("{:X}{:X}", self.template_version, self.template_type)
