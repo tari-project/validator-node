@@ -1,15 +1,14 @@
 use super::errors::TypeError;
+use bytes::BytesMut;
 use core::cmp::PartialEq;
+use postgres_protocol::types::int8_from_sql;
 use std::{
     convert::TryInto,
-    fmt,
     error::Error,
+    fmt,
     hash::{Hash, Hasher},
 };
-use postgres_protocol::types::int8_from_sql;
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
-use bytes::BytesMut;
-
 
 const BETA_MASK: u16 = 1;
 const CONFIDENTIAL_MASK: u16 = 2;
@@ -157,7 +156,6 @@ impl<'a> ToSql for TemplateID {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -227,14 +225,12 @@ mod test {
         dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         for shift in 0u8..15 {
-            let num: u64 = 1 | (7 << (shift*4));
+            let num: u64 = 1 | (7 << (shift * 4));
             let id: TemplateID = num.into();
             let stmt = client.prepare_typed("SELECT $1", &[Type::INT8]).await?;
-            let id2: TemplateID = client.query_one(&stmt, &[&id])
-                .await?
-                .get(0);
+            let id2: TemplateID = client.query_one(&stmt, &[&id]).await?.get(0);
             assert_eq!(id, id2);
-        };
+        }
         Ok(())
     }
 }

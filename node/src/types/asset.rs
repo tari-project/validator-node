@@ -113,12 +113,10 @@ mod test {
         let mut raw = vec!["A"; 64];
         raw[31] = ".";
         for i in 0..8 {
-            raw[i*8] = "1";
+            raw[i * 8] = "1";
             let src = raw.join("");
             let id: AssetID = src.parse().expect("Failed to parse AssetID");
-            let id2: AssetID = client.query_one("SELECT $1", &[&id])
-                .await?
-                .get(0);
+            let id2: AssetID = client.query_one("SELECT $1", &[&id]).await?.get(0);
             assert_eq!(id, id2);
         }
         Ok(())
