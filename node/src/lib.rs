@@ -3,6 +3,8 @@ pub mod config;
 pub mod db;
 pub mod errors;
 pub mod server;
+pub mod template;
+pub mod types;
 pub mod wallet;
 
 #[cfg(test)]
