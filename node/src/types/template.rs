@@ -109,6 +109,9 @@ impl TemplateID {
             tail: 0,
         })
     }
+
+    /// TemplateID stored as BIGINT
+    pub const SQL_TYPE: Type = Type::INT8;
 }
 
 /// Load TemplateID from 64-bit unsigned int
@@ -227,7 +230,7 @@ mod test {
         for shift in 0u8..15 {
             let num: u64 = 1 | (7 << (shift * 4));
             let id: TemplateID = num.into();
-            let stmt = client.prepare_typed("SELECT $1", &[Type::INT8]).await?;
+            let stmt = client.prepare_typed("SELECT $1", &[&TemplateID::SQL_TYPE]).await?;
             let id2: TemplateID = client.query_one(&stmt, &[&id]).await?.get(0);
             assert_eq!(id, id2);
         }

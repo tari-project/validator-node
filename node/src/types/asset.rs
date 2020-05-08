@@ -14,6 +14,11 @@ pub struct AssetID {
     hash: String,
 }
 
+impl AssetID {
+    /// AssetID stored as TEXT
+    pub const SQL_TYPE: Type = Type::TEXT;
+}
+
 impl<'a> FromSql<'a> for AssetID {
     accepts!(TEXT);
 
@@ -116,7 +121,8 @@ mod test {
             raw[i * 8] = "1";
             let src = raw.join("");
             let id: AssetID = src.parse().expect("Failed to parse AssetID");
-            let id2: AssetID = client.query_one("SELECT $1", &[&id]).await?.get(0);
+            let stmt = client.prepare_typed("SELECT $1", &[&AssetID::SQL_TYPE]).await?;
+            let id2: AssetID = client.query_one(&stmt, &[&id]).await?.get(0);
             assert_eq!(id, id2);
         }
         Ok(())
