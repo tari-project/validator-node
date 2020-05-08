@@ -6,8 +6,8 @@ use std::{
 };
 
 /// Tari uses templates to define the behaviour for its smart contracts.
-/// The [Template ID](https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id)
-/// refers to the type of digital asset being created.
+/// TemplateID identifies the type of digital asset being created and smart contracts available.
+/// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id) entity
 #[derive(Debug, Clone, Copy)]
 pub struct TemplateID {
     template_type: u32,

@@ -4,6 +4,9 @@ use postgres_protocol::types::text_from_sql;
 use std::{error::Error, str::FromStr};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
 
+
+/// Assets are identified by a 64-character string that uniquely identifies an asset on the network
+/// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification) entity
 #[derive(Debug, Clone)]
 pub struct AssetID {
     template_id: TemplateID,
