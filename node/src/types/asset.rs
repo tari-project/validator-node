@@ -121,7 +121,7 @@ mod test {
             raw[i * 8] = "1";
             let src = raw.join("");
             let id: AssetID = src.parse().expect("Failed to parse AssetID");
-            let stmt = client.prepare_typed("SELECT $1", &[&AssetID::SQL_TYPE]).await?;
+            let stmt = client.prepare_typed("SELECT $1", &[AssetID::SQL_TYPE]).await?;
             let id2: AssetID = client.query_one(&stmt, &[&id]).await?.get(0);
             assert_eq!(id, id2);
         }
