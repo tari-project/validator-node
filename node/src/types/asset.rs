@@ -4,10 +4,9 @@ use postgres_protocol::types::text_from_sql;
 use std::{error::Error, str::FromStr};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
 
-
 /// Assets are identified by a 64-character string that uniquely identifies an asset on the network
 /// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification) entity
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AssetID {
     template_id: TemplateID,
     features: u16,
@@ -83,5 +82,43 @@ impl FromStr for AssetID {
             raid_id,
             hash,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::test_utils::test_db_client;
+
+    #[test]
+    fn asset_from_to_string() {
+        let mut raw = vec!["A"; 64];
+        raw[31] = ".";
+        for i in 0..64 {
+            if i == 31 {
+                continue;
+            }
+            raw[i] = "1";
+            let src = raw.join("");
+            let id: AssetID = src.parse().expect("Failed to parse AssetID");
+            let dst = id.to_string();
+            assert_eq!(src, dst);
+        }
+    }
+
+    #[actix_rt::test]
+    async fn sql() -> anyhow::Result<()> {
+        dotenv::dotenv().unwrap();
+        let (client, _lock) = test_db_client().await;
+        let mut raw = vec!["A"; 64];
+        raw[31] = ".";
+        for i in 0..8 {
+            raw[i * 8] = "1";
+            let src = raw.join("");
+            let id: AssetID = src.parse().expect("Failed to parse AssetID");
+            let id2: AssetID = client.query_one("SELECT $1", &[&id]).await?.get(0);
+            assert_eq!(id, id2);
+        }
+        Ok(())
     }
 }
