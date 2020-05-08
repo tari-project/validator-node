@@ -1,3 +1,4 @@
+use super::*;
 use crate::db::utils::errors::DBError;
 use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
 use log::error;
@@ -8,6 +9,10 @@ use thiserror::Error;
 pub enum ApiError {
     #[error("DB error: {0}")]
     DBError(#[from] DBError),
+    #[error("Application error: {0}")]
+    ApplicationError(#[from] ApplicationError),
+    #[error("Auth error: {0}")]
+    AuthError(#[from] AuthError),
 }
 
 pub struct ResponseData {
@@ -22,9 +27,43 @@ impl ApiError {
             error_response: HttpResponse::InternalServerError().json(json!({"error": "An error has occurred"})),
         };
         match self {
+            ApiError::ApplicationError(ApplicationError {
+                reason: _, error_type
+            }) => {
+                match error_type {
+                    ApplicationErrorType::Unprocessable => ResponseData {
+                        status_code: StatusCode::UNPROCESSABLE_ENTITY,
+                        error_response: HttpResponse::UnprocessableEntity()
+                            .json(json!({"error": "Application failed to process request"})),
+                    },
+                    ApplicationErrorType::Internal => ResponseData {
+                        status_code: StatusCode::UNPROCESSABLE_ENTITY,
+                        error_response: HttpResponse::UnprocessableEntity()
+                            .json(json!({"error": "An internal error has occurred."})),
+                    },
+                    ApplicationErrorType::BadRequest => ResponseData {
+                        status_code: StatusCode::BAD_REQUEST,
+                        error_response: HttpResponse::BadRequest()
+                            .json(json!({"error": "An error has occurred processing your request, please check your input and try again."})),
+                    },
+                }
+            },
+            ApiError::AuthError(AuthError { reason: _, error_type }) => {
+                if *error_type == AuthErrorType::Forbidden {
+                    ResponseData {
+                        status_code: StatusCode::FORBIDDEN,
+                        error_response: HttpResponse::build(StatusCode::FORBIDDEN)
+                            .json(json!({"error": "Forbidden".to_string()})),
+                    }
+                } else {
+                    ResponseData {
+                        status_code: StatusCode::UNAUTHORIZED,
+                        error_response: HttpResponse::build(StatusCode::UNAUTHORIZED)
+                            .json(json!({"error": "Unauthorized".to_string()})),
+                    }
+                }
+            },
             ApiError::DBError(db_error) => match db_error {
-                DBError::Pool(_) => generic_error_response_data,
-                DBError::PoolConfig(_) => generic_error_response_data,
                 DBError::Postgres(postgres_error) => {
                     if let Some(code) = postgres_error.code() {
                         let (status_code, message) = match code.code() {
@@ -44,10 +83,6 @@ impl ApiError {
                         generic_error_response_data
                     }
                 },
-                DBError::PostgresMapping(_) => generic_error_response_data,
-                DBError::HexError(_) => generic_error_response_data,
-                DBError::Migration(_) => generic_error_response_data,
-                DBError::BadQuery { msg: _ } => generic_error_response_data,
                 DBError::NotFound => ResponseData {
                     status_code: StatusCode::NOT_FOUND,
                     error_response: HttpResponse::build(StatusCode::NOT_FOUND)
@@ -58,6 +93,7 @@ impl ApiError {
                     error_response: HttpResponse::UnprocessableEntity()
                         .json(json!({"error": "Validation error".to_string(), "fields": validation_errors})),
                 },
+                _ => generic_error_response_data,
             },
         }
     }
