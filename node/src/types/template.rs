@@ -1,5 +1,4 @@
 use super::errors::TypeError;
-use anyhow::ensure;
 use core::cmp::PartialEq;
 use std::{
     fmt,
@@ -7,8 +6,8 @@ use std::{
 };
 
 /// Tari uses templates to define the behaviour for its smart contracts.
-/// The [Template ID](https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id)
-/// refers to the type of digital asset being created.
+/// TemplateID identifies the type of digital asset being created and smart contracts available.
+/// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id) entity
 #[derive(Debug, Clone, Copy)]
 pub struct TemplateID {
     template_type: u32,
@@ -90,7 +89,7 @@ impl TemplateID {
         format!("{:X}", self.template_version)
     }
 
-    /// Convert from 12-char hex, considering beta and confidential is false
+    /// Convert to 12-char hex, losing beta and confidential flag info
     #[inline]
     pub fn to_hex(&self) -> String {
         format!("{:X}{:X}", self.template_version, self.template_type)
@@ -98,11 +97,9 @@ impl TemplateID {
 
     /// Convert from 12-char hex, considering beta and confidential is false
     pub fn from_hex(hex: &str) -> Result<Self, TypeError> {
-        ensure!(
-            hex.len() == 12,
-            "TemplateID expected 12-char hex string, got {}",
-            hex.len()
-        );
+        if hex.len() != 12 {
+            return Err(TypeError::source_len("TemplateID", 12, hex));
+        }
 
         let template_type = u32::from_str_radix(&hex[0..8], 16)
             .map_err(|err| TypeError::parse_field("TemplateID::type", err.into()))?;

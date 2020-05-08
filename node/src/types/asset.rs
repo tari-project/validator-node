@@ -1,10 +1,12 @@
 use super::{errors::TypeError, RaidID, TemplateID};
-use anyhow::{anyhow, ensure};
 use bytes::BytesMut;
 use postgres_protocol::types::text_from_sql;
 use std::{error::Error, str::FromStr};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
 
+
+/// Assets are identified by a 64-character string that uniquely identifies an asset on the network
+/// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification) entity
 #[derive(Debug, Clone)]
 pub struct AssetID {
     template_id: TemplateID,
@@ -49,33 +51,29 @@ impl FromStr for AssetID {
     type Err = TypeError;
 
     fn from_str(hex: &str) -> Result<Self, TypeError> {
-        let invalid_hex = |hex| anyhow!("AssetID is invalid '{}'", hex);
-
-        ensure!(
-            hex.len() == 64,
-            "AssetID should be 64 byte string, got '{}' instead",
-            hex
-        );
+        if hex.len() != 64 {
+            return Err(TypeError::source_len("AssetID", 64, hex));
+        }
 
         let template_id = match hex.get(0..12) {
-            None => Err(TypeError::parse_field("AssetID::template_id", invalid_hex(hex))),
+            None => Err(TypeError::parse_field_raw("AssetID::template_id", hex)),
             Some(buf) => TemplateID::from_hex(buf),
         }?;
 
         let features = match hex.get(12..16) {
-            None => Err(TypeError::parse_field("AssetID::features", invalid_hex(hex))),
+            None => Err(TypeError::parse_field_raw("AssetID::features", hex)),
             Some(buf) => {
                 u16::from_str_radix(buf, 16).map_err(|err| TypeError::parse_field("AssetID::features", err.into()))
             },
         }?;
 
         let raid_id = match hex.get(16..31) {
-            None => Err(TypeError::parse_field("AssetID::raid_id", invalid_hex(hex))),
+            None => Err(TypeError::parse_field_raw("AssetID::raid_id", hex)),
             Some(buf) => RaidID::from_base58(buf),
         }?;
 
         let hash = match hex.get(32..64) {
-            None => Err(TypeError::parse_field("AssetID::hash", invalid_hex(hex)))?,
+            None => Err(TypeError::parse_field_raw("AssetID::hash", hex))?,
             Some(buf) => buf.to_string(),
         };
 
