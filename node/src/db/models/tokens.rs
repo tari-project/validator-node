@@ -60,6 +60,7 @@ impl Token {
 mod test {
     use super::*;
     use crate::test_utils::{builders::*, test_db_client};
+    use dotenv;
     use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 

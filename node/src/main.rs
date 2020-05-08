@@ -1,15 +1,17 @@
+use dotenv::dotenv;
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
 use tari_validator_node::{
+    api::server::actix_main,
     cli::{Arguments, Commands},
     config::NodeConfig,
     db::{migrations, utils},
-    server::actix_main,
 };
 
 #[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
     let mut args = Arguments::from_args();
+    dotenv().ok();
 
     // initialize configuration files if needed
     args.init_configs()?;

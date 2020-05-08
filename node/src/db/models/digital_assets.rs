@@ -114,6 +114,7 @@ impl DigitalAsset {
 mod test {
     use super::*;
     use crate::{db::utils::validation::*, test_utils::test_db_client};
+    use dotenv;
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
