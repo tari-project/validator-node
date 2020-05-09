@@ -14,9 +14,12 @@ lazy_static::lazy_static! {
     };
 }
 
+pub fn load_env() {
+    let _ = dotenv::dotenv();
+}
 /// Create DB pool, reset DB, lock DB fo concurrent access, returns client and lock
 pub async fn test_db_client<'a>() -> (Client, MutexGuard<'a, Pool>) {
-    dotenv::dotenv().unwrap();
+    load_env();
     let db = test_pool().await;
     let config = build_test_config().unwrap();
     reset_db(&config, &db).await.unwrap();

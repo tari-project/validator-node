@@ -59,14 +59,13 @@ impl Token {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{builders::*, test_db_client};
-    use dotenv;
+    use crate::test_utils::{builders::*, load_env, test_db_client};
     use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
         let asset2 = AssetStateBuilder::default().build(&client).await?;
