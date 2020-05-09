@@ -36,7 +36,7 @@ jobs:
           PG_TEST_PASSWORD: postgres
       - name: Install dependencies
         run: |
-          printenv && sudo apt update && sudo apt install openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
+          ping -t 1 "$PG_TEST_HOST" && sudo apt update && sudo apt install openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
