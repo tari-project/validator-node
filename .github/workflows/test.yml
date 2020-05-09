@@ -28,7 +28,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt install openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
-        RUST_TEST_THREADS: 1
+        env:
+          RUST_TEST_THREADS: 1
           RUST_BACKTRACE: 1
           PG_TEST_DBNAME: validator_test
           PG_TEST_HOST: postgres
