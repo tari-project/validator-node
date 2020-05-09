@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          sudo apt update && sudo apt install openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
+          printenv && sudo apt update && sudo apt install openssl libssl-dev pkg-config libsqlite3-0 libsqlite3-dev clang git cmake libc++-dev libc++abi-dev
         env:
           RUST_TEST_THREADS: 1
           RUST_BACKTRACE: 1
@@ -35,9 +35,6 @@ jobs:
           PG_TEST_HOST: postgres
           PG_TEST_USER: postgres
           PG_TEST_PASSWORD: postgres
-      - name: Check ENV
-        run: |
-          echo "$PG_TEST_HOST" && ping -t 1 "$PG_TEST_HOST"
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
