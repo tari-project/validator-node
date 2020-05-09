@@ -65,6 +65,7 @@ lazy_static::lazy_static! {
 }
 
 impl TokenID {
+    /// TokenID stored as BPCHAR, it might change in the future
     pub const SQL_TYPE: Type = Type::BPCHAR;
 
     /// Generate TokenID for AssetID on a node
@@ -164,7 +165,6 @@ mod test {
 
     #[actix_rt::test]
     async fn sql() {
-        dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let mut raw = vec!["A"; 96];
         raw[31] = ".";

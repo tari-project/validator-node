@@ -30,7 +30,7 @@ impl Default for AssetID {
 }
 
 impl AssetID {
-    /// AssetID stored as TEXT
+    /// AssetID stored as BPCHAR, it might change in the future
     pub const SQL_TYPE: Type = Type::BPCHAR;
 
     #[inline]
@@ -155,7 +155,7 @@ impl TryFrom<String> for AssetID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{load_env, test_db_client};
+    use crate::test_utils::test_db_client;
 
     #[test]
     fn asset_default() {

@@ -13,7 +13,7 @@ pub struct HttpRequestBuilder {
 
 impl Default for HttpRequestBuilder {
     fn default() -> Self {
-        let pool = actix_test_pool().unwrap();
+        let pool = actix_test_pool();
         let test_request = TestRequest::default().app_data(pool);
         Self {
             test_request,
@@ -33,9 +33,7 @@ impl HttpRequestBuilder {
             id.hash(),
             contract
         );
-        self.test_request = self.test_request
-            .uri(uri.as_str())
-            .data(id.template_id());
+        self.test_request = self.test_request.uri(uri.as_str()).data(id.template_id());
         self
     }
 
@@ -50,9 +48,7 @@ impl HttpRequestBuilder {
             id.uid().to_simple(),
             contract
         );
-        self.test_request = self.test_request
-            .uri(uri.as_str())
-            .data(asset_id.template_id());
+        self.test_request = self.test_request.uri(uri.as_str()).data(asset_id.template_id());
         self
     }
 

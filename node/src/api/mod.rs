@@ -1,6 +1,7 @@
 pub mod controllers;
-pub mod extractors;
+pub mod errors;
+pub mod helpers;
 pub mod middleware;
+pub mod models;
 pub mod routing;
 pub mod server;
-pub mod utils;

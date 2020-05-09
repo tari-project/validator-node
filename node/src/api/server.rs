@@ -82,6 +82,7 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
                     .finish()
             })
             .wrap(Logger::new(LOGGER_FORMAT).exclude("/status"))
+            .wrap(Authentication::new())
             .wrap(AppVersionHeader::new());
         app.configure(routing::routes)
             .default_service(web::get().to(|| HttpResponse::NotFound().json(json!({"error": "Not found"}))))

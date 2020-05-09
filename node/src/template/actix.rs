@@ -1,8 +1,8 @@
 use super::{Contracts, Template, TemplateContext};
 use crate::{
-    api::utils::errors::ApiError,
-    types::{AssetID, TemplateID, TokenID},
+    api::errors::{ApiError, ApplicationError},
     db::utils::errors::DBError,
+    types::{AssetID, TemplateID, TokenID},
 };
 use actix_web::{dev::Payload, web, web::Data, FromRequest, HttpRequest};
 use anyhow::Result;
@@ -83,7 +83,9 @@ impl<'a> FromRequest for TemplateContext<'a> {
             .as_ref();
         let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
             Some(id) => id.get_ref().clone(),
-            None => return err(ApiError::bad_request("Template data not found by this path")).boxed_local(),
+            None => {
+                return err(ApplicationError::bad_request("Template data not found by this path").into()).boxed_local()
+            },
         };
 
         let pool = pool.clone();
@@ -92,7 +94,8 @@ impl<'a> FromRequest for TemplateContext<'a> {
                 Ok(client) => Ok(TemplateContext {
                     client,
                     template_id,
-                    transaction: None,
+                    db_transaction: None,
+                    contract_transaction: None,
                 }),
                 Err(err) => Err(DBError::from(err).into()),
             }
@@ -104,8 +107,10 @@ impl<'a> FromRequest for TemplateContext<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::db::models::tokens::*;
-    use crate::test_utils::{builders::*, test_db_client};
+    use crate::{
+        db::models::tokens::*,
+        test_utils::{builders::*, test_db_client},
+    };
 
     const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
@@ -115,10 +120,19 @@ mod test {
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
         let tokens = (0..3)
             .map(|_| TokenID::new(&asset.asset_id, NODE_ID).unwrap())
-            .map(|token_id| NewToken { asset_state_id: asset.id, token_id, ..NewToken::default() });
+            .map(|token_id| NewToken {
+                asset_state_id: asset.id,
+                token_id,
+                ..NewToken::default()
+            });
 
-        let request = HttpRequestBuilder::default().asset_call(&asset.asset_id, "test_contract").build().to_http_request();
-        let context = TemplateContext::from_request(&request, &mut Payload::None).await.unwrap();
+        let request = HttpRequestBuilder::default()
+            .asset_call(&asset.asset_id, "test_contract")
+            .build()
+            .to_http_request();
+        let context = TemplateContext::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
         assert_eq!(context.template_id, asset.asset_id.template_id());
         for token in tokens {
             let created = context.create_token(token.clone()).await.unwrap();
