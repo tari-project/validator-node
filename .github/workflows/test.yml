@@ -31,7 +31,7 @@ jobs:
           RUST_TEST_THREADS: 1
           RUST_BACKTRACE: 1
           PG_TEST_DBNAME: validator_test
-          PG_TEST_HOST: postgres
+          PG_TEST_HOST: localhost
           PG_TEST_USER: postgres
           PG_TEST_PASSWORD: postgres
       - name: Install dependencies
