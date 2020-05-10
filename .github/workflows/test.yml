@@ -28,7 +28,6 @@ jobs:
       - name: set environment variables
         uses: allenevans/set-env@v1.0.0
         with:
-          RUST_TEST_THREADS: 1
           RUST_BACKTRACE: 1
           PG_TEST_DBNAME: validator_test
           PG_TEST_HOST: localhost
