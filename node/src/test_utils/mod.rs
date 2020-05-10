@@ -14,9 +14,12 @@ lazy_static::lazy_static! {
     };
 }
 
+pub fn load_env() {
+    let _ = dotenv::dotenv();
+}
 /// Create DB pool, reset DB, lock DB fo concurrent access, returns client and lock
 pub async fn test_db_client<'a>() -> (Client, MutexGuard<'a, Pool>) {
-    dotenv::dotenv().unwrap();
+    load_env();
     let db = test_pool().await;
     let config = build_test_config().unwrap();
     reset_db(&config, &db).await.unwrap();
@@ -46,8 +49,8 @@ pub async fn test_pool<'a>() -> MutexGuard<'a, Pool> {
 /// Drops the db in the Config, creates it and runs the migrations
 pub async fn reset_db(config: &NodeConfig, pool: &Pool) -> anyhow::Result<()> {
     let client = pool.get().await?;
-    client.query("DROP SCHEMA public CASCADE;", &[]).await?;
-    client.query("CREATE SCHEMA public;", &[]).await?;
+    client.query("DROP SCHEMA IF EXISTS public CASCADE;", &[]).await?;
+    client.query("CREATE SCHEMA IF NOT EXISTS public;", &[]).await?;
     client.query("GRANT ALL ON SCHEMA public TO postgres;", &[]).await?;
     client.query("GRANT ALL ON SCHEMA public TO public;", &[]).await?;
     migrate(config.clone()).await?;

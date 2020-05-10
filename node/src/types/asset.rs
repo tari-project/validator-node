@@ -88,7 +88,7 @@ impl FromStr for AssetID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::test_db_client;
+    use crate::test_utils::{load_env, test_db_client};
 
     #[test]
     fn asset_from_to_string() {
@@ -108,7 +108,7 @@ mod test {
 
     #[actix_rt::test]
     async fn sql() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (client, _lock) = test_db_client().await;
         let mut raw = vec!["A"; 64];
         raw[31] = ".";
