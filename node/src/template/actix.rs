@@ -17,7 +17,7 @@ impl AssetCallParams {
 
 // without supplying template id in the url we can't provide handlers beforehand
 #[post(/asset_call/{template_id}/{features}/{hash}/contract)]
-async fn asset_call(params: Path<(AssetCallParams)>, db: DbClient) -> Result<impl Responder, TemplateError> {
+pub async fn asset_call_wrapper(params: Path<(AssetCallParams)>, db: DbClient) -> Result<impl Responder, TemplateError> {
     let asset = params.asset_state(&db).await?;
     let template = templates.get(asset.template_id);
     template.call()
