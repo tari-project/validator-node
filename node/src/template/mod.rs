@@ -6,35 +6,8 @@
 //! Contract has incoming and outgoing serializable paramters (e.g. RPC call) with validators
 //! and provides asynchronous procedures.
 //! Context should take care of all the network communication.
-//!
-//! ```ignore
-//! async fn issue_tokens(asset: AssetState, amount: u64, price: u64, context: TemplateContext) -> Result<Vec<TokenID>, TemplateError> {
-//!     let mut tokens = Vec::with_capacity(amount);
-//!     for mut token in (0..amount).map(|_| NewToken::from(&asset)) {
-//!         token.update_data(json!({price})?;
-//!         tokens.push(context.create_token(token).await?.token_id());
-//!     };
-//!     Ok(tokens)
-//! }
-//! async fn buy_token(asset: AssetState, timeout_ms: u64, user_wallet_key: WalletID) -> Result<TokenID, TemplateError> {
-//!     ...
-//! }
-//! #[derive(Contracts)]
-//! enum AssetContracts {
-//!     IssueTokens(issue_token),
-//!     BuyToken(buy_token),
-//! }
-//!
-//! struct SingleUseTokenTemplate;
-//! impl Template for SingleUseTokenTemplate {
-//!     type Network = CommitteeNetwork;
-//!     type AssetContracts = AssetContracts;
-//!     type TokenContracts = ();
-//!     fn id() -> TemplateID {
-//!         1.into()
-//!     }
-//! }
-//! ```
+
+
 
 use crate::types::TemplateID;
 use std::str::FromStr;
