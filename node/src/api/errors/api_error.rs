@@ -37,8 +37,8 @@ impl ApiError {
                             .json(json!({"error": "Application failed to process request"})),
                     },
                     ApplicationErrorType::Internal => ResponseData {
-                        status_code: StatusCode::UNPROCESSABLE_ENTITY,
-                        error_response: HttpResponse::UnprocessableEntity()
+                        status_code: StatusCode::INTERNAL_SERVER_ERROR,
+                        error_response: HttpResponse::InternalServerError()
                             .json(json!({"error": "An internal error has occurred."})),
                     },
                     ApplicationErrorType::BadRequest => ResponseData {

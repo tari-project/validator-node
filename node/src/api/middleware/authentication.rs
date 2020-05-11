@@ -92,7 +92,8 @@ where
 
         // Ignore requests to the status endpoint
         if request.uri() == "/status" {
-            Box::pin(async move { service.borrow_mut().call(request).await })
+            let fut = service.borrow_mut().call(request);
+            Box::pin(async move { fut.await })
         } else {
             let (http_request, payload) = request.into_parts();
 
@@ -103,7 +104,8 @@ where
                     http_request.extensions_mut().insert(authentication_context);
                     let request = ServiceRequest::from_parts(http_request, payload)
                         .unwrap_or_else(|_| unreachable!("Failed to recompose request in AuthenticationService::call"));
-                    Box::pin(async move { service.borrow_mut().call(request).await })
+                    let fut = service.borrow_mut().call(request);
+                    Box::pin(async move { fut.await })
                 },
                 Err(error) => Box::pin(async move {
                     Ok(ServiceResponse::<B>::new(
