@@ -1,5 +1,6 @@
 use super::AssetStateBuilder;
 use crate::db::models::*;
+use crate::types::TokenID;
 use rand::prelude::*;
 use serde_json::Value;
 use tokio_postgres::Client;
@@ -10,6 +11,7 @@ pub struct TokenBuilder {
     pub owner_pub_key: String,
     pub asset_state_id: Option<Uuid>,
     pub additional_data_json: Value,
+    token_id: TokenID,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -21,6 +23,7 @@ impl Default for TokenBuilder {
             owner_pub_key: format!("7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0{}", x).into(),
             asset_state_id: None,
             additional_data_json: serde_json::from_str("{}").unwrap(),
+            token_id: TokenID::default(),
             __non_exhaustive: (),
         }
     }
@@ -37,6 +40,7 @@ impl TokenBuilder {
         let params = NewToken {
             owner_pub_key: self.owner_pub_key.to_owned(),
             additional_data_json: self.additional_data_json.to_owned(),
+            token_id: self.token_id,
             asset_state_id,
         };
         let token_id = Token::insert(params, client).await?;

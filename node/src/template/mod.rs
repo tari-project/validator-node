@@ -10,9 +10,6 @@
 //! This is coupled with actix at Phase1 for API simplicity, might be decoupled later
 
 use crate::types::TemplateID;
-use std::str::FromStr;
-use serde::{Serialize, Deserialize};
-use actix_web::web;
 
 mod errors;
 pub use errors::TemplateError;
@@ -20,8 +17,11 @@ pub use errors::TemplateError;
 pub mod actix;
 pub mod single_use_tokens;
 
+mod context;
+pub use context::TemplateContext;
+
 pub trait Contracts {
-    fn setup_actix_routes(scope: &mut web::ServiceConfig);
+    fn setup_actix_routes(scope: &mut actix_web::web::ServiceConfig);
 }
 
 #[async_trait::async_trait]
@@ -30,9 +30,4 @@ pub trait Template {
     type TokenContracts: Contracts;
 
     fn id() -> TemplateID;
-}
-
-
-pub struct TemplateContext {
-    pub template_id: TemplateID,
 }

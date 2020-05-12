@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 //#[contract]
 async fn issue_tokens(asset: AssetState, token_ids: Vec<TokenID>, context: TemplateContext) -> Result<Vec<Token>> {
-    let tokens_data: Vec<_> = token_ids.into_iter()
+    let tokens_data = token_ids.into_iter()
         .map(|id| NewToken::from((&asset, id)));
     let mut tokens = Vec::with_capacity(token_ids.len());
     for data in tokens_data {
@@ -27,9 +27,9 @@ async fn issue_tokens(asset: AssetState, token_ids: Vec<TokenID>, context: Templ
 struct IssueTokensPayload { token_ids: Vec<TokenID> }
 
 async fn issue_tokens_actix(params: web::Path<AssetCallParams>, data: web::Json<IssueTokensPayload>, context: TemplateContext) -> Result<Vec<Token>> {
-    let asset = params.asset(&context);
+    let asset = params.into_inner().asset(&context).await?;
 
-    issue_tokens(asset, data.token_ids, context).await
+    issue_tokens(asset, data.into_inner().token_ids, context).await
 }
 
 /////// end of impl #[contract]
@@ -37,15 +37,15 @@ async fn issue_tokens_actix(params: web::Path<AssetCallParams>, data: web::Json<
 
 //#[contract]
 
-async fn transfer_token(token: Token, user_pubkey: Pubkey, context: TemplateContext) -> Result<Token> {
+async fn transfer_token(mut token: Token, user_pubkey: Pubkey, context: TemplateContext) -> Result<Token> {
     if token.status == TokenStatus::Retired {
         bail!("Tried to transfer already used token");
     }
-    let data = UpdateToken {
-        additional_data_json: Some(json!({user_pubkey: user_pubkey})),
-        ..UpdateToken::default()
-    };
-    let token = context.update_token(token.id, data).await?;
+    token.additional_data_json
+        .as_object_mut()
+        .map(|obj| obj.insert("user_pubkey", user_pubkey))
+        .ok_or_else(|| bail!("Corrupt token: {}", token.id));
+    let token = context.update_token( token).await?;
     Ok(token)
 }
 
@@ -55,9 +55,9 @@ async fn transfer_token(token: Token, user_pubkey: Pubkey, context: TemplateCont
 struct TransferTokenPayload { user_pubkey: Pubkey }
 
 async fn transfer_token_actix(params: web::Path<TokenCallParams>, data: web::Json<TransferTokenPayload>, context: TemplateContext) -> Result<Token> {
-    let token = params.token(&context);
+    let token = params.into_inner().token(&context).await?;
 
-    transfer_token(token, data.user_pubkey, context).await
+    transfer_token(token, data.into_inner().user_pubkey, context).await
 }
 
 /////// end of impl #[contract]
@@ -75,7 +75,7 @@ impl Contracts for AssetContracts {
         .service(
             web::resource("/issue_tokens")
                 .route(web::post().to(issue_tokens_actix))
-        )
+        );
     }
 }
 
@@ -97,7 +97,7 @@ impl Contracts for TokenContracts {
         .service(
             web::resource("/transfer_token")
                 .route(web::post().to(transfer_token_actix))
-        )
+        );
     }
 }
 

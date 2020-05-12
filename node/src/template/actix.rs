@@ -1,9 +1,8 @@
 use crate::types::{AssetID, TokenID};
 use crate::db::models::{AssetState, Token};
 use super::{Template, TemplateContext};
-use serde::Deserialize;
 use anyhow::Result;
-use actix_web::{web, App};
+use actix_web::web;
 
 
 pub struct AssetCallParams(String,String);
@@ -25,9 +24,12 @@ impl TokenCallParams {
 }
 
 pub fn install_template<T: Template>(tpl: T, app: &mut web::ServiceConfig) {
-    let mut scope = web::scope(format!("/asset_call/{}/{{features}}/{{hash}}/", tpl.id()));
-    let mut scope = T::AssetContracts::configure_routes(scope);
-    let mut scope = web::scope(format!("/token_call/{}/{{features}}/{{hash}}/{{id}}", tpl.id()));
-    let mut scope = T::AssetContracts::configure_routes(scope);
+    let mut scope = web::scope(format!("/asset_call/{}/{{features}}/{{hash}}/", tpl.id()))
+        .app_data(tpl.id());
+    let mut scope = T::AssetContracts::configure_actix_routes(scope);
+    app.service(scope);
+    let mut scope = web::scope(format!("/token_call/{}/{{features}}/{{hash}}/{{id}}", tpl.id()))
+        .app_data(tpl.id());
+    let mut scope = T::AssetContracts::configure_actix_routes(scope);
     app.service(scope);
 }

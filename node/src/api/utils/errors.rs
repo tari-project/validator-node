@@ -8,6 +8,8 @@ use thiserror::Error;
 pub enum ApiError {
     #[error("DB error: {0}")]
     DBError(#[from] DBError),
+    #[error("Bad request: {0}")]
+    BadRequest(String),
 }
 
 pub struct ResponseData {
@@ -59,7 +61,18 @@ impl ApiError {
                         .json(json!({"error": "Validation error".to_string(), "fields": validation_errors})),
                 },
             },
+            ApiError::BadRequest(msg) => ResponseData {
+                status_code: StatusCode::BAD_REQUEST,
+                error_response: HttpResponse::build(StatusCode::BAD_REQUEST)
+                    .json(json!({"error": msg})),
+            },
         }
+    }
+}
+
+impl ApiError {
+    pub fn bad_request(msg: &str) -> Self {
+        Self::BadRequest(msg.into())
     }
 }
 

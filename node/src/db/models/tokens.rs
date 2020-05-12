@@ -44,7 +44,6 @@ impl From<(&AssetState, TokenID)> for NewToken {
 
 #[derive(Default, Clone, Debug)]
 pub struct UpdateToken {
-    pub owner_pub_key: Option<String>,
     pub additional_data_json: Option<Value>,
 }
 
@@ -67,6 +66,13 @@ impl Token {
             .await?;
 
         Ok(result.get(0))
+    }
+
+    /// Load token record
+    pub async fn update(id: uuid::Uuid, data: UpdateToken, client: &Client) -> Result<Token, DBError> {
+        let stmt = "UPDATE tokens WHERE id = $1 SET ";
+        let result = client.query_one(stmt, &[&id]).await?;
+        Ok(Token::from_row(result)?)
     }
 
     /// Load token record
