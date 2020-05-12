@@ -11,3 +11,6 @@ pub use token::TokenID;
 
 mod raid_id;
 pub use raid_id::RaidID;
+
+mod pubkey;
+pub use pubkey::Pubkey;

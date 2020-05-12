@@ -1,6 +1,7 @@
-use thiserror::{Error};
+use thiserror::Error;
 
-#[derive(Error)]
-pub struct TemplateError {
-    
+#[derive(Error, Debug)]
+pub enum TemplateError {
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }

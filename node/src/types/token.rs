@@ -1,10 +1,3 @@
-#[derive(Debug, Clone)]
-pub struct TokenID(String);
+//! Stub
 
-impl std::ops::Deref for TokenID {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+pub type TokenID = String;

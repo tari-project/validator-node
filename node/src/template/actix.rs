@@ -1,32 +1,33 @@
-use crate::types::AssetID;
-use super::errors::TemplateError;
-use deadpool_postgres::Client as DbClient;
+use crate::types::{AssetID, TokenID};
+use crate::db::models::{AssetState, Token};
+use super::{Template, TemplateContext};
 use serde::Deserialize;
+use anyhow::Result;
+use actix_web::{web, App};
 
-#[derive(Deserialize)]
-struct AssetCallParams {
-    #[serde(with = "serde_with::rust::display_fromstr")]
-    id: AssetID,
-    contract_name: String,
-}
+
+pub struct AssetCallParams(String,String);
 impl AssetCallParams {
-    pub async fn asset_state(&self, db: &DbClient) -> Result<AssetState, TemplateError> {
-        AssetState::find_by_asset_id(self.id.to_string()).await
+    pub async fn asset_state<'a>(&self, context: &'a TemplateContext) -> Result<AssetState> {
+        let template_id = context.template_id.to_hex();
+        let id: AssetID = format!("{}{}.{}", template_id, self.0, self.1).parse()?;
+        Ok(context.load_asset(id).await)
     }
 }
 
-// without supplying template id in the url we can't provide handlers beforehand
-#[post(/asset_call/{template_id}/{features}/{hash}/contract)]
-pub async fn asset_call_wrapper(params: Path<(AssetCallParams)>, db: DbClient) -> Result<impl Responder, TemplateError> {
-    let asset = params.asset_state(&db).await?;
-    let template = templates.get(asset.template_id);
-    template.call()
+pub struct TokenCallParams(String,String,String);
+impl TokenCallParams {
+    pub async fn token<'a>(&self, context: &'a TemplateContext) -> Result<Token> {
+        let template_id = context.template_id.to_hex();
+        let id: TokenID = format!("{}{}.{}.{}", template_id, self.0, self.1, self.2).into();
+        Ok(context.load_token(id).await)
+    }
 }
 
-use actix_web::{web, App};
-
-async fn install_template<T: Template>(tpl: T, app: App) {
-    let mut scope = web::scope(format!("/asset_call/{}/\{features\}/\{hash\}/", tpl.id()));
+pub fn install_template<T: Template>(tpl: T, app: &mut web::ServiceConfig) {
+    let mut scope = web::scope(format!("/asset_call/{}/{{features}}/{{hash}}/", tpl.id()));
+    let mut scope = T::AssetContracts::configure_routes(scope);
+    let mut scope = web::scope(format!("/token_call/{}/{{features}}/{{hash}}/{{id}}", tpl.id()));
     let mut scope = T::AssetContracts::configure_routes(scope);
     app.service(scope);
 }

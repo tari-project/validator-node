@@ -5,6 +5,8 @@ use serde::Serialize;
 use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::Client;
+use crate::types::TokenID;
+use crate::db::models::AssetState;
 
 #[derive(Serialize, PostgresMapper)]
 #[pg_mapper(table = "tokens")]
@@ -13,6 +15,7 @@ pub struct Token {
     pub issue_number: i64,
     pub owner_pub_key: String,
     pub status: TokenStatus,
+    pub token_id: TokenID,
     pub asset_state_id: uuid::Uuid,
     pub additional_data_json: Value,
     pub created_at: DateTime<Utc>,
@@ -22,9 +25,27 @@ pub struct Token {
 /// Query paramteres for adding new token record
 #[derive(Default, Clone, Debug)]
 pub struct NewToken {
+    pub token_id: TokenID,
     pub owner_pub_key: String,
     pub asset_state_id: uuid::Uuid,
     pub additional_data_json: Value,
+}
+
+impl From<(&AssetState, TokenID)> for NewToken {
+    fn from((asset, token_id): (&AssetState, TokenID)) -> Self {
+        Self {
+            owner_pub_key: asset.asset_issuer_pub_key,
+            asset_state_id: asset.id,
+            token_id,
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct UpdateToken {
+    pub owner_pub_key: Option<String>,
+    pub additional_data_json: Option<Value>,
 }
 
 impl Token {
