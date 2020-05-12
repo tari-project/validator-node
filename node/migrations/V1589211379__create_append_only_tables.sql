@@ -18,20 +18,22 @@ CREATE INDEX index_token_state_append_only_token_id_created_at ON token_state_ap
 CREATE OR REPLACE VIEW tokens_view AS
 SELECT
     t.*,
-    current_token_state.additional_data_json as additional_data_json
+    COALESCE(current_token_state.additional_data_json, t.initial_data_json) as additional_data_json
 FROM
   tokens t
-JOIN
+LEFT JOIN
 (
     SELECT
         t.id,
-        t.initial_data_json || COALESCE(jsonb_merge(tsao.state_instruction), '{}') as additional_data_json
+        t.initial_data_json || jsonb_merge(tsao.state_instruction) as additional_data_json
     FROM
         tokens t
     LEFT JOIN
         token_state_append_only tsao
     ON
         tsao.token_id = t.id
+    WHERE
+        (tsao.created_at > t.append_only_after OR tsao.id is NULL)
     GROUP BY
         t.id
 ) current_token_state
@@ -51,20 +53,22 @@ CREATE INDEX index_asset_state_append_only_asset_state_id_created_at ON asset_st
 CREATE OR REPLACE VIEW asset_states_view AS
 SELECT
     ast.*,
-    current_asset_state.additional_data_json as additional_data_json
+    COALESCE(current_asset_state.additional_data_json, ast.initial_data_json) as additional_data_json
 FROM
   asset_states ast
-JOIN
+LEFT JOIN
 (
     SELECT
         ast.id,
-        ast.initial_data_json || COALESCE(jsonb_merge(asao.state_instruction), '{}') as additional_data_json
+        ast.initial_data_json || jsonb_merge(asao.state_instruction) as additional_data_json
     FROM
         asset_states ast
     LEFT JOIN
         asset_state_append_only asao
     ON
         asao.asset_state_id = ast.id
+    WHERE
+        (asao.created_at > ast.append_only_after OR asao.id IS NULL)
     GROUP BY
         ast.id
 ) current_asset_state

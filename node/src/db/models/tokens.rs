@@ -97,13 +97,13 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
         let asset2 = AssetStateBuilder::default().build(&client).await?;
-        let mut initial_data_json = HashMap::new();
-        initial_data_json.insert("value", true);
+        let mut initial_data = HashMap::new();
+        initial_data.insert("value", true);
 
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            initial_data_json: serde_json::to_value(initial_data_json.clone())?,
+            initial_data_json: serde_json::to_value(initial_data.clone())?,
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
@@ -115,7 +115,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            initial_data_json: serde_json::to_value(initial_data_json.clone())?,
+            initial_data_json: serde_json::to_value(initial_data.clone())?,
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
@@ -127,7 +127,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset2.id,
-            initial_data_json: serde_json::to_value(initial_data_json)?,
+            initial_data_json: serde_json::to_value(initial_data)?,
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
@@ -143,17 +143,17 @@ mod test {
     async fn store_append_only_state() -> anyhow::Result<()> {
         load_env();
         let (client, _lock) = test_db_client().await;
-        let mut initial_data_json: HashMap<&str, Value> = HashMap::new();
-        initial_data_json.insert("value", json!(true));
-        initial_data_json.insert("value2", json!(4));
+        let mut initial_data: HashMap<&str, Value> = HashMap::new();
+        initial_data.insert("value", json!(true));
+        initial_data.insert("value2", json!(4));
         let token = TokenBuilder {
-            initial_data_json: json!(initial_data_json.clone()),
+            initial_data_json: json!(initial_data.clone()),
             ..TokenBuilder::default()
         }
         .build(&client)
         .await?;
-        assert_eq!(json!(initial_data_json), token.initial_data_json);
-        assert_eq!(json!(initial_data_json), token.additional_data_json);
+        assert_eq!(json!(initial_data), token.initial_data_json);
+        assert_eq!(json!(initial_data), token.additional_data_json);
 
         let mut state_instruction: HashMap<&str, Value> = HashMap::new();
         state_instruction.insert("value", Value::Null);
@@ -167,7 +167,7 @@ mod test {
             &client,
         )
         .await?;
-        let mut expected_data = initial_data_json.clone();
+        let mut expected_data = initial_data.clone();
         expected_data.insert("value", Value::Null);
         expected_data.insert("value2", json!(8));
         expected_data.insert("value3", json!(2));
@@ -190,6 +190,12 @@ mod test {
         expected_data.insert("value3", Value::Null);
         let token = Token::load(token.id, &client).await?;
         assert_eq!(json!(expected_data), token.additional_data_json);
+
+        // Ignore any asset append only additions from the past causing additional_data_json to equal initial_data_json
+        let stmt = "update tokens set append_only_after = now() + INTERVAL '1 MINUTE' WHERE id = $1;";
+        client.query(stmt, &[&token.id]).await?;
+        let token = Token::load(token.id, &client).await?;
+        assert_eq!(json!(initial_data), token.additional_data_json);
 
         Ok(())
     }

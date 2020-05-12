@@ -166,13 +166,13 @@ mod test {
         let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
         let tari_asset_id = "asset-id-placeholder-0976544466643335678667765432355555555445544".to_string();
 
-        let mut initial_data_json = HashMap::new();
-        initial_data_json.insert("value", true);
+        let mut initial_data = HashMap::new();
+        initial_data.insert("value", true);
         let params = NewAssetState {
             name: "AssetName".to_string(),
             description: "Description".to_string(),
             asset_issuer_pub_key: PUBKEY.to_string(),
-            initial_data_json: serde_json::to_value(initial_data_json)?,
+            initial_data_json: serde_json::to_value(initial_data)?,
             asset_id: tari_asset_id.clone(),
             digital_asset_id: digital_asset.id,
             ..NewAssetState::default()
@@ -195,17 +195,17 @@ mod test {
     async fn store_append_only_state() -> anyhow::Result<()> {
         load_env();
         let (client, _lock) = test_db_client().await;
-        let mut initial_data_json: HashMap<&str, Value> = HashMap::new();
-        initial_data_json.insert("value", json!(true));
-        initial_data_json.insert("value2", json!(4));
+        let mut initial_data: HashMap<&str, Value> = HashMap::new();
+        initial_data.insert("value", json!(true));
+        initial_data.insert("value2", json!(4));
         let asset = AssetStateBuilder {
-            initial_data_json: json!(initial_data_json.clone()),
+            initial_data_json: json!(initial_data.clone()),
             ..AssetStateBuilder::default()
         }
         .build(&client)
         .await?;
-        assert_eq!(json!(initial_data_json), asset.initial_data_json);
-        assert_eq!(json!(initial_data_json), asset.additional_data_json);
+        assert_eq!(json!(initial_data), asset.initial_data_json);
+        assert_eq!(json!(initial_data), asset.additional_data_json);
 
         let mut state_instruction: HashMap<&str, Value> = HashMap::new();
         state_instruction.insert("value", Value::Null);
@@ -219,7 +219,7 @@ mod test {
             &client,
         )
         .await?;
-        let mut expected_data = initial_data_json.clone();
+        let mut expected_data = initial_data.clone();
         expected_data.insert("value", Value::Null);
         expected_data.insert("value2", json!(8));
         expected_data.insert("value3", json!(2));
@@ -242,6 +242,12 @@ mod test {
         expected_data.insert("value3", Value::Null);
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(json!(expected_data), asset.additional_data_json);
+
+        // Ignore any asset append only additions from the past causing additional_data_json to equal initial_data_json
+        let stmt = "update asset_states set append_only_after = now() + INTERVAL '1 MINUTE' WHERE id = $1";
+        client.execute(stmt, &[&asset.id]).await?;
+        let asset = AssetState::load(asset.id, &client).await?;
+        assert_eq!(json!(initial_data), asset.additional_data_json);
 
         Ok(())
     }
