@@ -23,7 +23,6 @@ pub struct AssetState {
     pub initial_data_json: Value,
     pub asset_id: String,
     pub digital_asset_id: uuid::Uuid,
-    pub append_only_after: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub additional_data_json: Value,
@@ -43,14 +42,13 @@ pub struct NewAssetState {
     pub initial_data_json: Value,
     pub asset_id: String,
     pub digital_asset_id: uuid::Uuid,
-    pub append_only_after: Option<DateTime<Utc>>,
 }
 
 /// Query parameters for adding new token state append only
 #[derive(Default, Clone, Debug)]
 pub struct NewAssetStateAppendOnly {
     pub asset_state_id: uuid::Uuid,
-    pub state_instruction: Value,
+    pub state_data_json: Value,
 }
 
 impl NewAssetState {
@@ -89,9 +87,8 @@ impl AssetState {
                 initial_permission_bitflag,
                 initial_data_json,
                 asset_id,
-                digital_asset_id,
-                append_only_after
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id";
+                digital_asset_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
@@ -106,7 +103,6 @@ impl AssetState {
                 &params.initial_data_json,
                 &params.asset_id,
                 &params.digital_asset_id,
-                &params.append_only_after.unwrap_or(Utc::now()),
             ])
             .await?;
 
@@ -136,11 +132,11 @@ impl AssetState {
         const QUERY: &'static str = "
             INSERT INTO asset_state_append_only (
                 asset_state_id,
-                state_instruction
+                state_data_json
             ) VALUES ($1, $2) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
-            .query_one(&stmt, &[&params.asset_state_id, &params.state_instruction])
+            .query_one(&stmt, &[&params.asset_state_id, &params.state_data_json])
             .await?;
 
         Ok(result.get(0))
@@ -207,14 +203,14 @@ mod test {
         assert_eq!(json!(initial_data), asset.initial_data_json);
         assert_eq!(json!(initial_data), asset.additional_data_json);
 
-        let mut state_instruction: HashMap<&str, Value> = HashMap::new();
-        state_instruction.insert("value", Value::Null);
-        state_instruction.insert("value2", json!(8));
-        state_instruction.insert("value3", json!(2));
+        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
+        state_data_json.insert("value", Value::Null);
+        state_data_json.insert("value2", json!(8));
+        state_data_json.insert("value3", json!(2));
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
-                state_instruction: json!(state_instruction),
+                state_data_json: json!(state_data_json),
             },
             &client,
         )
@@ -226,28 +222,22 @@ mod test {
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(json!(expected_data), asset.additional_data_json);
 
-        let mut state_instruction: HashMap<&str, Value> = HashMap::new();
-        state_instruction.insert("value", json!(false));
-        state_instruction.insert("value3", Value::Null);
+        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
+        state_data_json.insert("value", json!(false));
+        state_data_json.insert("value3", Value::Null);
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
-                state_instruction: json!(state_instruction),
+                state_data_json: json!(state_data_json),
             },
             &client,
         )
         .await?;
         expected_data.insert("value", json!(false));
-        expected_data.insert("value2", json!(8));
+        expected_data.remove(&"value2");
         expected_data.insert("value3", Value::Null);
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(json!(expected_data), asset.additional_data_json);
-
-        // Ignore any asset append only additions from the past causing additional_data_json to equal initial_data_json
-        let stmt = "update asset_states set append_only_after = now() + INTERVAL '1 MINUTE' WHERE id = $1";
-        client.execute(stmt, &[&asset.id]).await?;
-        let asset = AssetState::load(asset.id, &client).await?;
-        assert_eq!(json!(initial_data), asset.additional_data_json);
 
         Ok(())
     }

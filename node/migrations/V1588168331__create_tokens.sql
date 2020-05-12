@@ -5,7 +5,6 @@ CREATE TABLE tokens (
                        status TEXT NOT NULL DEFAULT 'Active',
                        asset_state_id uuid NOT NULL references asset_states(id),
                        initial_data_json JSONB NOT NULL DEFAULT '{}',
-                       append_only_after TIMESTAMPTZ NOT NULL DEFAULT now(),
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

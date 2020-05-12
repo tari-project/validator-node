@@ -1,14 +1,7 @@
-DROP AGGREGATE IF EXISTS jsonb_merge(jsonb);
-CREATE AGGREGATE jsonb_merge(jsonb) (
-    SFUNC = jsonb_concat(jsonb, jsonb),
-    STYPE = jsonb,
-    INITCOND = '{}'
-);
-
 CREATE TABLE token_state_append_only (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
     token_id uuid NOT NULL references tokens(id),
-    state_instruction JSONB NOT NULL DEFAULT '{}',
+    state_data_json JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -18,32 +11,22 @@ CREATE INDEX index_token_state_append_only_token_id_created_at ON token_state_ap
 CREATE OR REPLACE VIEW tokens_view AS
 SELECT
     t.*,
-    COALESCE(current_token_state.additional_data_json, t.initial_data_json) as additional_data_json
+    COALESCE(tsao.state_data_json, t.initial_data_json) as additional_data_json
 FROM
   tokens t
 LEFT JOIN
 (
-    SELECT
-        t.id,
-        t.initial_data_json || jsonb_merge(tsao.state_instruction) as additional_data_json
-    FROM
-        tokens t
-    LEFT JOIN
-        token_state_append_only tsao
-    ON
-        tsao.token_id = t.id
-    WHERE
-        (tsao.created_at > t.append_only_after OR tsao.id is NULL)
-    GROUP BY
-        t.id
-) current_token_state
+    SELECT DISTINCT ON(token_id) *
+    FROM token_state_append_only
+    ORDER BY token_id, created_at DESC
+) tsao
 ON
-    t.id = current_token_state.id;
+    t.id = tsao.token_id;
 
 CREATE TABLE asset_state_append_only (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
     asset_state_id uuid NOT NULL references asset_states(id),
-    state_instruction JSONB NOT NULL DEFAULT '{}',
+    state_data_json JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -53,24 +36,14 @@ CREATE INDEX index_asset_state_append_only_asset_state_id_created_at ON asset_st
 CREATE OR REPLACE VIEW asset_states_view AS
 SELECT
     ast.*,
-    COALESCE(current_asset_state.additional_data_json, ast.initial_data_json) as additional_data_json
+    COALESCE(asao.state_data_json, ast.initial_data_json) as additional_data_json
 FROM
   asset_states ast
 LEFT JOIN
 (
-    SELECT
-        ast.id,
-        ast.initial_data_json || jsonb_merge(asao.state_instruction) as additional_data_json
-    FROM
-        asset_states ast
-    LEFT JOIN
-        asset_state_append_only asao
-    ON
-        asao.asset_state_id = ast.id
-    WHERE
-        (asao.created_at > ast.append_only_after OR asao.id IS NULL)
-    GROUP BY
-        ast.id
-) current_asset_state
+    SELECT DISTINCT ON(asset_state_id) *
+    FROM asset_state_append_only
+    ORDER BY asset_state_id, created_at DESC
+) asao
 ON
-    ast.id = current_asset_state.id;
+    ast.id = asao.asset_state_id;

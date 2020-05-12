@@ -15,7 +15,6 @@ pub struct Token {
     pub status: TokenStatus,
     pub asset_state_id: uuid::Uuid,
     pub initial_data_json: Value,
-    pub append_only_after: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub additional_data_json: Value,
@@ -27,14 +26,13 @@ pub struct NewToken {
     pub owner_pub_key: String,
     pub asset_state_id: uuid::Uuid,
     pub initial_data_json: Value,
-    pub append_only_after: Option<DateTime<Utc>>,
 }
 
 /// Query parameters for adding new token state append only
 #[derive(Default, Clone, Debug)]
 pub struct NewTokenAppendOnly {
     pub token_id: uuid::Uuid,
-    pub state_instruction: Value,
+    pub state_data_json: Value,
 }
 
 impl Token {
@@ -44,16 +42,14 @@ impl Token {
             INSERT INTO tokens (
                 owner_pub_key,
                 asset_state_id,
-                initial_data_json,
-                append_only_after
-            ) VALUES ($1, $2, $3, $4) RETURNING id";
+                initial_data_json
+            ) VALUES ($1, $2, $3) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
                 &params.owner_pub_key,
                 &params.asset_state_id,
                 &params.initial_data_json,
-                &params.append_only_after.unwrap_or(Utc::now()),
             ])
             .await?;
 
@@ -72,11 +68,11 @@ impl Token {
         const QUERY: &'static str = "
             INSERT INTO token_state_append_only (
                 token_id,
-                state_instruction
+                state_data_json
             ) VALUES ($1, $2) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
-            .query_one(&stmt, &[&params.token_id, &params.state_instruction])
+            .query_one(&stmt, &[&params.token_id, &params.state_data_json])
             .await?;
 
         Ok(result.get(0))
@@ -155,14 +151,14 @@ mod test {
         assert_eq!(json!(initial_data), token.initial_data_json);
         assert_eq!(json!(initial_data), token.additional_data_json);
 
-        let mut state_instruction: HashMap<&str, Value> = HashMap::new();
-        state_instruction.insert("value", Value::Null);
-        state_instruction.insert("value2", json!(8));
-        state_instruction.insert("value3", json!(2));
+        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
+        state_data_json.insert("value", Value::Null);
+        state_data_json.insert("value2", json!(8));
+        state_data_json.insert("value3", json!(2));
         Token::store_append_only_state(
             NewTokenAppendOnly {
                 token_id: token.id,
-                state_instruction: json!(state_instruction),
+                state_data_json: json!(state_data_json),
             },
             &client,
         )
@@ -174,28 +170,22 @@ mod test {
         let token = Token::load(token.id, &client).await?;
         assert_eq!(json!(expected_data), token.additional_data_json);
 
-        let mut state_instruction: HashMap<&str, Value> = HashMap::new();
-        state_instruction.insert("value", json!(false));
-        state_instruction.insert("value3", Value::Null);
+        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
+        state_data_json.insert("value", json!(false));
+        state_data_json.insert("value3", Value::Null);
         Token::store_append_only_state(
             NewTokenAppendOnly {
                 token_id: token.id,
-                state_instruction: json!(state_instruction),
+                state_data_json: json!(state_data_json),
             },
             &client,
         )
         .await?;
         expected_data.insert("value", json!(false));
-        expected_data.insert("value2", json!(8));
+        expected_data.remove(&"value2");
         expected_data.insert("value3", Value::Null);
         let token = Token::load(token.id, &client).await?;
         assert_eq!(json!(expected_data), token.additional_data_json);
-
-        // Ignore any asset append only additions from the past causing additional_data_json to equal initial_data_json
-        let stmt = "update tokens set append_only_after = now() + INTERVAL '1 MINUTE' WHERE id = $1;";
-        client.query(stmt, &[&token.id]).await?;
-        let token = Token::load(token.id, &client).await?;
-        assert_eq!(json!(initial_data), token.additional_data_json);
 
         Ok(())
     }

@@ -13,7 +13,6 @@ CREATE TABLE asset_states (
                        initial_data_json JSONB NOT NULL DEFAULT '{}',
                        asset_id char(64) NOT NULL UNIQUE,
                        digital_asset_id UUID references digital_assets(id),
-                       append_only_after TIMESTAMPTZ NOT NULL DEFAULT now(),
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
