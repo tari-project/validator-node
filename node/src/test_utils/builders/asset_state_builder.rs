@@ -16,9 +16,10 @@ pub struct AssetStateBuilder {
     pub authorized_signers: Vec<String>,
     pub expiry_date: Option<DateTime<Utc>>,
     pub initial_permission_bitflag: i64,
-    pub additional_data_json: Value,
+    pub initial_data_json: Value,
     pub digital_asset_id: Option<Uuid>,
     pub asset_id: String,
+    pub append_only_after: Option<DateTime<Utc>>,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -36,9 +37,10 @@ impl Default for AssetStateBuilder {
             authorized_signers: Vec::new(),
             expiry_date: None,
             initial_permission_bitflag: 0,
-            additional_data_json: serde_json::from_str("{}").unwrap(),
+            initial_data_json: serde_json::from_str("{}").unwrap(),
             digital_asset_id: None,
             asset_id: format!("asset-id-placeholder-{}", x).into(), // TODO: Use a real asset ID here for consistency
+            append_only_after: None,
             __non_exhaustive: (),
         }
     }
@@ -60,8 +62,9 @@ impl AssetStateBuilder {
             authorized_signers: self.authorized_signers.to_owned(),
             expiry_date: self.expiry_date,
             initial_permission_bitflag: self.initial_permission_bitflag,
-            additional_data_json: self.additional_data_json.to_owned(),
+            initial_data_json: self.initial_data_json.to_owned(),
             asset_id: self.asset_id.to_owned(),
+            append_only_after: self.append_only_after.to_owned(),
             digital_asset_id,
         };
         let asset_id = AssetState::insert(params, client).await?;

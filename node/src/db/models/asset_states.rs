@@ -7,7 +7,7 @@ use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::Client;
 
 #[derive(Serialize, PostgresMapper, PartialEq, Debug)]
-#[pg_mapper(table = "asset_states")]
+#[pg_mapper(table = "asset_states_view")]
 pub struct AssetState {
     pub id: uuid::Uuid,
     pub name: String,
@@ -20,11 +20,13 @@ pub struct AssetState {
     pub expiry_date: Option<DateTime<Utc>>,
     pub superseded_by: Option<uuid::Uuid>,
     pub initial_permission_bitflag: i64,
-    pub additional_data_json: Value,
+    pub initial_data_json: Value,
     pub asset_id: String,
     pub digital_asset_id: uuid::Uuid,
+    pub append_only_after: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub additional_data_json: Value,
 }
 
 /// Query paramteres for adding new asset record
@@ -38,9 +40,17 @@ pub struct NewAssetState {
     pub authorized_signers: Vec<String>,
     pub expiry_date: Option<DateTime<Utc>>,
     pub initial_permission_bitflag: i64,
-    pub additional_data_json: Value,
+    pub initial_data_json: Value,
     pub asset_id: String,
     pub digital_asset_id: uuid::Uuid,
+    pub append_only_after: Option<DateTime<Utc>>,
+}
+
+/// Query parameters for adding new token state append only
+#[derive(Default, Clone, Debug)]
+pub struct NewAssetStateAppendOnly {
+    pub asset_state_id: uuid::Uuid,
+    pub state_instruction: Value,
 }
 
 impl NewAssetState {
@@ -77,10 +87,11 @@ impl AssetState {
                 authorized_signers,
                 expiry_date,
                 initial_permission_bitflag,
-                additional_data_json,
+                initial_data_json,
                 asset_id,
-                digital_asset_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id";
+                digital_asset_id,
+                append_only_after
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
@@ -92,9 +103,10 @@ impl AssetState {
                 &params.authorized_signers,
                 &params.expiry_date,
                 &params.initial_permission_bitflag,
-                &params.additional_data_json,
+                &params.initial_data_json,
                 &params.asset_id,
                 &params.digital_asset_id,
+                &params.append_only_after.unwrap_or(Utc::now()),
             ])
             .await?;
 
@@ -103,16 +115,35 @@ impl AssetState {
 
     /// Load asset record
     pub async fn load(id: uuid::Uuid, client: &Client) -> Result<AssetState, DBError> {
-        let stmt = "SELECT * FROM asset_states WHERE id = $1";
+        let stmt = "SELECT * FROM asset_states_view WHERE id = $1";
         let result = client.query_one(stmt, &[&id]).await?;
         Ok(AssetState::from_row(result)?)
     }
 
     /// Find asset state record by asset id )
     pub async fn find_by_asset_id(asset_id: String, client: &Client) -> Result<Option<AssetState>, DBError> {
-        let stmt = "SELECT * FROM asset_states WHERE asset_id = $1";
+        let stmt = "SELECT * FROM asset_states_view WHERE asset_id = $1";
         let result = client.query_opt(stmt, &[&asset_id]).await?;
         Ok(result.map(AssetState::from_row).transpose()?)
+    }
+
+    // Store append only state
+    pub async fn store_append_only_state(
+        params: NewAssetStateAppendOnly,
+        client: &Client,
+    ) -> Result<uuid::Uuid, DBError>
+    {
+        const QUERY: &'static str = "
+            INSERT INTO asset_state_append_only (
+                asset_state_id,
+                state_instruction
+            ) VALUES ($1, $2) RETURNING id";
+        let stmt = client.prepare(QUERY).await?;
+        let result = client
+            .query_one(&stmt, &[&params.asset_state_id, &params.state_instruction])
+            .await?;
+
+        Ok(result.get(0))
     }
 }
 
@@ -123,6 +154,7 @@ mod test {
         db::utils::validation::*,
         test_utils::{builders::*, load_env, test_db_client},
     };
+    use serde_json::json;
     use std::collections::HashMap;
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
@@ -134,13 +166,13 @@ mod test {
         let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
         let tari_asset_id = "asset-id-placeholder-0976544466643335678667765432355555555445544".to_string();
 
-        let mut additional_data_json = HashMap::new();
-        additional_data_json.insert("value", true);
+        let mut initial_data_json = HashMap::new();
+        initial_data_json.insert("value", true);
         let params = NewAssetState {
             name: "AssetName".to_string(),
             description: "Description".to_string(),
             asset_issuer_pub_key: PUBKEY.to_string(),
-            additional_data_json: serde_json::to_value(additional_data_json)?,
+            initial_data_json: serde_json::to_value(initial_data_json)?,
             asset_id: tari_asset_id.clone(),
             digital_asset_id: digital_asset.id,
             ..NewAssetState::default()
@@ -155,6 +187,61 @@ mod test {
 
         let found_asset = AssetState::find_by_asset_id(tari_asset_id, &client).await?;
         assert_eq!(found_asset, Some(asset));
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn store_append_only_state() -> anyhow::Result<()> {
+        load_env();
+        let (client, _lock) = test_db_client().await;
+        let mut initial_data_json: HashMap<&str, Value> = HashMap::new();
+        initial_data_json.insert("value", json!(true));
+        initial_data_json.insert("value2", json!(4));
+        let asset = AssetStateBuilder {
+            initial_data_json: json!(initial_data_json.clone()),
+            ..AssetStateBuilder::default()
+        }
+        .build(&client)
+        .await?;
+        assert_eq!(json!(initial_data_json), asset.initial_data_json);
+        assert_eq!(json!(initial_data_json), asset.additional_data_json);
+
+        let mut state_instruction: HashMap<&str, Value> = HashMap::new();
+        state_instruction.insert("value", Value::Null);
+        state_instruction.insert("value2", json!(8));
+        state_instruction.insert("value3", json!(2));
+        AssetState::store_append_only_state(
+            NewAssetStateAppendOnly {
+                asset_state_id: asset.id,
+                state_instruction: json!(state_instruction),
+            },
+            &client,
+        )
+        .await?;
+        let mut expected_data = initial_data_json.clone();
+        expected_data.insert("value", Value::Null);
+        expected_data.insert("value2", json!(8));
+        expected_data.insert("value3", json!(2));
+        let asset = AssetState::load(asset.id, &client).await?;
+        assert_eq!(json!(expected_data), asset.additional_data_json);
+
+        let mut state_instruction: HashMap<&str, Value> = HashMap::new();
+        state_instruction.insert("value", json!(false));
+        state_instruction.insert("value3", Value::Null);
+        AssetState::store_append_only_state(
+            NewAssetStateAppendOnly {
+                asset_state_id: asset.id,
+                state_instruction: json!(state_instruction),
+            },
+            &client,
+        )
+        .await?;
+        expected_data.insert("value", json!(false));
+        expected_data.insert("value2", json!(8));
+        expected_data.insert("value3", Value::Null);
+        let asset = AssetState::load(asset.id, &client).await?;
+        assert_eq!(json!(expected_data), asset.additional_data_json);
 
         Ok(())
     }
