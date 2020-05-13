@@ -10,6 +10,8 @@ pub enum ApiError {
     DBError(#[from] DBError),
     #[error("Bad request: {0}")]
     BadRequest(String),
+    #[error("Contract error: {0}")]
+    Contract(#[from] anyhow::Error),
 }
 
 pub struct ResponseData {
@@ -64,6 +66,11 @@ impl ApiError {
             ApiError::BadRequest(msg) => ResponseData {
                 status_code: StatusCode::BAD_REQUEST,
                 error_response: HttpResponse::build(StatusCode::BAD_REQUEST).json(json!({ "error": msg })),
+            },
+            ApiError::Contract(err) => ResponseData {
+                status_code: StatusCode::INTERNAL_SERVER_ERROR,
+                error_response: HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                    .json(json!({ "error": err.to_string() })),
             },
         }
     }

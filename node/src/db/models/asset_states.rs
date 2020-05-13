@@ -9,7 +9,7 @@ use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::Client;
 
-#[derive(Serialize, PostgresMapper, PartialEq, Debug)]
+#[derive(Serialize, PostgresMapper, PartialEq, Debug, Clone)]
 #[pg_mapper(table = "asset_states")]
 pub struct AssetState {
     pub id: uuid::Uuid,
@@ -126,13 +126,11 @@ mod test {
         db::utils::validation::*,
         test_utils::{builders::*, test_db_client},
     };
-    use dotenv;
     use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
         let tari_asset_id: AssetID = "asset-id-placeholder-0976544466643335678667765432355555555445544".parse()?;
@@ -164,7 +162,6 @@ mod test {
 
     #[actix_rt::test]
     async fn asset_id_uniqueness() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
 

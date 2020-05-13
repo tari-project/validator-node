@@ -2,6 +2,7 @@ use super::errors::TypeError;
 use bytes::BytesMut;
 use core::cmp::PartialEq;
 use postgres_protocol::types::int8_from_sql;
+use serde::{Deserialize, Serialize};
 use std::{
     convert::TryInto,
     error::Error,
@@ -16,7 +17,8 @@ const CONFIDENTIAL_MASK: u16 = 2;
 /// Tari uses templates to define the behaviour for its smart contracts.
 /// TemplateID identifies the type of digital asset being created and smart contracts available.
 /// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id) entity
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy)]
+#[serde(from = "u64", into = "u64")]
 pub struct TemplateID {
     template_type: u32,
     template_version: u16,
@@ -136,6 +138,14 @@ impl From<&TemplateID> for u64 {
         dst[4..6].copy_from_slice(&id.template_version.to_le_bytes());
         dst[6..8].copy_from_slice(&id.tail.to_le_bytes());
         u64::from_le_bytes(dst)
+    }
+}
+
+/// TemplateID is usually stored as 64-bit unsigned int
+/// See https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id
+impl From<TemplateID> for u64 {
+    fn from(id: TemplateID) -> u64 {
+        u64::from(&id)
     }
 }
 

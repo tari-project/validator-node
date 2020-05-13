@@ -1,10 +1,9 @@
 use super::{errors::TypeError, RaidID, TemplateID};
 use bytes::BytesMut;
 use postgres_protocol::types::text_from_sql;
-use serde::{Serialize, Deserialize};
-use std::{error::Error, fmt, str::FromStr};
+use serde::{Deserialize, Serialize};
+use std::{convert::TryFrom, error::Error, fmt, str::FromStr};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
-use std::convert::TryFrom;
 
 /// Assets are identified by a 64-character string that uniquely identifies an asset on the network
 /// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification) entity
@@ -31,6 +30,10 @@ impl Default for AssetID {
 impl AssetID {
     /// AssetID stored as TEXT
     pub const SQL_TYPE: Type = Type::TEXT;
+
+    pub fn template_id(&self) -> TemplateID {
+        self.template_id.clone()
+    }
 }
 
 impl<'a> FromSql<'a> for AssetID {

@@ -5,13 +5,18 @@
 use crate::{
     api::utils::errors::ApiError,
     db::{
-        models::{AssetState, NewToken, Token},
+        models::{
+            transaction::{ContractTransaction, NewContractTransaction},
+            AssetState,
+            NewToken,
+            Token,
+        },
         utils::errors::DBError,
     },
     types::{AssetID, TemplateID, TokenID},
 };
-use actix_web::{dev::Payload, FromRequest, HttpRequest, web::Data};
-use deadpool_postgres::{Client, Pool, Transaction};
+use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
+use deadpool_postgres::{Client, Pool};
 use futures::future::{err, FutureExt, LocalBoxFuture};
 use std::ops::Deref;
 
@@ -32,8 +37,8 @@ impl TemplateContext {
         Token::load(id, &self.client).await
     }
 
-    pub async fn update_token(&self, token: Token) -> Result<Token, DBError> {
-        Token::update(token, &self.client).await
+    pub async fn update_token(&self, token: &Token) -> Result<u64, DBError> {
+        token.update(&self.client).await
     }
 
     pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, DBError> {
@@ -42,6 +47,11 @@ impl TemplateContext {
 
     pub async fn load_asset(&self, id: AssetID) -> Result<Option<AssetState>, DBError> {
         AssetState::find_by_asset_id(id, &self.client).await
+    }
+
+    // TODO: move this somewhere outside of reach of contract code...
+    pub async fn create_transaction(&self, data: NewContractTransaction) -> Result<ContractTransaction, DBError> {
+        Ok(ContractTransaction::insert(data, &self.client).await?)
     }
 }
 
@@ -52,25 +62,26 @@ impl FromRequest for TemplateContext {
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
 
     #[inline]
-    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         // initialize whole context in this module - would make moduel quite complex but easier to debug
         // middleware might pass parameters via .extensions() or .app_data()
-        let pool = req.app_data::<Data<Pool>>().expect("Failed to retrieve DB pool");
+        let pool = req
+            .app_data::<Data<Pool>>()
+            .expect("Failed to retrieve DB pool")
+            .as_ref();
         let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
             Some(id) => id.get_ref().clone(),
             None => return err(ApiError::bad_request("Template data not found by this path")).boxed_local(),
         };
 
-        pool.clone()
-            .get()
-            .map(|res| {
-                res.map(|client| TemplateContext {
-                    client,
-                    template_id,
-                })
-                .map_err(|err| DBError::from(err).into())
-            })
-            .boxed_local()
+        let pool = pool.clone();
+        async move {
+            match pool.get().await {
+                Ok(client) => Ok(TemplateContext { client, template_id }),
+                Err(err) => Err(DBError::from(err).into()),
+            }
+        }
+        .boxed_local()
     }
 }
 
@@ -86,6 +97,7 @@ pub struct AssetTemplateContext {
 
 impl Deref for AssetTemplateContext {
     type Target = TemplateContext;
+
     fn deref(&self) -> &Self::Target {
         &self.context
     }
@@ -111,6 +123,7 @@ pub struct TokenTemplateContext {
 
 impl Deref for TokenTemplateContext {
     type Target = TemplateContext;
+
     fn deref(&self) -> &Self::Target {
         &self.context
     }

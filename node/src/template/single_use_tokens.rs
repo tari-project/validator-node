@@ -1,16 +1,14 @@
-use super::{actix::*, Contracts, Template, TemplateContext, TokenTemplateContext, AssetTemplateContext};
+use super::{actix::*, AssetTemplateContext, Contracts, Template, TemplateContext, TokenTemplateContext};
 use crate::{
-    db::models::{AssetState, NewToken, Token, TokenStatus},
+    db::models::{NewToken, Token, TokenStatus},
     types::{Pubkey, TemplateID, TokenID},
 };
 use anyhow::{bail, Result};
-use serde::Deserialize;
-use serde_json::json;
 
 /// ***************** Asset contracts *******************
 
 //#[derive(Contracts)]
-enum AssetContracts {
+pub enum AssetContracts {
     //#[contract(issue_tokens)]
     IssueTokens,
 }
@@ -33,13 +31,13 @@ async fn issue_tokens(context: AssetTemplateContext, token_ids: Vec<TokenID>) ->
 /// ***************** Token contracts *******************
 
 //#[derive(Contracts)]
-enum TokenContracts {
+pub enum TokenContracts {
     //#[contract(transfer_token)]
     TransferToken,
 }
 
 //#[contract(token)]
-//With token contract TokenTemplateContext is always passed as first argument
+// With token contract TokenTemplateContext is always passed as first argument
 async fn transfer_token(context: TokenTemplateContext, user_pubkey: Pubkey) -> Result<Token> {
     let mut token = context.token.clone();
     if token.status == TokenStatus::Retired {
@@ -50,11 +48,13 @@ async fn transfer_token(context: TokenTemplateContext, user_pubkey: Pubkey) -> R
         .as_object_mut()
         .map(|obj| obj.insert("user_pubkey".into(), user_pubkey.into()))
         .ok_or(anyhow::anyhow!("Corrupt token: {}", token.id))?;
-    let token = context.update_token(token).await?;
+    context.update_token(&token).await?;
     Ok(token)
 }
 
-struct SingleUseTokenTemplate;
+/****************** TEMPLATE *************/
+
+pub struct SingleUseTokenTemplate;
 impl Template for SingleUseTokenTemplate {
     type AssetContracts = AssetContracts;
     type TokenContracts = TokenContracts;
@@ -66,24 +66,53 @@ impl Template for SingleUseTokenTemplate {
 
 mod expanded_macros {
     use super::*;
+    use crate::{api::utils::errors::ApiError, db::models::transaction::*};
+    use serde::{Deserialize, Serialize};
 
     ////// impl #[contract(asset)] for issue_tokens()
 
-    #[derive(Deserialize)]
+    #[derive(Serialize, Deserialize)]
     struct IssueTokensPayload {
         token_ids: Vec<TokenID>,
     }
 
+    // wrapper will convert from actix types into Rust,
+    // create transactions writing RPC params,
+    // returning transaction
     async fn issue_tokens_actix(
         params: web::Path<AssetCallParams>,
         data: web::Json<IssueTokensPayload>,
         context: TemplateContext,
-    ) -> Result<Vec<Token>>
+    ) -> Result<web::Json<ContractTransaction>, ApiError>
     {
-        let asset = context.load_asset(params.asset_id(&context.template_id)?).await?;
-        let context = AssetTemplateContext::new(context, asset);
+        // extract and transform parameters
+        let asset_id = params.asset_id(&context.template_id)?;
+        let asset = match context.load_asset(asset_id).await? {
+            None => return Err(ApiError::bad_request("Asset ID not found")),
+            Some(asset) => asset,
+        };
+        // create context
+        let context = AssetTemplateContext::new(context, asset.clone());
+        let params = data.into_inner();
+        let transaction = NewContractTransaction {
+            asset_uid: asset.id,
+            template_id: context.template_id.clone(),
+            params: serde_json::to_value(&params)
+                .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?,
+            contract_name: "issue_tokens".to_string(),
+            ..NewContractTransaction::default()
+        };
+        // create transaction
+        let mut transaction = context.create_transaction(transaction).await?;
 
-        issue_tokens(context, data.into_inner().token_ids).await
+        // TODO: move following outside of actix request lifecycle
+        // run contract
+        let result = issue_tokens(context, params.token_ids).await?;
+        // update transaction after contract executed
+        transaction.result = serde_json::to_value(result)
+            .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?;
+        transaction.status = TransactionStatus::Commit;
+        Ok(web::Json(transaction))
     }
     /////// end of impl #[contract]
 
@@ -98,7 +127,7 @@ mod expanded_macros {
 
     //////  impl #[contract(token)] for transfer_token()
 
-    #[derive(Deserialize)]
+    #[derive(Serialize, Deserialize)]
     struct TransferTokenPayload {
         user_pubkey: Pubkey,
     }
@@ -107,15 +136,42 @@ mod expanded_macros {
         params: web::Path<TokenCallParams>,
         data: web::Json<TransferTokenPayload>,
         context: TemplateContext,
-    ) -> Result<Token>
+    ) -> Result<web::Json<ContractTransaction>, ApiError>
     {
+        // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
-        let asset = context.load_asset(asset_id).await?;
+        let asset = match context.load_asset(asset_id).await? {
+            None => return Err(ApiError::bad_request("Asset ID not found")),
+            Some(asset) => asset,
+        };
         let token_id = params.token_id(&context.template_id)?;
-        let token = context.load_token(token_id).await?;
-        let context = TokenTemplateContext::new(context, asset, token);
+        let token = match context.load_token(token_id).await? {
+            None => return Err(ApiError::bad_request("Token ID not found")),
+            Some(token) => token,
+        };
+        let params = data.into_inner();
+        // create context
+        let context = TokenTemplateContext::new(context, asset.clone(), token.clone());
+        // create transaction
+        let transaction = NewContractTransaction {
+            asset_uid: asset.id,
+            token_uid: Some(token.id),
+            template_id: context.template_id.clone(),
+            params: serde_json::to_value(&params)
+                .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?,
+            contract_name: "transfer_token".to_string(),
+            ..NewContractTransaction::default()
+        };
+        let mut transaction = context.create_transaction(transaction).await?;
 
-        transfer_token(context, data.into_inner().user_pubkey).await
+        // TODO: move following outside of actix request lifecycle
+        // run contract
+        let result = transfer_token(context, params.user_pubkey).await?;
+        // update transaction
+        transaction.result = serde_json::to_value(result)
+            .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?;
+        transaction.status = TransactionStatus::Commit;
+        Ok(web::Json(transaction))
     }
     /////// end of impl #[contract]
 

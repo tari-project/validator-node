@@ -10,7 +10,7 @@ use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
 
-#[derive(Serialize, PostgresMapper)]
+#[derive(Clone, Serialize, PostgresMapper)]
 #[pg_mapper(table = "tokens")]
 pub struct Token {
     pub id: uuid::Uuid,
@@ -36,8 +36,8 @@ pub struct NewToken {
 impl From<(&AssetState, TokenID)> for NewToken {
     fn from((asset, token_id): (&AssetState, TokenID)) -> Self {
         Self {
-            owner_pub_key: asset.asset_issuer_pub_key,
-            asset_state_id: asset.id,
+            owner_pub_key: asset.asset_issuer_pub_key.clone(),
+            asset_state_id: asset.id.clone(),
             token_id,
             ..Default::default()
         }
@@ -65,14 +65,19 @@ impl Token {
         Ok(result.get(0))
     }
 
-    /// Update owner_pub_key and additional_data_json
-    pub async fn update(token: Token, client: &Client) -> Result<Token, DBError> {
-        const QUERY: &'static str = "UPDATE tokens WHERE id = $1 SET owner_pub_key = $2, additional_data_json = $3";
+    /// Update token into database
+    ///
+    /// Updates subset of fields:
+    /// - owner_pub_key
+    /// - additional_data_json
+    pub async fn update(&self, client: &Client) -> Result<u64, DBError> {
+        const QUERY: &'static str =
+            "UPDATE tokens SET owner_pub_key = $2, additional_data_json = $3, updated_at = NOW() WHERE id = $1";
         let stmt = client.prepare(QUERY).await?;
-        let result = client
-            .query_one(&stmt, &[&token.id, &token.owner_pub_key, &token.additional_data_json])
+        let updated = client
+            .execute(&stmt, &[&self.id, &self.owner_pub_key, &self.additional_data_json])
             .await?;
-        Ok(Token::from_row(result)?)
+        Ok(updated)
     }
 
     /// Load token record
@@ -95,13 +100,11 @@ impl Token {
 mod test {
     use super::*;
     use crate::test_utils::{builders::*, test_db_client};
-    use dotenv;
     use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
     async fn crud() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
         let asset2 = AssetStateBuilder::default().build(&client).await?;
