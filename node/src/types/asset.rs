@@ -1,17 +1,31 @@
 use super::{errors::TypeError, RaidID, TemplateID};
 use bytes::BytesMut;
 use postgres_protocol::types::text_from_sql;
-use std::{error::Error, str::FromStr};
+use serde::{Serialize, Deserialize};
+use std::{error::Error, fmt, str::FromStr};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
+use std::convert::TryFrom;
 
 /// Assets are identified by a 64-character string that uniquely identifies an asset on the network
 /// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification) entity
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
 pub struct AssetID {
     template_id: TemplateID,
     features: u16,
     raid_id: RaidID,
     hash: String,
+}
+
+impl Default for AssetID {
+    fn default() -> Self {
+        Self {
+            template_id: 0.into(),
+            features: 0,
+            raid_id: RaidID::from_base58("000000000000000").unwrap(),
+            hash: format!("{:032X}", 0),
+        }
+    }
 }
 
 impl AssetID {
@@ -38,15 +52,22 @@ impl<'a> ToSql for AssetID {
 }
 
 /// Converts AssetID to string according to rfc https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification
-impl ToString for AssetID {
-    fn to_string(&self) -> String {
-        format!(
+impl fmt::Display for AssetID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "{}{:04X}{}.{}",
             self.template_id.to_hex(),
             self.features,
             self.raid_id.to_base58(),
             self.hash
         )
+    }
+}
+
+impl From<AssetID> for String {
+    fn from(id: AssetID) -> Self {
+        id.to_string()
     }
 }
 
@@ -90,10 +111,24 @@ impl FromStr for AssetID {
     }
 }
 
+impl TryFrom<String> for AssetID {
+    type Error = TypeError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::test_utils::test_db_client;
+
+    #[test]
+    fn asset_default() {
+        let id = AssetID::default();
+        assert_eq!(id, format!("{:031X}.{:032X}", 0, 0).parse().unwrap());
+    }
 
     #[test]
     fn asset_from_to_string() {

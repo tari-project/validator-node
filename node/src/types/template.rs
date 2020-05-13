@@ -51,6 +51,9 @@ impl Hash for TemplateID {
 }
 
 impl TemplateID {
+    /// TemplateID stored as BIGINT
+    pub const SQL_TYPE: Type = Type::INT8;
+
     /// Template type (0 - 4,294,967,295)
     #[inline]
     pub fn template_type(&self) -> u32 {
@@ -109,9 +112,6 @@ impl TemplateID {
             tail: 0,
         })
     }
-
-    /// TemplateID stored as BIGINT
-    pub const SQL_TYPE: Type = Type::INT8;
 }
 
 /// Load TemplateID from 64-bit unsigned int

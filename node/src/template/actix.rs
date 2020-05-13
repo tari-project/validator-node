@@ -1,35 +1,36 @@
-use crate::types::{AssetID, TokenID};
-use crate::db::models::{AssetState, Token};
-use super::{Template, TemplateContext};
-use anyhow::Result;
+use super::{Contracts, Template};
+use crate::{
+    types::{AssetID, TemplateID, TokenID},
+};
 use actix_web::web;
+use anyhow::Result;
 
-
-pub struct AssetCallParams(String,String);
+pub(crate) struct AssetCallParams(String, String);
 impl AssetCallParams {
-    pub async fn asset_state<'a>(&self, context: &'a TemplateContext) -> Result<AssetState> {
-        let template_id = context.template_id.to_hex();
-        let id: AssetID = format!("{}{}.{}", template_id, self.0, self.1).parse()?;
-        Ok(context.load_asset(id).await)
+    pub fn asset_id(&self, tpl: &TemplateID) -> Result<AssetID> {
+        let template_id = tpl.to_hex();
+        Ok(format!("{}{}.{}", template_id, self.0, self.1).parse()?)
     }
 }
 
-pub struct TokenCallParams(String,String,String);
+pub(crate) struct TokenCallParams(String, String, String);
 impl TokenCallParams {
-    pub async fn token<'a>(&self, context: &'a TemplateContext) -> Result<Token> {
-        let template_id = context.template_id.to_hex();
-        let id: TokenID = format!("{}{}.{}.{}", template_id, self.0, self.1, self.2).into();
-        Ok(context.load_token(id).await)
+    pub fn token_id(&self, tpl: &TemplateID) -> Result<TokenID> {
+        let template_id = tpl.to_hex();
+        Ok(format!("{}{}.{}{}", template_id, self.0, self.1, self.2).parse()?)
+    }
+
+    pub fn asset_id(&self, tpl: &TemplateID) -> Result<AssetID> {
+        AssetCallParams(self.0, self.1).asset_id(tpl)
     }
 }
 
 pub fn install_template<T: Template>(tpl: T, app: &mut web::ServiceConfig) {
-    let mut scope = web::scope(format!("/asset_call/{}/{{features}}/{{hash}}/", tpl.id()))
-        .app_data(tpl.id());
-    let mut scope = T::AssetContracts::configure_actix_routes(scope);
+    let mut scope = web::scope(format!("/asset_call/{}/{{features}}/{{hash}}/", T::id()).as_str()).app_data(T::id());
+    let mut scope = scope.configure(<T::AssetContracts as Contracts>::setup_actix_routes);
     app.service(scope);
-    let mut scope = web::scope(format!("/token_call/{}/{{features}}/{{hash}}/{{id}}", tpl.id()))
-        .app_data(tpl.id());
-    let mut scope = T::AssetContracts::configure_actix_routes(scope);
+    let mut scope =
+        web::scope(format!("/token_call/{}/{{features}}/{{hash}}/{{id}}", T::id()).as_str()).app_data(T::id());
+    let mut scope = scope.configure(<T::TokenContracts as Contracts>::setup_actix_routes);
     app.service(scope);
 }

@@ -1,12 +1,14 @@
 use super::TokenStatus;
-use crate::db::utils::errors::DBError;
+use crate::{
+    db::{models::AssetState, utils::errors::DBError},
+    types::TokenID,
+};
 use chrono::{DateTime, Utc};
+use deadpool_postgres::Client;
 use serde::Serialize;
 use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
-use tokio_postgres::Client;
-use crate::types::TokenID;
-use crate::db::models::AssetState;
+use tokio_postgres::types::Type;
 
 #[derive(Serialize, PostgresMapper)]
 #[pg_mapper(table = "tokens")]
@@ -42,11 +44,6 @@ impl From<(&AssetState, TokenID)> for NewToken {
     }
 }
 
-#[derive(Default, Clone, Debug)]
-pub struct UpdateToken {
-    pub additional_data_json: Option<Value>,
-}
-
 impl Token {
     /// Add token record
     pub async fn insert(params: NewToken, client: &Client) -> Result<uuid::Uuid, DBError> {
@@ -68,10 +65,13 @@ impl Token {
         Ok(result.get(0))
     }
 
-    /// Load token record
-    pub async fn update(id: uuid::Uuid, data: UpdateToken, client: &Client) -> Result<Token, DBError> {
-        let stmt = "UPDATE tokens WHERE id = $1 SET ";
-        let result = client.query_one(stmt, &[&id]).await?;
+    /// Update owner_pub_key and additional_data_json
+    pub async fn update(token: Token, client: &Client) -> Result<Token, DBError> {
+        const QUERY: &'static str = "UPDATE tokens WHERE id = $1 SET owner_pub_key = $2, additional_data_json = $3";
+        let stmt = client.prepare(QUERY).await?;
+        let result = client
+            .query_one(&stmt, &[&token.id, &token.owner_pub_key, &token.additional_data_json])
+            .await?;
         Ok(Token::from_row(result)?)
     }
 
@@ -80,6 +80,14 @@ impl Token {
         let stmt = "SELECT * FROM tokens WHERE id = $1";
         let result = client.query_one(stmt, &[&id]).await?;
         Ok(Token::from_row(result)?)
+    }
+
+    /// Find token record by token id )
+    pub async fn find_by_token_id(token_id: TokenID, client: &Client) -> Result<Option<Token>, DBError> {
+        const QUERY: &'static str = "SELECT * FROM tokens WHERE token_id = $1";
+        let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
+        let result = client.query_opt(&stmt, &[&token_id]).await?;
+        Ok(result.map(Self::from_row).transpose()?)
     }
 }
 

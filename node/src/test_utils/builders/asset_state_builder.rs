@@ -1,9 +1,9 @@
 use super::DigitalAssetBuilder;
-use crate::db::models::*;
+use crate::{db::models::*, types::AssetID};
 use chrono::{DateTime, Utc};
+use deadpool_postgres::Client;
 use rand::prelude::*;
 use serde_json::Value;
-use tokio_postgres::Client;
 use uuid::Uuid;
 
 #[allow(dead_code)]
@@ -18,7 +18,7 @@ pub struct AssetStateBuilder {
     pub initial_permission_bitflag: i64,
     pub additional_data_json: Value,
     pub digital_asset_id: Option<Uuid>,
-    pub asset_id: String,
+    pub asset_id: AssetID,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -38,7 +38,9 @@ impl Default for AssetStateBuilder {
             initial_permission_bitflag: 0,
             additional_data_json: serde_json::from_str("{}").unwrap(),
             digital_asset_id: None,
-            asset_id: format!("asset-id-placeholder-{}", x).into(), // TODO: Use a real asset ID here for consistency
+            asset_id: format!("7e6f4b801170db0bf86c9257fe562492469439556cba069a{:012X}", x)
+                .parse()
+                .unwrap(), // TODO: Use a real asset ID here for consistency
             __non_exhaustive: (),
         }
     }

@@ -1,5 +1,8 @@
 use super::AssetStatus;
-use crate::db::utils::{errors::DBError, validation::ValidationErrors};
+use crate::{
+    db::utils::{errors::DBError, validation::ValidationErrors},
+    types::AssetID,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -21,7 +24,7 @@ pub struct AssetState {
     pub superseded_by: Option<uuid::Uuid>,
     pub initial_permission_bitflag: i64,
     pub additional_data_json: Value,
-    pub asset_id: String,
+    pub asset_id: AssetID,
     pub digital_asset_id: uuid::Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -39,7 +42,7 @@ pub struct NewAssetState {
     pub expiry_date: Option<DateTime<Utc>>,
     pub initial_permission_bitflag: i64,
     pub additional_data_json: Value,
-    pub asset_id: String,
+    pub asset_id: AssetID,
     pub digital_asset_id: uuid::Uuid,
 }
 
@@ -109,7 +112,7 @@ impl AssetState {
     }
 
     /// Find asset state record by asset id )
-    pub async fn find_by_asset_id(asset_id: String, client: &Client) -> Result<Option<AssetState>, DBError> {
+    pub async fn find_by_asset_id(asset_id: AssetID, client: &Client) -> Result<Option<AssetState>, DBError> {
         let stmt = "SELECT * FROM asset_states WHERE asset_id = $1";
         let result = client.query_opt(stmt, &[&asset_id]).await?;
         Ok(result.map(AssetState::from_row).transpose()?)
@@ -132,7 +135,7 @@ mod test {
         dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
-        let tari_asset_id = "asset-id-placeholder-0976544466643335678667765432355555555445544".to_string();
+        let tari_asset_id: AssetID = "asset-id-placeholder-0976544466643335678667765432355555555445544".parse()?;
 
         let mut additional_data_json = HashMap::new();
         additional_data_json.insert("value", true);

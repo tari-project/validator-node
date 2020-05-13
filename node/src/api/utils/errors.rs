@@ -63,8 +63,7 @@ impl ApiError {
             },
             ApiError::BadRequest(msg) => ResponseData {
                 status_code: StatusCode::BAD_REQUEST,
-                error_response: HttpResponse::build(StatusCode::BAD_REQUEST)
-                    .json(json!({"error": msg})),
+                error_response: HttpResponse::build(StatusCode::BAD_REQUEST).json(json!({ "error": msg })),
             },
         }
     }

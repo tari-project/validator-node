@@ -1,9 +1,8 @@
 use super::AssetStateBuilder;
-use crate::db::models::*;
-use crate::types::TokenID;
+use crate::{db::models::*, types::TokenID};
+use deadpool_postgres::Client;
 use rand::prelude::*;
 use serde_json::Value;
-use tokio_postgres::Client;
 use uuid::Uuid;
 
 #[allow(dead_code)]
@@ -23,7 +22,12 @@ impl Default for TokenBuilder {
             owner_pub_key: format!("7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0{}", x).into(),
             asset_state_id: None,
             additional_data_json: serde_json::from_str("{}").unwrap(),
-            token_id: TokenID::default(),
+            token_id: format!(
+                "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0a{:032X}",
+                x
+            )
+            .parse()
+            .unwrap(),
             __non_exhaustive: (),
         }
     }
