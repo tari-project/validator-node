@@ -75,12 +75,6 @@ string_enum! { TokenStatus [Active, Retired]}
 #[doc(hide)]
 string_enum! { TransactionStatus [Prepare, PreCommit, Commit]}
 
-impl Default for CommitteeMode {
-    fn default() -> CommitteeMode {
-        CommitteeMode::Public
-    }
-}
-
 impl Default for TransactionStatus {
     fn default() -> Self {
         Self::Prepare

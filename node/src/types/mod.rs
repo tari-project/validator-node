@@ -3,6 +3,9 @@ pub mod errors;
 mod asset;
 pub use asset::AssetID;
 
+mod committee_mode;
+pub use committee_mode::{CommitteeMode, NodeSelectionStrategy};
+
 mod template;
 pub use template::TemplateID;
 
