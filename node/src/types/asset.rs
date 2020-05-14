@@ -1,3 +1,5 @@
+//! AssetID type in accordance with [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification) entity
+
 use super::{errors::TypeError, RaidID, TemplateID};
 use bytes::BytesMut;
 use postgres_protocol::types::text_from_sql;
@@ -29,15 +31,36 @@ impl Default for AssetID {
 
 impl AssetID {
     /// AssetID stored as TEXT
-    pub const SQL_TYPE: Type = Type::TEXT;
+    pub const SQL_TYPE: Type = Type::BPCHAR;
 
+    #[inline]
+    pub fn features(&self) -> u16 {
+        self.features
+    }
+
+    #[inline]
+    pub fn raid_id(&self) -> RaidID {
+        self.raid_id.clone()
+    }
+
+    #[inline]
+    pub fn hash(&self) -> String {
+        self.hash.clone()
+    }
+
+    /// TemplateID of AssetID.
+    ///
+    /// NOTE: TemplateID from AssetID comes with cleared flags
+    /// and reserved subsection. It is enough for template identification,
+    /// though should not be used for any other purposes
+    #[inline]
     pub fn template_id(&self) -> TemplateID {
         self.template_id.clone()
     }
 }
 
 impl<'a> FromSql<'a> for AssetID {
-    accepts!(TEXT);
+    accepts!(BPCHAR);
 
     fn from_sql(_: &Type, raw: &'a [u8]) -> Result<AssetID, Box<dyn Error + Sync + Send>> {
         Ok(text_from_sql(raw)?.parse()?)
@@ -45,7 +68,7 @@ impl<'a> FromSql<'a> for AssetID {
 }
 
 impl<'a> ToSql for AssetID {
-    accepts!(TEXT);
+    accepts!(BPCHAR);
 
     to_sql_checked!();
 
@@ -100,9 +123,16 @@ impl FromStr for AssetID {
             Some(buf) => RaidID::from_base58(buf),
         }?;
 
+        if hex.get(31..32) != Some(".") {
+            return Err(TypeError::parse_field_raw("AssetID::'.'", hex));
+        }
+
         let hash = match hex.get(32..64) {
             None => Err(TypeError::parse_field_raw("AssetID::hash", hex))?,
-            Some(buf) => buf.to_string(),
+            Some(buf) => {
+                u128::from_str_radix(buf, 16).map_err(|err| TypeError::parse_field("AssetID::hash", err.into()))?;
+                buf.to_string()
+            },
         };
 
         Ok(Self {
@@ -134,6 +164,23 @@ mod test {
     }
 
     #[test]
+    fn asset_bad_format() {
+        for bad_input in &[
+            "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ".to_string(),
+            "A".to_string(),
+            format!("{:030X}.{:033X}", 0, 0),
+            format!("{:031X}.{:033X}", 0, 0),
+            format!("{:031X}.{:031X}", 0, 0),
+            format!("{:031X}.{:031X}Z", 0, 0),
+            format!("{:031X}.{:033X}", 0, 0),
+            format!("{:032X}.{:031X}", 0, 0),
+            format!("{:032X}.{:032X}", 0, 0),
+        ] {
+            assert!(bad_input.parse::<AssetID>().is_err(), "Should fail on '{}'", bad_input)
+        }
+    }
+
+    #[test]
     fn asset_from_to_string() {
         let mut raw = vec!["A"; 64];
         raw[31] = ".";
@@ -150,7 +197,7 @@ mod test {
     }
 
     #[actix_rt::test]
-    async fn sql() -> anyhow::Result<()> {
+    async fn sql() {
         dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let mut raw = vec!["A"; 64];
@@ -159,10 +206,9 @@ mod test {
             raw[i * 8] = "1";
             let src = raw.join("");
             let id: AssetID = src.parse().expect("Failed to parse AssetID");
-            let stmt = client.prepare_typed("SELECT $1", &[AssetID::SQL_TYPE]).await?;
-            let id2: AssetID = client.query_one(&stmt, &[&id]).await?.get(0);
+            let stmt = client.prepare_typed("SELECT $1", &[AssetID::SQL_TYPE]).await.unwrap();
+            let id2: AssetID = client.query_one(&stmt, &[&id]).await.unwrap().get(0);
             assert_eq!(id, id2);
         }
-        Ok(())
     }
 }

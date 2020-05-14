@@ -126,38 +126,36 @@ mod test {
         db::utils::validation::*,
         test_utils::{builders::*, test_db_client},
     };
-    use std::collections::HashMap;
+
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
-    async fn crud() -> anyhow::Result<()> {
+    async fn crud() {
         let (client, _lock) = test_db_client().await;
-        let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
-        let tari_asset_id: AssetID = "asset-id-placeholder-0976544466643335678667765432355555555445544".parse()?;
+        let digital_asset = DigitalAssetBuilder::default().build(&client).await.unwrap();
+        let tari_asset_id: AssetID = "7e6f4b801170db0bf86c9257fe56249.469439556cba069a12afd1c72c585b0f"
+            .parse()
+            .unwrap();
 
-        let mut additional_data_json = HashMap::new();
-        additional_data_json.insert("value", true);
         let params = NewAssetState {
             name: "AssetName".to_string(),
             description: "Description".to_string(),
             asset_issuer_pub_key: PUBKEY.to_string(),
-            additional_data_json: serde_json::to_value(additional_data_json)?,
+            additional_data_json: serde_json::json!({"value": true}),
             asset_id: tari_asset_id.clone(),
             digital_asset_id: digital_asset.id,
             ..NewAssetState::default()
         };
-        let asset_id = AssetState::insert(params, &client).await?;
-        let asset = AssetState::load(asset_id, &client).await?;
+        let asset_id = AssetState::insert(params, &client).await.unwrap();
+        let asset = AssetState::load(asset_id, &client).await.unwrap();
         assert_eq!(asset.name, "AssetName".to_string());
         assert_eq!(asset.status, AssetStatus::Active);
         assert_eq!(asset.asset_issuer_pub_key, PUBKEY.to_string());
         assert_eq!(asset.digital_asset_id, digital_asset.id);
         assert_eq!(asset.asset_id, tari_asset_id.clone());
 
-        let found_asset = AssetState::find_by_asset_id(tari_asset_id, &client).await?;
+        let found_asset = AssetState::find_by_asset_id(tari_asset_id, &client).await.unwrap();
         assert_eq!(found_asset, Some(asset));
-
-        Ok(())
     }
 
     #[actix_rt::test]

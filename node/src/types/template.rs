@@ -24,6 +24,9 @@ pub struct TemplateID {
     template_version: u16,
     tail: u16,
 }
+/// Display format for TemplateID, this should not be used for storing/decoding
+///
+/// NOTE: for decodeable representation use [`TemplateID::to_hex()`] and [`TemplateID::from_hex()`]
 impl fmt::Display for TemplateID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}", self.template_type, self.template_version)?;
@@ -230,6 +233,22 @@ mod test {
                 "TemplateID from_hex and to_hex does not match {:?}",
                 id
             );
+        }
+    }
+
+    #[test]
+    fn template_bad_hex() {
+        for bad_input in &[
+            "ZZZZZZZZZZZZ".to_string(),
+            "A".to_string(),
+            format!("{:013X}", 0),
+            format!("{:011X}", 0),
+        ] {
+            assert!(
+                TemplateID::from_hex(bad_input).is_err(),
+                "Should fail on '{}'",
+                bad_input
+            )
         }
     }
 

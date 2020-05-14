@@ -3,7 +3,6 @@
 //! TemplateContext is always supplied as first parameter to Smart Contract implementation
 
 use crate::{
-    api::utils::errors::ApiError,
     db::{
         models::{
             transaction::{ContractTransaction, NewContractTransaction},
@@ -15,9 +14,7 @@ use crate::{
     },
     types::{AssetID, TemplateID, TokenID},
 };
-use actix_web::{dev::Payload, web::Data, FromRequest, HttpRequest};
-use deadpool_postgres::{Client, Pool};
-use futures::future::{err, FutureExt, LocalBoxFuture};
+use deadpool_postgres::{Client, Transaction};
 use std::ops::Deref;
 
 /// Smart contract request context
@@ -25,13 +22,13 @@ use std::ops::Deref;
 /// Fields:
 /// - TemplateID
 /// - (private) DB connection
-pub struct TemplateContext {
+pub struct TemplateContext<'a> {
     pub template_id: TemplateID,
-    client: Client,
-    // TODO:    transaction: Transaction,
+    pub(crate) client: Client,
+    pub(crate) transaction: Option<Transaction<'a>>,
 }
 
-impl TemplateContext {
+impl<'a> TemplateContext<'a> {
     pub async fn create_token(&self, data: NewToken) -> Result<Token, DBError> {
         let id = Token::insert(data, &self.client).await?;
         Token::load(id, &self.client).await
@@ -53,35 +50,10 @@ impl TemplateContext {
     pub async fn create_transaction(&self, data: NewContractTransaction) -> Result<ContractTransaction, DBError> {
         Ok(ContractTransaction::insert(data, &self.client).await?)
     }
-}
 
-/// Within Actix request retrieve
-impl FromRequest for TemplateContext {
-    type Config = ();
-    type Error = ApiError;
-    type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
-
-    #[inline]
-    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
-        // initialize whole context in this module - would make moduel quite complex but easier to debug
-        // middleware might pass parameters via .extensions() or .app_data()
-        let pool = req
-            .app_data::<Data<Pool>>()
-            .expect("Failed to retrieve DB pool")
-            .as_ref();
-        let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
-            Some(id) => id.get_ref().clone(),
-            None => return err(ApiError::bad_request("Template data not found by this path")).boxed_local(),
-        };
-
-        let pool = pool.clone();
-        async move {
-            match pool.get().await {
-                Ok(client) => Ok(TemplateContext { client, template_id }),
-                Err(err) => Err(DBError::from(err).into()),
-            }
-        }
-        .boxed_local()
+    pub async fn commit(&self) -> Result<(), DBError> {
+        // TODO: implement database transactino through the whole Context
+        Ok(())
     }
 }
 
@@ -90,21 +62,21 @@ impl FromRequest for TemplateContext {
 /// Fields:
 /// - TemplateContext
 /// - AssetState
-pub struct AssetTemplateContext {
-    context: TemplateContext,
+pub struct AssetTemplateContext<'a> {
+    context: TemplateContext<'a>,
     pub asset: AssetState,
 }
 
-impl Deref for AssetTemplateContext {
-    type Target = TemplateContext;
+impl<'a> Deref for AssetTemplateContext<'a> {
+    type Target = TemplateContext<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.context
     }
 }
 
-impl AssetTemplateContext {
-    pub fn new(context: TemplateContext, asset: AssetState) -> Self {
+impl<'a> AssetTemplateContext<'a> {
+    pub fn new(context: TemplateContext<'a>, asset: AssetState) -> Self {
         Self { context, asset }
     }
 }
@@ -115,22 +87,22 @@ impl AssetTemplateContext {
 /// - TemplateContext
 /// - AssetState
 /// - Token
-pub struct TokenTemplateContext {
-    context: TemplateContext,
+pub struct TokenTemplateContext<'a> {
+    context: TemplateContext<'a>,
     pub asset: AssetState,
     pub token: Token,
 }
 
-impl Deref for TokenTemplateContext {
-    type Target = TemplateContext;
+impl<'a> Deref for TokenTemplateContext<'a> {
+    type Target = TemplateContext<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.context
     }
 }
 
-impl TokenTemplateContext {
-    pub fn new(context: TemplateContext, asset: AssetState, token: Token) -> Self {
+impl<'a> TokenTemplateContext<'a> {
+    pub fn new(context: TemplateContext<'a>, asset: AssetState, token: Token) -> Self {
         Self { context, asset, token }
     }
 }

@@ -1,8 +1,5 @@
 use super::TokenStatus;
-use crate::{
-    db::{models::AssetState, utils::errors::DBError},
-    types::TokenID,
-};
+use crate::{db::utils::errors::DBError, types::TokenID};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
 use serde::Serialize;
@@ -33,17 +30,6 @@ pub struct NewToken {
     pub additional_data_json: Value,
 }
 
-impl From<(&AssetState, TokenID)> for NewToken {
-    fn from((asset, token_id): (&AssetState, TokenID)) -> Self {
-        Self {
-            owner_pub_key: asset.asset_issuer_pub_key.clone(),
-            asset_state_id: asset.id.clone(),
-            token_id,
-            ..Default::default()
-        }
-    }
-}
-
 impl Token {
     /// Add token record
     pub async fn insert(params: NewToken, client: &Client) -> Result<uuid::Uuid, DBError> {
@@ -51,14 +37,16 @@ impl Token {
             INSERT INTO tokens (
                 owner_pub_key,
                 asset_state_id,
-                additional_data_json
-            ) VALUES ($1, $2, $3) RETURNING id";
+                additional_data_json,
+                token_id
+            ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
                 &params.owner_pub_key,
                 &params.asset_state_id,
                 &params.additional_data_json,
+                &params.token_id,
             ])
             .await?;
 
@@ -100,25 +88,27 @@ impl Token {
 mod test {
     use super::*;
     use crate::test_utils::{builders::*, test_db_client};
-    use std::collections::HashMap;
+    use futures::future::try_join_all;
+    use serde_json::json;
+
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
+    const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
     #[actix_rt::test]
-    async fn crud() -> anyhow::Result<()> {
+    async fn crud() {
         let (client, _lock) = test_db_client().await;
-        let asset = AssetStateBuilder::default().build(&client).await?;
-        let asset2 = AssetStateBuilder::default().build(&client).await?;
-        let mut additional_data_json = HashMap::new();
-        additional_data_json.insert("value", true);
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+        let asset2 = AssetStateBuilder::default().build(&client).await.unwrap();
 
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            additional_data_json: serde_json::to_value(additional_data_json.clone())?,
+            additional_data_json: json!({"value": true}),
+            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
-        let token_id = Token::insert(params, &client).await?;
-        let token = Token::load(token_id, &client).await?;
+        let token_id = Token::insert(params, &client).await.unwrap();
+        let token = Token::load(token_id, &client).await.unwrap();
         assert_eq!(token.owner_pub_key, PUBKEY.to_string());
         assert_eq!(token.asset_state_id, asset.id);
         assert_eq!(token.issue_number, 1);
@@ -126,11 +116,12 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            additional_data_json: serde_json::to_value(additional_data_json.clone())?,
+            additional_data_json: json!({"value": true}),
+            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
-        let token_id = Token::insert(params, &client).await?;
-        let token = Token::load(token_id, &client).await?;
+        let token_id = Token::insert(params, &client).await.unwrap();
+        let token = Token::load(token_id, &client).await.unwrap();
         assert_eq!(token.owner_pub_key, PUBKEY.to_string());
         assert_eq!(token.asset_state_id, asset.id);
         assert_eq!(token.issue_number, 2);
@@ -138,15 +129,52 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset2.id,
-            additional_data_json: serde_json::to_value(additional_data_json)?,
+            additional_data_json: json!({"value": true}),
+            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
-        let token_id = Token::insert(params, &client).await?;
-        let token = Token::load(token_id, &client).await?;
+        let token_id = Token::insert(params, &client).await.unwrap();
+        let token = Token::load(token_id, &client).await.unwrap();
         assert_eq!(token.owner_pub_key, PUBKEY.to_string());
         assert_eq!(token.asset_state_id, asset2.id);
         assert_eq!(token.issue_number, 1);
+    }
 
-        Ok(())
+    #[actix_rt::test]
+    async fn duplicate_token_id() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+
+        let params = NewToken {
+            owner_pub_key: PUBKEY.to_string(),
+            asset_state_id: asset.id,
+            additional_data_json: json!({"value": true}),
+            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
+            ..NewToken::default()
+        };
+        Token::insert(params.clone(), &client).await.unwrap();
+        assert!(Token::insert(params, &client).await.is_err());
+    }
+
+    #[actix_rt::test]
+    async fn issue_number_concurrency() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+
+        let params = NewToken {
+            owner_pub_key: PUBKEY.to_string(),
+            asset_state_id: asset.id,
+            additional_data_json: json!({"value": true}),
+            ..NewToken::default()
+        };
+        let client = std::sync::Arc::new(client);
+        let futs = (0..100).map(move |_| {
+            let client = client.clone();
+            let mut params = params.clone();
+            params.token_id = TokenID::new(&asset.asset_id, NODE_ID).unwrap();
+            async move { Token::insert(params, client.as_ref()).await }
+        });
+        let res = try_join_all(futs).await.unwrap();
+        assert_eq!(res.len(), 100);
     }
 }

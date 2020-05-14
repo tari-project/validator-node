@@ -11,8 +11,8 @@ use tokio_postgres::types::Type;
 #[pg_mapper(table = "contract_transactions")]
 pub struct ContractTransaction {
     pub id: uuid::Uuid,
-    pub asset_uid: uuid::Uuid,
-    pub token_uid: Option<uuid::Uuid>,
+    pub asset_state_id: uuid::Uuid,
+    pub token_id: Option<uuid::Uuid>,
     pub template_id: TemplateID,
     pub contract_name: String,
     pub status: TransactionStatus,
@@ -25,8 +25,8 @@ pub struct ContractTransaction {
 /// Query paramteres for adding new asset record
 #[derive(Default, Clone, Debug)]
 pub struct NewContractTransaction {
-    pub asset_uid: uuid::Uuid,
-    pub token_uid: Option<uuid::Uuid>,
+    pub asset_state_id: uuid::Uuid,
+    pub token_id: Option<uuid::Uuid>,
     pub template_id: TemplateID,
     pub contract_name: String,
     pub status: TransactionStatus,
@@ -39,8 +39,8 @@ impl ContractTransaction {
     pub async fn insert(params: NewContractTransaction, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
             INSERT INTO contract_transactions (
-                asset_uid,
-                token_uid,
+                asset_state_id,
+                token_id,
                 template_id,
                 contract_name,
                 status,
@@ -49,8 +49,8 @@ impl ContractTransaction {
             ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *";
         let stmt = client
             .prepare_typed(QUERY, &[
-                Type::OID,
-                Type::OID,
+                Type::UUID,
+                Type::UUID,
                 TemplateID::SQL_TYPE,
                 Type::TEXT,
                 Type::TEXT,
@@ -60,8 +60,8 @@ impl ContractTransaction {
             .await?;
         let row = client
             .query_one(&stmt, &[
-                &params.asset_uid,
-                &params.token_uid,
+                &params.asset_state_id,
+                &params.token_id,
                 &params.template_id,
                 &params.contract_name,
                 &params.status,
@@ -82,20 +82,20 @@ impl ContractTransaction {
     pub async fn update(&self, client: &Client) -> Result<u64, DBError> {
         const QUERY: &'static str = "
             UPDATE contract_transactions SET
-                asset_uid = $2,
-                token_uid = $3,
+                asset_state_id = $2,
+                token_id = $3,
                 status = $4,
                 result = $5,
                 updated_at = NOW()
             WHERE id = $1";
         let stmt = client
-            .prepare_typed(QUERY, &[Type::OID, Type::OID, Type::OID, Type::TEXT, Type::JSONB])
+            .prepare_typed(QUERY, &[Type::UUID, Type::UUID, Type::UUID, Type::TEXT, Type::JSONB])
             .await?;
         let updated = client
             .execute(&stmt, &[
                 &self.id,
-                &self.asset_uid,
-                &self.token_uid,
+                &self.asset_state_id,
+                &self.token_id,
                 &self.status,
                 &self.result,
             ])
@@ -125,21 +125,22 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
         let params = NewContractTransaction {
-            asset_uid: asset.id,
+            asset_state_id: asset.id,
             template_id: asset.asset_id.template_id(),
             contract_name: "test_contract".into(),
+            params: json!({"test_param": 1}),
             ..NewContractTransaction::default()
         };
         let mut transaction = ContractTransaction::insert(params, &client).await.unwrap();
         assert_eq!(transaction.template_id, asset.asset_id.template_id());
         assert_eq!(transaction.params, json!({"test_param": 1}));
-        assert_eq!(transaction.result, json!({}));
+        assert!(transaction.result.is_null());
         assert_eq!(transaction.status, TransactionStatus::Prepare);
 
         let asset2 = AssetStateBuilder::default().build(&client).await.unwrap();
         let token = TokenBuilder::default().build(&client).await.unwrap();
-        transaction.asset_uid = asset2.id;
-        transaction.token_uid = Some(token.id);
+        transaction.asset_state_id = asset2.id;
+        transaction.token_id = Some(token.id);
         transaction.status = TransactionStatus::Commit;
         transaction.result = json!({"test_result": "success"});
         let updated = transaction.update(&client).await.unwrap();
@@ -147,8 +148,8 @@ mod test {
 
         let transaction2 = ContractTransaction::load(transaction.id, &client).await.unwrap();
         assert_eq!(transaction2.id, transaction.id);
-        assert_eq!(transaction2.asset_uid, transaction.asset_uid);
-        assert_eq!(transaction2.token_uid, transaction.token_uid);
+        assert_eq!(transaction2.asset_state_id, transaction.asset_state_id);
+        assert_eq!(transaction2.token_id, transaction.token_id);
         assert_eq!(transaction2.result, transaction.result);
         assert_eq!(transaction2.status, transaction.status);
         assert!(transaction2.updated_at > transaction.updated_at);

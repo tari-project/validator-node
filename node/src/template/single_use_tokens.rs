@@ -14,12 +14,22 @@ pub enum AssetContracts {
 }
 
 //#[contract(asset)]
-async fn issue_tokens(context: AssetTemplateContext, token_ids: Vec<TokenID>) -> Result<Vec<Token>> {
+async fn issue_tokens<'a>(
+    context: AssetTemplateContext<'a>,
+    owner_pub_key: Pubkey,
+    token_ids: Vec<TokenID>,
+) -> Result<Vec<Token>>
+{
     let mut tokens = Vec::with_capacity(token_ids.len());
     let asset = &context.asset;
-    let tokens_data = token_ids.into_iter().map(|id| NewToken::from((asset, id)));
-    for data in tokens_data {
-        if data.token_id.asset_id()? != asset.asset_id {
+    let new_token = move |token_id| NewToken {
+        token_id,
+        owner_pub_key: owner_pub_key.clone(),
+        asset_state_id: asset.id.clone(),
+        ..NewToken::default()
+    };
+    for data in token_ids.into_iter().map(new_token) {
+        if data.token_id.asset_id() != asset.asset_id {
             bail!("Token ID {} does not match asset {}", data.token_id, asset.asset_id);
         }
         let token = context.create_token(data).await?;
@@ -38,7 +48,7 @@ pub enum TokenContracts {
 
 //#[contract(token)]
 // With token contract TokenTemplateContext is always passed as first argument
-async fn transfer_token(context: TokenTemplateContext, user_pubkey: Pubkey) -> Result<Token> {
+async fn transfer_token<'a>(context: TokenTemplateContext<'a>, user_pubkey: Pubkey) -> Result<Token> {
     let mut token = context.token.clone();
     if token.status == TokenStatus::Retired {
         bail!("Tried to transfer already used token");
@@ -52,7 +62,7 @@ async fn transfer_token(context: TokenTemplateContext, user_pubkey: Pubkey) -> R
     Ok(token)
 }
 
-/****************** TEMPLATE *************/
+/// **************** TEMPLATE ************
 
 pub struct SingleUseTokenTemplate;
 impl Template for SingleUseTokenTemplate {
@@ -74,15 +84,16 @@ mod expanded_macros {
     #[derive(Serialize, Deserialize)]
     struct IssueTokensPayload {
         token_ids: Vec<TokenID>,
+        owner_pub_key: Pubkey,
     }
 
     // wrapper will convert from actix types into Rust,
     // create transactions writing RPC params,
     // returning transaction
-    async fn issue_tokens_actix(
+    async fn issue_tokens_actix<'a>(
         params: web::Path<AssetCallParams>,
         data: web::Json<IssueTokensPayload>,
-        context: TemplateContext,
+        context: TemplateContext<'a>,
     ) -> Result<web::Json<ContractTransaction>, ApiError>
     {
         // extract and transform parameters
@@ -95,7 +106,7 @@ mod expanded_macros {
         let context = AssetTemplateContext::new(context, asset.clone());
         let params = data.into_inner();
         let transaction = NewContractTransaction {
-            asset_uid: asset.id,
+            asset_state_id: asset.id,
             template_id: context.template_id.clone(),
             params: serde_json::to_value(&params)
                 .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?,
@@ -107,7 +118,7 @@ mod expanded_macros {
 
         // TODO: move following outside of actix request lifecycle
         // run contract
-        let result = issue_tokens(context, params.token_ids).await?;
+        let result = issue_tokens(context, params.owner_pub_key, params.token_ids).await?;
         // update transaction after contract executed
         transaction.result = serde_json::to_value(result)
             .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?;
@@ -132,10 +143,10 @@ mod expanded_macros {
         user_pubkey: Pubkey,
     }
 
-    async fn transfer_token_actix(
+    async fn transfer_token_actix<'a>(
         params: web::Path<TokenCallParams>,
         data: web::Json<TransferTokenPayload>,
-        context: TemplateContext,
+        context: TemplateContext<'a>,
     ) -> Result<web::Json<ContractTransaction>, ApiError>
     {
         // extract and transform parameters
@@ -154,8 +165,8 @@ mod expanded_macros {
         let context = TokenTemplateContext::new(context, asset.clone(), token.clone());
         // create transaction
         let transaction = NewContractTransaction {
-            asset_uid: asset.id,
-            token_uid: Some(token.id),
+            asset_state_id: asset.id,
+            token_id: Some(token.id),
             template_id: context.template_id.clone(),
             params: serde_json::to_value(&params)
                 .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?,

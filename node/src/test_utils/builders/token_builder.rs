@@ -23,7 +23,7 @@ impl Default for TokenBuilder {
             asset_state_id: None,
             additional_data_json: serde_json::from_str("{}").unwrap(),
             token_id: format!(
-                "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0a{:032X}",
+                "7e6f4b801170db0bf86c9257fe56249.469439556cba069a12afd1c72c585b0a{:032X}",
                 x
             )
             .parse()

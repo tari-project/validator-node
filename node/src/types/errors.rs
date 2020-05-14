@@ -12,6 +12,8 @@ pub enum TypeError {
     ParseFieldRaw { field: &'static str, raw: String },
     #[error("{obj} should be {len}-char string, got {raw} instread")]
     SourceLen { obj: &'static str, len: usize, raw: String },
+    #[error("Failed to generate uuid {0}")]
+    Uuid(#[from] uuid::Error),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

@@ -1,6 +1,6 @@
 CREATE TABLE contract_transactions (
                        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-                       asset_id uuid NOT NULL references asset_states(id),
+                       asset_state_id uuid NOT NULL references asset_states(id),
                        token_id uuid NULL references tokens(id),
                        template_id BIGINT NOT NULL,
                        contract_name TEXT NOT NULL,
