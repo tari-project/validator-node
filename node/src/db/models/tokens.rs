@@ -86,7 +86,6 @@ mod test {
     use super::*;
     use crate::test_utils::{builders::*, load_env, test_db_client};
     use serde_json::json;
-    use std::collections::HashMap;
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
@@ -95,13 +94,11 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
         let asset2 = AssetStateBuilder::default().build(&client).await?;
-        let mut initial_data = HashMap::new();
-        initial_data.insert("value", true);
 
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            initial_data_json: serde_json::to_value(initial_data.clone())?,
+            initial_data_json: json!({"value": true}),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
@@ -113,7 +110,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            initial_data_json: serde_json::to_value(initial_data.clone())?,
+            initial_data_json: json!({"value": true}),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;
@@ -125,7 +122,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset2.id,
-            initial_data_json: serde_json::to_value(initial_data)?,
+            initial_data_json: json!({"value": true}),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await?;

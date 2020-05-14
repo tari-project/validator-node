@@ -157,7 +157,6 @@ mod test {
         test_utils::{builders::*, load_env, test_db_client},
     };
     use serde_json::json;
-    use std::collections::HashMap;
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
@@ -168,13 +167,11 @@ mod test {
         let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
         let tari_asset_id = "asset-id-placeholder-0976544466643335678667765432355555555445544".to_string();
 
-        let mut initial_data = HashMap::new();
-        initial_data.insert("value", true);
         let params = NewAssetState {
             name: "AssetName".to_string(),
             description: "Description".to_string(),
             asset_issuer_pub_key: PUBKEY.to_string(),
-            initial_data_json: serde_json::to_value(initial_data)?,
+            initial_data_json: json!({"value": true}),
             asset_id: tari_asset_id.clone(),
             digital_asset_id: digital_asset.id,
             ..NewAssetState::default()
