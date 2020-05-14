@@ -1,4 +1,4 @@
-use super::TokenStatus;
+use super::{AppendOnlyStatus, TokenStatus};
 use crate::db::utils::errors::DBError;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -32,6 +32,7 @@ pub struct NewToken {
 #[derive(Default, Clone, Debug)]
 pub struct NewTokenAppendOnly {
     pub token_id: uuid::Uuid,
+    pub status: AppendOnlyStatus,
     pub state_data_json: Value,
 }
 
@@ -68,11 +69,12 @@ impl Token {
         const QUERY: &'static str = "
             INSERT INTO token_state_append_only (
                 token_id,
-                state_data_json
-            ) VALUES ($1, $2) RETURNING id";
+                state_data_json,
+                status
+            ) VALUES ($1, $2, $3) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
-            .query_one(&stmt, &[&params.token_id, &params.state_data_json])
+            .query_one(&stmt, &[&params.token_id, &params.state_data_json, &params.status])
             .await?;
 
         Ok(result.get(0))
@@ -139,11 +141,9 @@ mod test {
     async fn store_append_only_state() -> anyhow::Result<()> {
         load_env();
         let (client, _lock) = test_db_client().await;
-        let mut initial_data: HashMap<&str, Value> = HashMap::new();
-        initial_data.insert("value", json!(true));
-        initial_data.insert("value2", json!(4));
+        let initial_data = json!({"value": true, "value2": 4});
         let token = TokenBuilder {
-            initial_data_json: json!(initial_data.clone()),
+            initial_data_json: initial_data.clone(),
             ..TokenBuilder::default()
         }
         .build(&client)
@@ -151,41 +151,45 @@ mod test {
         assert_eq!(json!(initial_data), token.initial_data_json);
         assert_eq!(json!(initial_data), token.additional_data_json);
 
-        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
-        state_data_json.insert("value", Value::Null);
-        state_data_json.insert("value2", json!(8));
-        state_data_json.insert("value3", json!(2));
+        let empty_value: Option<String> = None;
+        let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         Token::store_append_only_state(
             NewTokenAppendOnly {
                 token_id: token.id,
-                state_data_json: json!(state_data_json),
+                state_data_json: state_data_json.clone(),
+                status: AppendOnlyStatus::Commit,
             },
             &client,
         )
         .await?;
-        let mut expected_data = initial_data.clone();
-        expected_data.insert("value", Value::Null);
-        expected_data.insert("value2", json!(8));
-        expected_data.insert("value3", json!(2));
         let token = Token::load(token.id, &client).await?;
-        assert_eq!(json!(expected_data), token.additional_data_json);
+        assert_eq!(state_data_json, token.additional_data_json);
 
-        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
-        state_data_json.insert("value", json!(false));
-        state_data_json.insert("value3", Value::Null);
+        let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         Token::store_append_only_state(
             NewTokenAppendOnly {
                 token_id: token.id,
-                state_data_json: json!(state_data_json),
+                state_data_json: state_data_json.clone(),
+                status: AppendOnlyStatus::Commit,
             },
             &client,
         )
         .await?;
-        expected_data.insert("value", json!(false));
-        expected_data.remove(&"value2");
-        expected_data.insert("value3", Value::Null);
         let token = Token::load(token.id, &client).await?;
-        assert_eq!(json!(expected_data), token.additional_data_json);
+        assert_eq!(state_data_json.clone(), token.additional_data_json);
+
+        let pre_commit_state_data_json = json!({"value": true, "value3": 1});
+        Token::store_append_only_state(
+            NewTokenAppendOnly {
+                token_id: token.id,
+                state_data_json: pre_commit_state_data_json,
+                status: AppendOnlyStatus::PreCommit,
+            },
+            &client,
+        )
+        .await?;
+        let token = Token::load(token.id, &client).await?;
+        assert_eq!(state_data_json, token.additional_data_json);
 
         Ok(())
     }

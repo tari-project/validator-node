@@ -1,4 +1,4 @@
-use super::AssetStatus;
+use super::{AppendOnlyStatus, AssetStatus};
 use crate::db::utils::{errors::DBError, validation::ValidationErrors};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -48,6 +48,7 @@ pub struct NewAssetState {
 #[derive(Default, Clone, Debug)]
 pub struct NewAssetStateAppendOnly {
     pub asset_state_id: uuid::Uuid,
+    pub status: AppendOnlyStatus,
     pub state_data_json: Value,
 }
 
@@ -132,11 +133,16 @@ impl AssetState {
         const QUERY: &'static str = "
             INSERT INTO asset_state_append_only (
                 asset_state_id,
-                state_data_json
-            ) VALUES ($1, $2) RETURNING id";
+                state_data_json,
+                status
+            ) VALUES ($1, $2, $3) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
-            .query_one(&stmt, &[&params.asset_state_id, &params.state_data_json])
+            .query_one(&stmt, &[
+                &params.asset_state_id,
+                &params.state_data_json,
+                &params.status,
+            ])
             .await?;
 
         Ok(result.get(0))
@@ -191,53 +197,55 @@ mod test {
     async fn store_append_only_state() -> anyhow::Result<()> {
         load_env();
         let (client, _lock) = test_db_client().await;
-        let mut initial_data: HashMap<&str, Value> = HashMap::new();
-        initial_data.insert("value", json!(true));
-        initial_data.insert("value2", json!(4));
+        let initial_data = json!({"value": true, "value2": 4});
         let asset = AssetStateBuilder {
-            initial_data_json: json!(initial_data.clone()),
+            initial_data_json: initial_data.clone(),
             ..AssetStateBuilder::default()
         }
         .build(&client)
         .await?;
-        assert_eq!(json!(initial_data), asset.initial_data_json);
-        assert_eq!(json!(initial_data), asset.additional_data_json);
+        assert_eq!(initial_data, asset.initial_data_json);
+        assert_eq!(initial_data, asset.additional_data_json);
 
-        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
-        state_data_json.insert("value", Value::Null);
-        state_data_json.insert("value2", json!(8));
-        state_data_json.insert("value3", json!(2));
+        let empty_value: Option<String> = None;
+        let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
-                state_data_json: json!(state_data_json),
+                state_data_json: state_data_json.clone(),
+                status: AppendOnlyStatus::Commit,
             },
             &client,
         )
         .await?;
-        let mut expected_data = initial_data.clone();
-        expected_data.insert("value", Value::Null);
-        expected_data.insert("value2", json!(8));
-        expected_data.insert("value3", json!(2));
         let asset = AssetState::load(asset.id, &client).await?;
-        assert_eq!(json!(expected_data), asset.additional_data_json);
+        assert_eq!(state_data_json, asset.additional_data_json);
 
-        let mut state_data_json: HashMap<&str, Value> = HashMap::new();
-        state_data_json.insert("value", json!(false));
-        state_data_json.insert("value3", Value::Null);
+        let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
-                state_data_json: json!(state_data_json),
+                state_data_json: state_data_json.clone(),
+                status: AppendOnlyStatus::Commit,
             },
             &client,
         )
         .await?;
-        expected_data.insert("value", json!(false));
-        expected_data.remove(&"value2");
-        expected_data.insert("value3", Value::Null);
         let asset = AssetState::load(asset.id, &client).await?;
-        assert_eq!(json!(expected_data), asset.additional_data_json);
+        assert_eq!(state_data_json.clone(), asset.additional_data_json);
+
+        let pre_commit_state_data_json = json!({"value": true, "value3": 1});
+        AssetState::store_append_only_state(
+            NewAssetStateAppendOnly {
+                asset_state_id: asset.id,
+                state_data_json: pre_commit_state_data_json,
+                status: AppendOnlyStatus::PreCommit,
+            },
+            &client,
+        )
+        .await?;
+        let asset = AssetState::load(asset.id, &client).await?;
+        assert_eq!(state_data_json, asset.additional_data_json);
 
         Ok(())
     }

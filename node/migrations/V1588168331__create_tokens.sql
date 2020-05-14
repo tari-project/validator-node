@@ -28,4 +28,4 @@ EXECUTE PROCEDURE set_issue_number();
 CREATE INDEX index_tokens_uuid ON tokens (id);
 CREATE INDEX index_tokens_owner_pub_key ON tokens (owner_pub_key);
 CREATE INDEX index_tokens_status ON tokens (status);
-CREATE UNIQUE INDEX index_tokens_asset_state_id_issue_number ON tokens (asset_state_id, issue_number);
+CREATE INDEX index_tokens_asset_state_id_issue_number ON tokens (asset_state_id, issue_number);
