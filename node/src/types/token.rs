@@ -165,7 +165,6 @@ mod test {
 
     #[actix_rt::test]
     async fn sql() {
-        dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let mut raw = vec!["A"; 96];
         raw[31] = ".";
