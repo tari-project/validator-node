@@ -26,7 +26,7 @@ async fn issue_tokens<'a>(
     let new_token = move |token_id| NewToken {
         token_id,
         asset_state_id: asset.id.clone(),
-        initial_data_json: json!({"user_pubkey": user_pubkey}),
+        initial_data_json: json!({ "user_pubkey": user_pubkey }),
         ..NewToken::default()
     };
     for data in token_ids.into_iter().map(new_token) {
@@ -54,8 +54,11 @@ async fn transfer_token<'a>(context: &TokenTemplateContext<'a>, user_pubkey: Pub
     if token.status == TokenStatus::Retired {
         bail!("Tried to transfer already used token");
     }
-    let append_state_data_json = Some(json!({"user_pubkey": user_pubkey}));
-    let data = UpdateToken { append_state_data_json, ..Default::default() };
+    let append_state_data_json = Some(json!({ "user_pubkey": user_pubkey }));
+    let data = UpdateToken {
+        append_state_data_json,
+        ..Default::default()
+    };
     let token = context.update_token(token, data).await?;
     Ok(token)
 }
@@ -74,7 +77,10 @@ impl Template for SingleUseTokenTemplate {
 
 mod expanded_macros {
     use super::*;
-    use crate::{api::errors::{ApiError, ApplicationError}, db::models::transactions::*};
+    use crate::{
+        api::errors::{ApiError, ApplicationError},
+        db::models::transactions::*,
+    };
     use serde::{Deserialize, Serialize};
 
     ////// impl #[contract(asset)] for issue_tokens()
@@ -118,9 +124,13 @@ mod expanded_macros {
         // run contract
         let result = issue_tokens(&context, params.user_pubkey, params.token_ids).await?;
         // update transaction after contract executed
-        let result = serde_json::to_value(result)
-            .map_err(|err| ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str()))?;
-        let data = UpdateContractTransaction { result: Some(result), status: Some(TransactionStatus::Commit) };
+        let result = serde_json::to_value(result).map_err(|err| {
+            ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
+        })?;
+        let data = UpdateContractTransaction {
+            result: Some(result),
+            status: Some(TransactionStatus::Commit),
+        };
         context.update_transaction(data).await?;
         // There must be transaction - otherwise we would fail on previous call
         Ok(web::Json(context.into()))
@@ -179,9 +189,13 @@ mod expanded_macros {
         // run contract
         let result = transfer_token(&context, params.user_pubkey).await?;
         // update transaction
-        let result = serde_json::to_value(result)
-            .map_err(|err| ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str()))?;
-        let data = UpdateContractTransaction { result: Some(result), status: Some(TransactionStatus::Commit) };
+        let result = serde_json::to_value(result).map_err(|err| {
+            ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
+        })?;
+        let data = UpdateContractTransaction {
+            result: Some(result),
+            status: Some(TransactionStatus::Commit),
+        };
         context.update_transaction(data).await?;
         // There must be transaction - otherwise we would fail on previous call
         Ok(web::Json(context.into()))

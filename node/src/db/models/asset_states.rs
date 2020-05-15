@@ -159,8 +159,7 @@ impl AssetState {
 mod test {
     use super::*;
     use crate::{
-        db::utils::validation::*,
-        db::models::TransactionStatus,
+        db::{models::TransactionStatus, utils::validation::*},
         test_utils::{builders::*, test_db_client},
     };
     use serde_json::json;
@@ -213,7 +212,10 @@ mod test {
             asset_state_id: Some(asset.id),
             status: TransactionStatus::Commit,
             ..Default::default()
-        }.build(&client).await.unwrap();
+        }
+        .build(&client)
+        .await
+        .unwrap();
         let empty_value: Option<String> = None;
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         AssetState::store_append_only_state(
@@ -248,7 +250,10 @@ mod test {
         let transaction = ContractTransactionBuilder {
             asset_state_id: Some(asset.id),
             ..Default::default()
-        }.build(&client).await.unwrap();
+        }
+        .build(&client)
+        .await
+        .unwrap();
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,

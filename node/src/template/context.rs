@@ -4,12 +4,10 @@
 
 use crate::{
     api::errors::{ApiError, ApplicationError},
-    db::{
-        models::{
-            transactions::{ContractTransaction, NewContractTransaction, UpdateContractTransaction},
-            AssetState,
-            tokens::{NewToken, Token, UpdateToken },
-        },
+    db::models::{
+        tokens::{NewToken, Token, UpdateToken},
+        transactions::{ContractTransaction, NewContractTransaction, UpdateContractTransaction},
+        AssetState,
     },
     types::{AssetID, TemplateID, TokenID},
 };
@@ -38,7 +36,11 @@ impl<'a> TemplateContext<'a> {
         if let Some(transaction) = self.contract_transaction.as_ref() {
             Ok(token.update(data, transaction, &self.client).await?)
         } else {
-            Err(ApplicationError::new(format!("Failed to update token {} without ContractTransaction", token.token_id)).into())
+            Err(ApplicationError::new(format!(
+                "Failed to update token {} without ContractTransaction",
+                token.token_id
+            ))
+            .into())
         }
     }
 
@@ -64,7 +66,11 @@ impl<'a> TemplateContext<'a> {
             self.contract_transaction = Some(transaction.update(data, &self.client).await?);
             Ok(())
         } else {
-            Err(ApplicationError::new(format!("Failed to update ContractTransaction {:?}: transaction not found", data)).into())
+            Err(ApplicationError::new(format!(
+                "Failed to update ContractTransaction {:?}: transaction not found",
+                data
+            ))
+            .into())
         }
     }
 
@@ -81,7 +87,6 @@ impl<'a> From<TemplateContext<'a>> for Option<ContractTransaction> {
         ctx.contract_transaction
     }
 }
-
 
 /// Smart contract request context for asset contracts
 ///

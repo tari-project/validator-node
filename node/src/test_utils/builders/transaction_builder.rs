@@ -1,9 +1,7 @@
 use super::AssetStateBuilder;
-use crate::db::models::*;
-use crate::types::TemplateID;
+use crate::{db::models::*, types::TemplateID};
 use deadpool_postgres::Client;
-use serde_json::Value;
-use serde_json::json;
+use serde_json::{json, Value};
 
 #[allow(dead_code)]
 pub struct ContractTransactionBuilder {

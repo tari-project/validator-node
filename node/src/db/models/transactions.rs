@@ -95,13 +95,7 @@ impl ContractTransaction {
         let stmt = client
             .prepare_typed(QUERY, &[Type::UUID, Type::TEXT, Type::JSONB])
             .await?;
-        let updated = client
-            .query_one(&stmt, &[
-                &self.id,
-                &data.status,
-                &data.result,
-            ])
-            .await?;
+        let updated = client.query_one(&stmt, &[&self.id, &data.status, &data.result]).await?;
         Ok(Self::from_row(updated)?)
     }
 
@@ -116,10 +110,7 @@ impl ContractTransaction {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{
-        builders::AssetStateBuilder,
-        test_db_client,
-    };
+    use crate::test_utils::{builders::AssetStateBuilder, test_db_client};
     use serde_json::json;
 
     #[actix_rt::test]

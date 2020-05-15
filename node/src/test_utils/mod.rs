@@ -59,9 +59,18 @@ pub fn actix_test_pool() -> web::Data<Pool> {
 /// Drops the db in the Config, creates it and runs the migrations
 pub async fn reset_db(config: &NodeConfig, pool: &Pool) {
     let client = pool.get().await.unwrap();
-    client.query("DROP SCHEMA IF EXISTS public CASCADE;", &[]).await.unwrap();
+    client
+        .query("DROP SCHEMA IF EXISTS public CASCADE;", &[])
+        .await
+        .unwrap();
     client.query("CREATE SCHEMA IF NOT EXISTS public;", &[]).await.unwrap();
-    client.query("GRANT ALL ON SCHEMA public TO postgres;", &[]).await.unwrap();
-    client.query("GRANT ALL ON SCHEMA public TO public;", &[]).await.unwrap();
+    client
+        .query("GRANT ALL ON SCHEMA public TO postgres;", &[])
+        .await
+        .unwrap();
+    client
+        .query("GRANT ALL ON SCHEMA public TO public;", &[])
+        .await
+        .unwrap();
     migrate(config.clone()).await.unwrap();
 }
