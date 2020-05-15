@@ -1,6 +1,6 @@
 use super::{Contracts, Template, TemplateContext};
 use crate::{
-    api::utils::errors::ApiError,
+    api::errors::{ApiError, ApplicationError},
     types::{AssetID, TemplateID, TokenID},
     db::utils::errors::DBError,
 };
@@ -83,7 +83,7 @@ impl<'a> FromRequest for TemplateContext<'a> {
             .as_ref();
         let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
             Some(id) => id.get_ref().clone(),
-            None => return err(ApiError::bad_request("Template data not found by this path")).boxed_local(),
+            None => return err(ApplicationError::bad_request("Template data not found by this path").into()).boxed_local(),
         };
 
         let pool = pool.clone();

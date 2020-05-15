@@ -76,7 +76,7 @@ impl Template for SingleUseTokenTemplate {
 
 mod expanded_macros {
     use super::*;
-    use crate::{api::utils::errors::ApiError, db::models::transaction::*};
+    use crate::{api::errors::{ApiError, ApplicationError}, db::models::transaction::*};
     use serde::{Deserialize, Serialize};
 
     ////// impl #[contract(asset)] for issue_tokens()
@@ -99,7 +99,7 @@ mod expanded_macros {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
         let asset = match context.load_asset(asset_id).await? {
-            None => return Err(ApiError::bad_request("Asset ID not found")),
+            None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
             Some(asset) => asset,
         };
         // create context
@@ -109,7 +109,7 @@ mod expanded_macros {
             asset_state_id: asset.id,
             template_id: context.template_id.clone(),
             params: serde_json::to_value(&params)
-                .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?,
+                .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
             contract_name: "issue_tokens".to_string(),
             ..NewContractTransaction::default()
         };
@@ -121,7 +121,7 @@ mod expanded_macros {
         let result = issue_tokens(context, params.owner_pub_key, params.token_ids).await?;
         // update transaction after contract executed
         transaction.result = serde_json::to_value(result)
-            .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?;
+            .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?;
         transaction.status = TransactionStatus::Commit;
         Ok(web::Json(transaction))
     }
@@ -152,12 +152,12 @@ mod expanded_macros {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
         let asset = match context.load_asset(asset_id).await? {
-            None => return Err(ApiError::bad_request("Asset ID not found")),
+            None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
             Some(asset) => asset,
         };
         let token_id = params.token_id(&context.template_id)?;
         let token = match context.load_token(token_id).await? {
-            None => return Err(ApiError::bad_request("Token ID not found")),
+            None => return Err(ApplicationError::bad_request("Token ID not found").into()),
             Some(token) => token,
         };
         let params = data.into_inner();
@@ -169,7 +169,7 @@ mod expanded_macros {
             token_id: Some(token.id),
             template_id: context.template_id.clone(),
             params: serde_json::to_value(&params)
-                .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?,
+                .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
             contract_name: "transfer_token".to_string(),
             ..NewContractTransaction::default()
         };
@@ -180,7 +180,7 @@ mod expanded_macros {
         let result = transfer_token(context, params.user_pubkey).await?;
         // update transaction
         transaction.result = serde_json::to_value(result)
-            .map_err(|err| ApiError::bad_request(format!("Contract params error: {}", err).as_str()))?;
+            .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?;
         transaction.status = TransactionStatus::Commit;
         Ok(web::Json(transaction))
     }

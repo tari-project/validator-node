@@ -13,7 +13,7 @@ pub struct HttpRequestBuilder {
 
 impl Default for HttpRequestBuilder {
     fn default() -> Self {
-        let pool = actix_test_pool().unwrap();
+        let pool = actix_test_pool();
         let test_request = TestRequest::default().app_data(pool);
         Self {
             test_request,

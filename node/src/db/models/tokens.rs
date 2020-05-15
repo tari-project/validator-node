@@ -113,7 +113,6 @@ impl Token {
 mod test {
     use super::*;
     use crate::test_utils::{builders::*, test_db_client};
-    use futures::future::try_join_all;
     use serde_json::json;
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
@@ -182,30 +181,7 @@ mod test {
     }
 
     #[actix_rt::test]
-    async fn issue_number_concurrency() {
-        let (client, _lock) = test_db_client().await;
-        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
-
-        let params = NewToken {
-            owner_pub_key: PUBKEY.to_string(),
-            asset_state_id: asset.id,
-            initial_data_json: json!({"value": true}),
-            ..NewToken::default()
-        };
-        let client = std::sync::Arc::new(client);
-        let futs = (0..100).map(move |_| {
-            let client = client.clone();
-            let mut params = params.clone();
-            params.token_id = TokenID::new(&asset.asset_id, NODE_ID).unwrap();
-            async move { Token::insert(params, client.as_ref()).await }
-        });
-        let res = try_join_all(futs).await.unwrap();
-        assert_eq!(res.len(), 100);
-    }
-
-    #[actix_rt::test]
-    async fn store_append_only_state() -> anyhow::Result<()> {
-        load_env();
+    async fn store_append_only_state() {
         let (client, _lock) = test_db_client().await;
         let initial_data = json!({"value": true, "value2": 4});
         let token = TokenBuilder {
@@ -213,7 +189,7 @@ mod test {
             ..TokenBuilder::default()
         }
         .build(&client)
-        .await?;
+        .await.unwrap();
         assert_eq!(json!(initial_data), token.initial_data_json);
         assert_eq!(json!(initial_data), token.additional_data_json);
 
@@ -227,8 +203,8 @@ mod test {
             },
             &client,
         )
-        .await?;
-        let token = Token::load(token.id, &client).await?;
+        .await.unwrap();
+        let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(state_data_json, token.additional_data_json);
 
         let state_data_json = json!({"value": false, "value3": empty_value.clone()});
@@ -240,8 +216,8 @@ mod test {
             },
             &client,
         )
-        .await?;
-        let token = Token::load(token.id, &client).await?;
+        .await.unwrap();
+        let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(state_data_json.clone(), token.additional_data_json);
 
         let pre_commit_state_data_json = json!({"value": true, "value3": 1});
@@ -253,10 +229,8 @@ mod test {
             },
             &client,
         )
-        .await?;
-        let token = Token::load(token.id, &client).await?;
+        .await.unwrap();
+        let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(state_data_json, token.additional_data_json);
-
-        Ok(())
     }
 }

@@ -164,7 +164,7 @@ mod test {
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
-    async fn crud() -> anyhow::Result<()> {
+    async fn crud() {
         let (client, _lock) = test_db_client().await;
         let digital_asset = DigitalAssetBuilder::default().build(&client).await.unwrap();
         let tari_asset_id: AssetID = "7e6f4b801170db0bf86c9257fe56249.469439556cba069a12afd1c72c585b0f"

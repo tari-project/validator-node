@@ -10,7 +10,7 @@ pub struct TokenBuilder {
     pub owner_pub_key: String,
     pub asset_state_id: Option<Uuid>,
     pub initial_data_json: Value,
-    token_id: TokenID,
+    pub token_id: TokenID,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -43,7 +43,7 @@ impl TokenBuilder {
 
         let params = NewToken {
             owner_pub_key: self.owner_pub_key.to_owned(),
-            initial_data_json: self.additional_data_json.to_owned(),
+            initial_data_json: self.initial_data_json.to_owned(),
             token_id: self.token_id,
             asset_state_id,
         };
