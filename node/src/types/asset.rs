@@ -155,7 +155,7 @@ impl TryFrom<String> for AssetID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{load_env, test_db_client};
+    use crate::test_utils::test_db_client;
 
     #[test]
     fn asset_default() {
