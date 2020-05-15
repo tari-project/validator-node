@@ -65,6 +65,7 @@ lazy_static::lazy_static! {
 }
 
 impl TokenID {
+    /// TokenID stored as BPCHAR, it might change in the future
     pub const SQL_TYPE: Type = Type::BPCHAR;
 
     /// Generate TokenID for AssetID on a node

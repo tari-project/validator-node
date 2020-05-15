@@ -30,7 +30,7 @@ impl Default for AssetID {
 }
 
 impl AssetID {
-    /// AssetID stored as TEXT
+    /// AssetID stored as BPCHAR, it might change in the future
     pub const SQL_TYPE: Type = Type::BPCHAR;
 
     #[inline]
