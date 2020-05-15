@@ -1,4 +1,4 @@
-use super::TokenStatus;
+use super::{AppendOnlyStatus, TokenStatus};
 use crate::{db::utils::errors::DBError, types::TokenID};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
@@ -8,7 +8,7 @@ use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
 
 #[derive(Clone, Serialize, PostgresMapper)]
-#[pg_mapper(table = "tokens")]
+#[pg_mapper(table = "tokens_view")]
 pub struct Token {
     pub id: uuid::Uuid,
     pub issue_number: i64,
@@ -16,18 +16,27 @@ pub struct Token {
     pub status: TokenStatus,
     pub token_id: TokenID,
     pub asset_state_id: uuid::Uuid,
-    pub additional_data_json: Value,
+    pub initial_data_json: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub additional_data_json: Value,
 }
 
-/// Query paramteres for adding new token record
+/// Query parameters for adding new token record
 #[derive(Default, Clone, Debug)]
 pub struct NewToken {
     pub token_id: TokenID,
     pub owner_pub_key: String,
     pub asset_state_id: uuid::Uuid,
-    pub additional_data_json: Value,
+    pub initial_data_json: Value,
+}
+
+/// Query parameters for adding new token state append only
+#[derive(Default, Clone, Debug)]
+pub struct NewTokenAppendOnly {
+    pub token_id: uuid::Uuid,
+    pub status: AppendOnlyStatus,
+    pub state_data_json: Value,
 }
 
 impl Token {
@@ -37,7 +46,7 @@ impl Token {
             INSERT INTO tokens (
                 owner_pub_key,
                 asset_state_id,
-                additional_data_json,
+                initial_data_json,
                 token_id
             ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
@@ -45,7 +54,7 @@ impl Token {
             .query_one(&stmt, &[
                 &params.owner_pub_key,
                 &params.asset_state_id,
-                &params.additional_data_json,
+                &params.initial_data_json,
                 &params.token_id,
             ])
             .await?;
@@ -70,7 +79,7 @@ impl Token {
 
     /// Load token record
     pub async fn load(id: uuid::Uuid, client: &Client) -> Result<Token, DBError> {
-        let stmt = "SELECT * FROM tokens WHERE id = $1";
+        let stmt = "SELECT * FROM tokens_view WHERE id = $1";
         let result = client.query_one(stmt, &[&id]).await?;
         Ok(Token::from_row(result)?)
     }
@@ -81,6 +90,22 @@ impl Token {
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let result = client.query_opt(&stmt, &[&token_id]).await?;
         Ok(result.map(Self::from_row).transpose()?)
+    }
+
+    /// Store append only state
+    pub async fn store_append_only_state(params: NewTokenAppendOnly, client: &Client) -> Result<uuid::Uuid, DBError> {
+        const QUERY: &'static str = "
+            INSERT INTO token_state_append_only (
+                token_id,
+                state_data_json,
+                status
+            ) VALUES ($1, $2, $3) RETURNING id";
+        let stmt = client.prepare(QUERY).await?;
+        let result = client
+            .query_one(&stmt, &[&params.token_id, &params.state_data_json, &params.status])
+            .await?;
+
+        Ok(result.get(0))
     }
 }
 
@@ -103,7 +128,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            additional_data_json: json!({"value": true}),
+            initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
@@ -116,7 +141,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            additional_data_json: json!({"value": true}),
+            initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
@@ -129,7 +154,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset2.id,
-            additional_data_json: json!({"value": true}),
+            initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
@@ -148,7 +173,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            additional_data_json: json!({"value": true}),
+            initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
@@ -164,7 +189,7 @@ mod test {
         let params = NewToken {
             owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
-            additional_data_json: json!({"value": true}),
+            initial_data_json: json!({"value": true}),
             ..NewToken::default()
         };
         let client = std::sync::Arc::new(client);
@@ -176,5 +201,62 @@ mod test {
         });
         let res = try_join_all(futs).await.unwrap();
         assert_eq!(res.len(), 100);
+    }
+
+    #[actix_rt::test]
+    async fn store_append_only_state() -> anyhow::Result<()> {
+        load_env();
+        let (client, _lock) = test_db_client().await;
+        let initial_data = json!({"value": true, "value2": 4});
+        let token = TokenBuilder {
+            initial_data_json: initial_data.clone(),
+            ..TokenBuilder::default()
+        }
+        .build(&client)
+        .await?;
+        assert_eq!(json!(initial_data), token.initial_data_json);
+        assert_eq!(json!(initial_data), token.additional_data_json);
+
+        let empty_value: Option<String> = None;
+        let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
+        Token::store_append_only_state(
+            NewTokenAppendOnly {
+                token_id: token.id,
+                state_data_json: state_data_json.clone(),
+                status: AppendOnlyStatus::Commit,
+            },
+            &client,
+        )
+        .await?;
+        let token = Token::load(token.id, &client).await?;
+        assert_eq!(state_data_json, token.additional_data_json);
+
+        let state_data_json = json!({"value": false, "value3": empty_value.clone()});
+        Token::store_append_only_state(
+            NewTokenAppendOnly {
+                token_id: token.id,
+                state_data_json: state_data_json.clone(),
+                status: AppendOnlyStatus::Commit,
+            },
+            &client,
+        )
+        .await?;
+        let token = Token::load(token.id, &client).await?;
+        assert_eq!(state_data_json.clone(), token.additional_data_json);
+
+        let pre_commit_state_data_json = json!({"value": true, "value3": 1});
+        Token::store_append_only_state(
+            NewTokenAppendOnly {
+                token_id: token.id,
+                state_data_json: pre_commit_state_data_json,
+                status: AppendOnlyStatus::PreCommit,
+            },
+            &client,
+        )
+        .await?;
+        let token = Token::load(token.id, &client).await?;
+        assert_eq!(state_data_json, token.additional_data_json);
+
+        Ok(())
     }
 }

@@ -5,7 +5,7 @@ CREATE TABLE tokens (
                        status TEXT NOT NULL DEFAULT 'Active',
                        token_id char(96) NOT NULL UNIQUE,
                        asset_state_id uuid NOT NULL references asset_states(id),
-                       additional_data_json JSONB NOT NULL DEFAULT '{}',
+                       initial_data_json JSONB NOT NULL DEFAULT '{}',
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -29,4 +29,4 @@ EXECUTE PROCEDURE set_issue_number();
 CREATE INDEX index_tokens_uuid ON tokens (id);
 CREATE INDEX index_tokens_owner_pub_key ON tokens (owner_pub_key);
 CREATE INDEX index_tokens_status ON tokens (status);
-CREATE INDEX index_tokens_asset_state_id ON tokens (asset_state_id);
+CREATE INDEX index_tokens_asset_state_id_issue_number ON tokens (asset_state_id, issue_number);

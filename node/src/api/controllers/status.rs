@@ -1,4 +1,4 @@
-use crate::api::utils::errors::ApiError;
+use crate::api::errors::ApiError;
 use actix_web::{web::Data, HttpResponse};
 use deadpool::Status as DeadpoolStatus;
 use deadpool_postgres::Pool;

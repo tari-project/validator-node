@@ -175,7 +175,7 @@ impl<'a> ToSql for TemplateID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::test_db_client;
+    use crate::test_utils::{load_env, test_db_client};
 
     const BETA_MASK_TEST: u64 = 1 << 48;
     const CONFIDENTIAL_MASK_TEST: u64 = 1 << 49;
@@ -254,7 +254,7 @@ mod test {
 
     #[actix_rt::test]
     async fn sql() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (client, _lock) = test_db_client().await;
         for shift in 0u8..15 {
             let num: u64 = 1 | (7 << (shift * 4));

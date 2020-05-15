@@ -151,9 +151,8 @@ impl Access {
 #[cfg(test)]
 mod test {
     use super::{Access, AccessResource, NewAccess, SelectAccess};
-    use crate::test_utils::test_db_client;
+    use crate::test_utils::{load_env, test_db_client};
     use chrono::Utc;
-    use dotenv;
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
     const EMOJI: &'static str = "🍉🐭👄🍎🙃🐇💻🙄🆘🐫🍫👕🎌👔👽🍫🤝🍷👤💫🐫🌈😍⛺🤑🛸🎤🎾🤴👖🧦😛📡";
@@ -215,7 +214,7 @@ mod test {
 
     #[actix_rt::test]
     async fn crud_wallet() -> anyhow::Result<()> {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (client, _lock) = test_db_client().await;
 
         let new_access_params = NewAccess {
@@ -263,7 +262,7 @@ mod test {
 
     #[actix_rt::test]
     async fn delete_constraints() {
-        dotenv::dotenv().unwrap();
+        load_env();
         let (client, _lock) = test_db_client().await;
         let res = Access::revoke(SelectAccess::default(), &client).await;
         assert!(res.is_err());

@@ -10,7 +10,7 @@ CREATE TABLE asset_states (
                        expiry_date TIMESTAMPTZ NULL,
                        superseded_by uuid NULL references asset_states(id),
                        initial_permission_bitflag BIGINT NOT NULL DEFAULT 0,
-                       additional_data_json JSONB NOT NULL DEFAULT '{}',
+                       initial_data_json JSONB NOT NULL DEFAULT '{}',
                        asset_id char(64) NOT NULL UNIQUE,
                        digital_asset_id UUID references digital_assets(id),
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

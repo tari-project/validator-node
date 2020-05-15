@@ -155,7 +155,7 @@ impl TryFrom<String> for AssetID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::test_db_client;
+    use crate::test_utils::{load_env, test_db_client};
 
     #[test]
     fn asset_default() {
@@ -198,7 +198,6 @@ mod test {
 
     #[actix_rt::test]
     async fn sql() {
-        dotenv::dotenv().unwrap();
         let (client, _lock) = test_db_client().await;
         let mut raw = vec!["A"; 64];
         raw[31] = ".";
