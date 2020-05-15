@@ -34,6 +34,13 @@ pub struct NewContractTransaction {
     pub result: Value,
 }
 
+/// Query paramteres for optionally updating transaction fields
+#[derive(Default, Clone, Debug)]
+pub struct UpdateContractTransaction {
+    pub status: Option<TransactionStatus>,
+    pub result: Option<Value>,
+}
+
 impl ContractTransaction {
     /// Add digital asset record
     pub async fn insert(params: NewContractTransaction, client: &Client) -> Result<Self, DBError> {
@@ -75,32 +82,27 @@ impl ContractTransaction {
     /// Update transaction state in the database
     ///
     /// Updates subset of fields:
-    /// - asset_uid
-    /// - token_uid
     /// - status
     /// - result
-    pub async fn update(&self, client: &Client) -> Result<u64, DBError> {
+    pub async fn update(self, data: UpdateContractTransaction, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
             UPDATE contract_transactions SET
-                asset_state_id = $2,
-                token_id = $3,
-                status = $4,
-                result = $5,
+                status = COALESCE($2, status),
+                result = COALESCE($3, result),
                 updated_at = NOW()
-            WHERE id = $1";
+            WHERE id = $1
+            RETURNING *";
         let stmt = client
-            .prepare_typed(QUERY, &[Type::UUID, Type::UUID, Type::UUID, Type::TEXT, Type::JSONB])
+            .prepare_typed(QUERY, &[Type::UUID, Type::TEXT, Type::JSONB])
             .await?;
         let updated = client
-            .execute(&stmt, &[
+            .query_one(&stmt, &[
                 &self.id,
-                &self.asset_state_id,
-                &self.token_id,
-                &self.status,
-                &self.result,
+                &data.status,
+                &data.result,
             ])
             .await?;
-        Ok(updated)
+        Ok(Self::from_row(updated)?)
     }
 
     /// Load transaction record
@@ -115,7 +117,7 @@ impl ContractTransaction {
 mod test {
     use super::*;
     use crate::test_utils::{
-        builders::{AssetStateBuilder, TokenBuilder},
+        builders::AssetStateBuilder,
         test_db_client,
     };
     use serde_json::json;
@@ -131,27 +133,28 @@ mod test {
             params: json!({"test_param": 1}),
             ..NewContractTransaction::default()
         };
-        let mut transaction = ContractTransaction::insert(params, &client).await.unwrap();
+        let transaction = ContractTransaction::insert(params, &client).await.unwrap();
         assert_eq!(transaction.template_id, asset.asset_id.template_id());
         assert_eq!(transaction.params, json!({"test_param": 1}));
         assert!(transaction.result.is_null());
         assert_eq!(transaction.status, TransactionStatus::Prepare);
 
-        let asset2 = AssetStateBuilder::default().build(&client).await.unwrap();
-        let token = TokenBuilder::default().build(&client).await.unwrap();
-        transaction.asset_state_id = asset2.id;
-        transaction.token_id = Some(token.id);
-        transaction.status = TransactionStatus::Commit;
-        transaction.result = json!({"test_result": "success"});
-        let updated = transaction.update(&client).await.unwrap();
-        assert_eq!(updated, 1);
+        let initial_updated_at = transaction.updated_at;
+        let data = UpdateContractTransaction {
+            status: Some(TransactionStatus::Commit),
+            result: Some(json!({"test_result": "success"})),
+            ..UpdateContractTransaction::default()
+        };
+        let updated = transaction.update(data, &client).await.unwrap();
+        assert_eq!(updated.result, json!({"test_result": "success"}));
+        assert_eq!(updated.status, TransactionStatus::Commit);
 
-        let transaction2 = ContractTransaction::load(transaction.id, &client).await.unwrap();
-        assert_eq!(transaction2.id, transaction.id);
-        assert_eq!(transaction2.asset_state_id, transaction.asset_state_id);
-        assert_eq!(transaction2.token_id, transaction.token_id);
-        assert_eq!(transaction2.result, transaction.result);
-        assert_eq!(transaction2.status, transaction.status);
-        assert!(transaction2.updated_at > transaction.updated_at);
+        let transaction2 = ContractTransaction::load(updated.id, &client).await.unwrap();
+        assert_eq!(transaction2.id, updated.id);
+        assert_eq!(transaction2.asset_state_id, updated.asset_state_id);
+        assert_eq!(transaction2.token_id, updated.token_id);
+        assert_eq!(transaction2.result, updated.result);
+        assert_eq!(transaction2.status, updated.status);
+        assert!(transaction2.updated_at > initial_updated_at);
     }
 }

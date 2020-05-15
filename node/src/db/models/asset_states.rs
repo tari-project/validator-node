@@ -1,4 +1,4 @@
-use super::{AppendOnlyStatus, AssetStatus};
+use super::AssetStatus;
 use crate::{
     db::utils::{errors::DBError, validation::ValidationErrors},
     types::AssetID,
@@ -51,8 +51,9 @@ pub struct NewAssetState {
 #[derive(Default, Clone, Debug)]
 pub struct NewAssetStateAppendOnly {
     pub asset_state_id: uuid::Uuid,
-    pub status: AppendOnlyStatus,
+    pub transaction_id: uuid::Uuid,
     pub state_data_json: Value,
+    pub status: AssetStatus,
 }
 
 impl NewAssetState {
@@ -137,14 +138,14 @@ impl AssetState {
             INSERT INTO asset_state_append_only (
                 asset_state_id,
                 state_data_json,
-                status
+                transaction_id
             ) VALUES ($1, $2, $3) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
                 &params.asset_state_id,
                 &params.state_data_json,
-                &params.status,
+                &params.transaction_id,
             ])
             .await?;
 
@@ -157,7 +158,8 @@ mod test {
     use super::*;
     use crate::{
         db::utils::validation::*,
-        test_utils::{builders::*, load_env, test_db_client},
+        db::models::TransactionStatus,
+        test_utils::{builders::*, test_db_client},
     };
     use serde_json::json;
 
@@ -194,7 +196,6 @@ mod test {
 
     #[actix_rt::test]
     async fn store_append_only_state() -> anyhow::Result<()> {
-        load_env();
         let (client, _lock) = test_db_client().await;
         let initial_data = json!({"value": true, "value2": 4});
         let asset = AssetStateBuilder {
@@ -206,39 +207,52 @@ mod test {
         assert_eq!(initial_data, asset.initial_data_json);
         assert_eq!(initial_data, asset.additional_data_json);
 
+        let transaction = ContractTransactionBuilder {
+            asset_state_id: Some(asset.id),
+            status: TransactionStatus::Commit,
+            ..Default::default()
+        }.build(&client).await.unwrap();
         let empty_value: Option<String> = None;
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
                 state_data_json: state_data_json.clone(),
-                status: AppendOnlyStatus::Commit,
+                transaction_id: transaction.id.clone(),
+                ..Default::default()
             },
             &client,
         )
         .await?;
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(state_data_json, asset.additional_data_json);
+        assert_eq!(asset.status, AssetStatus::Active);
 
         let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
                 state_data_json: state_data_json.clone(),
-                status: AppendOnlyStatus::Commit,
+                transaction_id: transaction.id.clone(),
+                status: AssetStatus::Retired,
             },
             &client,
         )
         .await?;
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(state_data_json.clone(), asset.additional_data_json);
+        assert_eq!(asset.status, AssetStatus::Retired);
 
-        let pre_commit_state_data_json = json!({"value": true, "value3": 1});
+        let transaction = ContractTransactionBuilder {
+            asset_state_id: Some(asset.id),
+            ..Default::default()
+        }.build(&client).await.unwrap();
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
-                state_data_json: pre_commit_state_data_json,
-                status: AppendOnlyStatus::PreCommit,
+                state_data_json: json!({"value": true, "value3": 1}),
+                transaction_id: transaction.id,
+                status: AssetStatus::Retired,
             },
             &client,
         )

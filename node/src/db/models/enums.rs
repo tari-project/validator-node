@@ -70,17 +70,10 @@ macro_rules! string_enum {
 
 string_enum! { AccessResource [Api, Wallet]}
 string_enum! { AssetStatus [Active, Retired]}
-string_enum! { AppendOnlyStatus [Commit, PreCommit, Prepare]}
 string_enum! { CommitteeMode [Public, Creator]}
 string_enum! { TokenStatus [Active, Retired]}
 #[doc(hide)]
 string_enum! { TransactionStatus [Prepare, PreCommit, Commit]}
-
-impl Default for AppendOnlyStatus {
-    fn default() -> AppendOnlyStatus {
-        AppendOnlyStatus::Prepare
-    }
-}
 
 impl Default for CommitteeMode {
     fn default() -> CommitteeMode {
@@ -91,6 +84,18 @@ impl Default for CommitteeMode {
 impl Default for TransactionStatus {
     fn default() -> Self {
         Self::Prepare
+    }
+}
+
+impl Default for TokenStatus {
+    fn default() -> Self {
+        Self::Active
+    }
+}
+
+impl Default for AssetStatus {
+    fn default() -> Self {
+        Self::Active
     }
 }
 

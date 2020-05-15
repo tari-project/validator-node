@@ -1,9 +1,9 @@
-use super::{AppendOnlyStatus, TokenStatus};
+use super::{ContractTransaction, TokenStatus};
 use crate::{db::utils::errors::DBError, types::TokenID};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value::{self, Object}, map::Map};
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
 
@@ -35,8 +35,16 @@ pub struct NewToken {
 #[derive(Default, Clone, Debug)]
 pub struct NewTokenAppendOnly {
     pub token_id: uuid::Uuid,
-    pub status: AppendOnlyStatus,
+    pub transaction_id: uuid::Uuid,
+    pub status: TokenStatus,
     pub state_data_json: Value,
+}
+
+/// Query parameters for adding new token state append only
+#[derive(Default, Clone, Debug)]
+pub struct UpdateToken {
+    pub status: Option<TokenStatus>,
+    pub append_state_data_json: Option<Value>,
 }
 
 impl Token {
@@ -64,17 +72,31 @@ impl Token {
 
     /// Update token into database
     ///
-    /// Updates subset of fields:
-    /// - owner_pub_key
-    /// - additional_data_json
-    pub async fn update(&self, client: &Client) -> Result<u64, DBError> {
-        const QUERY: &'static str =
-            "UPDATE tokens SET owner_pub_key = $2, additional_data_json = $3, updated_at = NOW() WHERE id = $1";
-        let stmt = client.prepare(QUERY).await?;
-        let updated = client
-            .execute(&stmt, &[&self.id, &self.owner_pub_key, &self.additional_data_json])
-            .await?;
-        Ok(updated)
+    /// Merges subset of fields with UpdateToken:
+    /// - status
+    /// - additional_data_json merged with UpdateToken::append_state_data_json
+    // TODO: this is very expensive - think on optimization later
+    pub async fn update(self, data: UpdateToken, transaction: &ContractTransaction, client: &Client) -> Result<Self, DBError> {
+        let mut token = Self::load(self.id, &client).await?;
+        let state_data_json: Value = match data.append_state_data_json {
+            Some(Object(mut update)) => {
+                let mut obj = Map::<String, Value>::new();
+                if let Some(previous) = token.additional_data_json.as_object_mut() {
+                    obj.append(previous);
+                }
+                obj.append(&mut update);
+                obj.into()
+            },
+            _ => token.additional_data_json.clone(),
+        };
+        let state = NewTokenAppendOnly {
+            token_id: token.id.clone(),
+            transaction_id: transaction.id.clone(),
+            status: data.status.unwrap_or_else(|| token.status.clone()),
+            state_data_json,
+        };
+        Self::store_append_only_state(state, client).await?;
+        Self::load(token.id, &client).await
     }
 
     /// Load token record
@@ -86,23 +108,26 @@ impl Token {
 
     /// Find token record by token id )
     pub async fn find_by_token_id(token_id: TokenID, client: &Client) -> Result<Option<Token>, DBError> {
-        const QUERY: &'static str = "SELECT * FROM tokens WHERE token_id = $1";
+        const QUERY: &'static str = "SELECT * FROM tokens_view WHERE token_id = $1";
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let result = client.query_opt(&stmt, &[&token_id]).await?;
         Ok(result.map(Self::from_row).transpose()?)
     }
 
     /// Store append only state
+    ///
+    /// NOTE: This call will not merge new values provided, they are stored as is
     pub async fn store_append_only_state(params: NewTokenAppendOnly, client: &Client) -> Result<uuid::Uuid, DBError> {
         const QUERY: &'static str = "
             INSERT INTO token_state_append_only (
                 token_id,
                 state_data_json,
-                status
-            ) VALUES ($1, $2, $3) RETURNING id";
+                transaction_id,
+                status,
+            ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
-            .query_one(&stmt, &[&params.token_id, &params.state_data_json, &params.status])
+            .query_one(&stmt, &[&params.token_id, &params.state_data_json, &params.transaction_id, &params.status])
             .await?;
 
         Ok(result.get(0))
@@ -112,6 +137,7 @@ impl Token {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::db::models::{TransactionStatus, UpdateContractTransaction};
     use crate::test_utils::{builders::*, test_db_client};
     use serde_json::json;
 
@@ -193,13 +219,18 @@ mod test {
         assert_eq!(json!(initial_data), token.initial_data_json);
         assert_eq!(json!(initial_data), token.additional_data_json);
 
+        let transaction = ContractTransactionBuilder {
+            asset_state_id: Some(token.asset_state_id),
+            ..Default::default()
+        }.build(&client).await.unwrap();
         let empty_value: Option<String> = None;
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         Token::store_append_only_state(
             NewTokenAppendOnly {
                 token_id: token.id,
                 state_data_json: state_data_json.clone(),
-                status: AppendOnlyStatus::Commit,
+                status: token.status,
+                transaction_id: transaction.id.clone(),
             },
             &client,
         )
@@ -212,7 +243,8 @@ mod test {
             NewTokenAppendOnly {
                 token_id: token.id,
                 state_data_json: state_data_json.clone(),
-                status: AppendOnlyStatus::Commit,
+                status: token.status,
+                transaction_id: transaction.id,
             },
             &client,
         )
@@ -220,17 +252,77 @@ mod test {
         let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(state_data_json.clone(), token.additional_data_json);
 
+
+        let transaction = ContractTransactionBuilder {
+            asset_state_id: Some(token.asset_state_id),
+            status: TransactionStatus::PreCommit,
+            ..Default::default()
+        }.build(&client).await.unwrap();
         let pre_commit_state_data_json = json!({"value": true, "value3": 1});
         Token::store_append_only_state(
             NewTokenAppendOnly {
                 token_id: token.id,
                 state_data_json: pre_commit_state_data_json,
-                status: AppendOnlyStatus::PreCommit,
+                status: TokenStatus::Retired,
+                transaction_id: transaction.id,
             },
             &client,
         )
         .await.unwrap();
         let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(state_data_json, token.additional_data_json);
+        assert_eq!(token.status, TokenStatus::Retired);
+    }
+
+    #[actix_rt::test]
+    async fn updates() {
+        let (client, _lock) = test_db_client().await;
+        let token: Token = TokenBuilder {
+            initial_data_json: json!({"value": true, "value2": 4}),
+            ..TokenBuilder::default()
+        }
+        .build(&client)
+        .await.unwrap();
+        let transaction = ContractTransactionBuilder {
+            asset_state_id: Some(token.asset_state_id),
+            ..Default::default()
+        }.build(&client).await.unwrap();
+
+        let update = UpdateToken::default();
+        let token2 = token.clone().update(update, &transaction, &client).await.unwrap();
+        assert_eq!(token.id, token2.id);
+        assert_eq!(token.status, token2.status);
+        assert_eq!(token.additional_data_json, token2.additional_data_json);
+        assert_eq!(token.asset_state_id, token2.asset_state_id);
+
+        let update = UpdateToken {
+            append_state_data_json: Some(json!({"append_initial": true})),
+            ..UpdateToken::default()
+        };
+        let token = token.update(update, &transaction, &client).await.unwrap();
+        assert_eq!(token.additional_data_json, token2.additional_data_json);
+        assert_eq!(token.status, token2.status);
+
+        let commit = UpdateContractTransaction { status: Some(TransactionStatus::Commit), ..Default::default() };
+        let transaction = transaction.update(commit, &client).await.unwrap();
+        let token = Token::load(token.id, &client).await.unwrap();
+        assert_eq!(token.additional_data_json, json!({"value": true, "value2": 4, "append_initial": true}));
+        assert_eq!(token.status, token2.status);
+
+        let update = UpdateToken {
+            append_state_data_json: Some(json!({"append_additional": true})),
+            ..UpdateToken::default()
+        };
+        let token = token.update(update, &transaction, &client).await.unwrap();
+        assert_eq!(token.additional_data_json, json!({"value": true, "value2": 4, "append_initial": true, "append_additional": true}));
+        assert_eq!(token.status, token2.status);
+
+        let update = UpdateToken {
+            status: Some(TokenStatus::Retired),
+            ..UpdateToken::default()
+        };
+        let token2 = token.clone().update(update.clone(), &transaction, &client).await.unwrap();
+        assert_eq!(token.status, update.status.unwrap());
+        assert_eq!(token.additional_data_json, token2.additional_data_json);
     }
 }

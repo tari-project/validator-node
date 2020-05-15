@@ -92,7 +92,8 @@ impl<'a> FromRequest for TemplateContext<'a> {
                 Ok(client) => Ok(TemplateContext {
                     client,
                     template_id,
-                    transaction: None,
+                    db_transaction: None,
+                    contract_transaction: None,
                 }),
                 Err(err) => Err(DBError::from(err).into()),
             }
