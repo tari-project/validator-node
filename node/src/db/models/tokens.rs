@@ -123,7 +123,7 @@ impl Token {
                 token_id,
                 state_data_json,
                 transaction_id,
-                status,
+                status
             ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
@@ -221,6 +221,7 @@ mod test {
 
         let transaction = ContractTransactionBuilder {
             asset_state_id: Some(token.asset_state_id),
+            status: TransactionStatus::Commit,
             ..Default::default()
         }.build(&client).await.unwrap();
         let empty_value: Option<String> = None;
@@ -258,11 +259,10 @@ mod test {
             status: TransactionStatus::PreCommit,
             ..Default::default()
         }.build(&client).await.unwrap();
-        let pre_commit_state_data_json = json!({"value": true, "value3": 1});
         Token::store_append_only_state(
             NewTokenAppendOnly {
                 token_id: token.id,
-                state_data_json: pre_commit_state_data_json,
+                state_data_json: json!({"value": true, "value3": 1}),
                 status: TokenStatus::Retired,
                 transaction_id: transaction.id,
             },
@@ -270,8 +270,8 @@ mod test {
         )
         .await.unwrap();
         let token = Token::load(token.id, &client).await.unwrap();
-        assert_eq!(state_data_json, token.additional_data_json);
-        assert_eq!(token.status, TokenStatus::Retired);
+        assert_eq!(token.additional_data_json, state_data_json);
+        assert_eq!(token.status, TokenStatus::Active);
     }
 
     #[actix_rt::test]
@@ -322,7 +322,7 @@ mod test {
             ..UpdateToken::default()
         };
         let token2 = token.clone().update(update.clone(), &transaction, &client).await.unwrap();
-        assert_eq!(token.status, update.status.unwrap());
-        assert_eq!(token.additional_data_json, token2.additional_data_json);
+        assert_eq!(token2.status, TokenStatus::Retired);
+        assert_eq!(token2.additional_data_json, token.additional_data_json);
     }
 }

@@ -138,14 +138,16 @@ impl AssetState {
             INSERT INTO asset_state_append_only (
                 asset_state_id,
                 state_data_json,
-                transaction_id
-            ) VALUES ($1, $2, $3) RETURNING id";
+                transaction_id,
+                status
+            ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
                 &params.asset_state_id,
                 &params.state_data_json,
                 &params.transaction_id,
+                &params.status,
             ])
             .await?;
 
