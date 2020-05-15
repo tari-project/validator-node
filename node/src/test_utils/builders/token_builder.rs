@@ -7,7 +7,6 @@ use uuid::Uuid;
 
 #[allow(dead_code)]
 pub struct TokenBuilder {
-    pub owner_pub_key: String,
     pub asset_state_id: Option<Uuid>,
     pub initial_data_json: Value,
     pub token_id: TokenID,
@@ -19,7 +18,6 @@ impl Default for TokenBuilder {
     fn default() -> Self {
         let x: u32 = random();
         Self {
-            owner_pub_key: format!("7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0{}", x).into(),
             asset_state_id: None,
             initial_data_json: serde_json::from_str("{}").unwrap(),
             token_id: format!(
@@ -42,7 +40,6 @@ impl TokenBuilder {
         };
 
         let params = NewToken {
-            owner_pub_key: self.owner_pub_key.to_owned(),
             initial_data_json: self.initial_data_json.to_owned(),
             token_id: self.token_id,
             asset_state_id,

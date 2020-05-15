@@ -17,7 +17,7 @@ pub enum AssetContracts {
 //#[contract(asset)]
 async fn issue_tokens<'a>(
     context: &AssetTemplateContext<'a>,
-    owner_pub_key: Pubkey,
+    user_pubkey: Pubkey,
     token_ids: Vec<TokenID>,
 ) -> Result<Vec<Token>>
 {
@@ -25,8 +25,8 @@ async fn issue_tokens<'a>(
     let asset = &context.asset;
     let new_token = move |token_id| NewToken {
         token_id,
-        owner_pub_key: owner_pub_key.clone(),
         asset_state_id: asset.id.clone(),
+        initial_data_json: json!({"user_pubkey": user_pubkey}),
         ..NewToken::default()
     };
     for data in token_ids.into_iter().map(new_token) {
@@ -82,7 +82,7 @@ mod expanded_macros {
     #[derive(Serialize, Deserialize)]
     struct IssueTokensPayload {
         token_ids: Vec<TokenID>,
-        owner_pub_key: Pubkey,
+        user_pubkey: Pubkey,
     }
 
     // wrapper will convert from actix types into Rust,
@@ -116,7 +116,7 @@ mod expanded_macros {
 
         // TODO: move following outside of actix request lifecycle
         // run contract
-        let result = issue_tokens(&context, params.owner_pub_key, params.token_ids).await?;
+        let result = issue_tokens(&context, params.user_pubkey, params.token_ids).await?;
         // update transaction after contract executed
         let result = serde_json::to_value(result)
             .map_err(|err| ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str()))?;

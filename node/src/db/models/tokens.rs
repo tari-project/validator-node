@@ -12,7 +12,6 @@ use tokio_postgres::types::Type;
 pub struct Token {
     pub id: uuid::Uuid,
     pub issue_number: i64,
-    pub owner_pub_key: String,
     pub status: TokenStatus,
     pub token_id: TokenID,
     pub asset_state_id: uuid::Uuid,
@@ -26,7 +25,6 @@ pub struct Token {
 #[derive(Default, Clone, Debug)]
 pub struct NewToken {
     pub token_id: TokenID,
-    pub owner_pub_key: String,
     pub asset_state_id: uuid::Uuid,
     pub initial_data_json: Value,
 }
@@ -52,15 +50,13 @@ impl Token {
     pub async fn insert(params: NewToken, client: &Client) -> Result<uuid::Uuid, DBError> {
         const QUERY: &'static str = "
             INSERT INTO tokens (
-                owner_pub_key,
                 asset_state_id,
                 initial_data_json,
                 token_id
-            ) VALUES ($1, $2, $3, $4) RETURNING id";
+            ) VALUES ($1, $2, $3) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
-                &params.owner_pub_key,
                 &params.asset_state_id,
                 &params.initial_data_json,
                 &params.token_id,
@@ -141,7 +137,6 @@ mod test {
     use crate::test_utils::{builders::*, test_db_client};
     use serde_json::json;
 
-    const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
     const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
     #[actix_rt::test]
@@ -151,7 +146,6 @@ mod test {
         let asset2 = AssetStateBuilder::default().build(&client).await.unwrap();
 
         let params = NewToken {
-            owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
@@ -159,12 +153,10 @@ mod test {
         };
         let token_id = Token::insert(params, &client).await.unwrap();
         let token = Token::load(token_id, &client).await.unwrap();
-        assert_eq!(token.owner_pub_key, PUBKEY.to_string());
         assert_eq!(token.asset_state_id, asset.id);
         assert_eq!(token.issue_number, 1);
 
         let params = NewToken {
-            owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
@@ -172,12 +164,10 @@ mod test {
         };
         let token_id = Token::insert(params, &client).await.unwrap();
         let token = Token::load(token_id, &client).await.unwrap();
-        assert_eq!(token.owner_pub_key, PUBKEY.to_string());
         assert_eq!(token.asset_state_id, asset.id);
         assert_eq!(token.issue_number, 2);
 
         let params = NewToken {
-            owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset2.id,
             initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
@@ -185,7 +175,6 @@ mod test {
         };
         let token_id = Token::insert(params, &client).await.unwrap();
         let token = Token::load(token_id, &client).await.unwrap();
-        assert_eq!(token.owner_pub_key, PUBKEY.to_string());
         assert_eq!(token.asset_state_id, asset2.id);
         assert_eq!(token.issue_number, 1);
     }
@@ -196,7 +185,6 @@ mod test {
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
 
         let params = NewToken {
-            owner_pub_key: PUBKEY.to_string(),
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
