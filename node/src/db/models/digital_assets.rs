@@ -9,13 +9,12 @@ use tokio_postgres::Client;
 #[pg_mapper(table = "digital_assets")]
 pub struct DigitalAsset {
     pub id: uuid::Uuid,
-    pub template_type: String,
+    pub template_type: u32,
     pub committee_mode: CommitteeMode,
     pub node_threshold: Option<u32>,
     pub minimum_collateral: Option<i64>,
     pub consensus_strategy: Option<u32>,
     pub fqdn: Option<String>,
-    pub digital_asset_template_id: i64,
     pub raid_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -24,13 +23,12 @@ pub struct DigitalAsset {
 /// Query paramteres for adding new digital asset record
 #[derive(Default, Clone, Debug)]
 pub struct NewDigitalAsset {
-    pub template_type: String,
+    pub template_type: u32,
     pub committee_mode: CommitteeMode,
     pub node_threshold: Option<u32>,
     pub minimum_collateral: Option<i64>,
     pub consensus_strategy: Option<u32>,
     pub fqdn: Option<String>,
-    pub digital_asset_template_id: i64,
     pub raid_id: Option<String>,
 }
 
@@ -82,9 +80,8 @@ impl DigitalAsset {
                 minimum_collateral,
                 consensus_strategy,
                 fqdn,
-                digital_asset_template_id,
                 raid_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id";
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
@@ -94,7 +91,6 @@ impl DigitalAsset {
                 &params.minimum_collateral,
                 &params.consensus_strategy,
                 &params.fqdn,
-                &params.digital_asset_template_id,
                 &params.raid_id,
             ])
             .await?;
@@ -123,13 +119,13 @@ mod test {
         load_env();
         let (client, _lock) = test_db_client().await;
         let params = NewDigitalAsset {
-            template_type: "SingleUseDigitalAsset".to_string(),
+            template_type: 1,
             committee_mode: CommitteeMode::Creator,
             ..NewDigitalAsset::default()
         };
         let digital_asset_id = DigitalAsset::insert(params, &client).await?;
         let digital_asset = DigitalAsset::load(digital_asset_id, &client).await?;
-        assert_eq!(digital_asset.template_type, "SingleUseDigitalAsset".to_string());
+        assert_eq!(digital_asset.template_type, 1);
         assert_eq!(digital_asset.committee_mode, CommitteeMode::Creator);
 
         Ok(())
@@ -140,7 +136,7 @@ mod test {
         load_env();
         let (client, _lock) = test_db_client().await;
         let params = NewDigitalAsset {
-            template_type: "SingleUseDigitalAsset".to_string(),
+            template_type: 1,
             committee_mode: CommitteeMode::Public,
             ..NewDigitalAsset::default()
         };

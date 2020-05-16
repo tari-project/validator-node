@@ -9,6 +9,8 @@ use thiserror::Error;
 pub enum ApiError {
     #[error("DB error: {0}")]
     DBError(#[from] DBError),
+    #[error("Contract error: {0}")]
+    Contract(#[from] anyhow::Error),
     #[error("Application error: {0}")]
     ApplicationError(#[from] ApplicationError),
     #[error("Auth error: {0}")]
@@ -94,6 +96,11 @@ impl ApiError {
                         .json(json!({"error": "Validation error".to_string(), "fields": validation_errors})),
                 },
                 _ => generic_error_response_data,
+            },
+            ApiError::Contract(err) => ResponseData {
+                status_code: StatusCode::INTERNAL_SERVER_ERROR,
+                error_response: HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                    .json(json!({ "error": err.to_string() })),
             },
         }
     }

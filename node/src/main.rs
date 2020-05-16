@@ -8,6 +8,12 @@ use tari_validator_node::{
     db::{migrations, utils},
 };
 
+// TODO: install into actix
+fn install_templates(app: &mut actix_web::web::ServiceConfig) {
+    use tari_validator_node::template::{actix::install_template, single_use_tokens};
+    install_template::<single_use_tokens::SingleUseTokenTemplate>(app);
+}
+
 #[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
     let mut args = Arguments::from_args();

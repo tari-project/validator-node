@@ -2,6 +2,7 @@ use super::errors::TypeError;
 use bytes::BytesMut;
 use core::cmp::PartialEq;
 use postgres_protocol::types::int8_from_sql;
+use serde::{Deserialize, Serialize};
 use std::{
     convert::TryInto,
     error::Error,
@@ -16,12 +17,16 @@ const CONFIDENTIAL_MASK: u16 = 2;
 /// Tari uses templates to define the behaviour for its smart contracts.
 /// TemplateID identifies the type of digital asset being created and smart contracts available.
 /// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id) entity
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy)]
+#[serde(from = "u64", into = "u64")]
 pub struct TemplateID {
     template_type: u32,
     template_version: u16,
     tail: u16,
 }
+/// Display format for TemplateID, this should not be used for storing/decoding
+///
+/// NOTE: for decodeable representation use [`TemplateID::to_hex()`] and [`TemplateID::from_hex()`]
 impl fmt::Display for TemplateID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}", self.template_type, self.template_version)?;
@@ -51,6 +56,9 @@ impl Hash for TemplateID {
 }
 
 impl TemplateID {
+    /// TemplateID stored as BIGINT
+    pub const SQL_TYPE: Type = Type::INT8;
+
     /// Template type (0 - 4,294,967,295)
     #[inline]
     pub fn template_type(&self) -> u32 {
@@ -133,6 +141,14 @@ impl From<&TemplateID> for u64 {
         dst[4..6].copy_from_slice(&id.template_version.to_le_bytes());
         dst[6..8].copy_from_slice(&id.tail.to_le_bytes());
         u64::from_le_bytes(dst)
+    }
+}
+
+/// TemplateID is usually stored as 64-bit unsigned int
+/// See https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id
+impl From<TemplateID> for u64 {
+    fn from(id: TemplateID) -> u64 {
+        u64::from(&id)
     }
 }
 
@@ -220,6 +236,22 @@ mod test {
         }
     }
 
+    #[test]
+    fn template_bad_hex() {
+        for bad_input in &[
+            "ZZZZZZZZZZZZ".to_string(),
+            "A".to_string(),
+            format!("{:013X}", 0),
+            format!("{:011X}", 0),
+        ] {
+            assert!(
+                TemplateID::from_hex(bad_input).is_err(),
+                "Should fail on '{}'",
+                bad_input
+            )
+        }
+    }
+
     #[actix_rt::test]
     async fn sql() -> anyhow::Result<()> {
         load_env();
@@ -227,7 +259,7 @@ mod test {
         for shift in 0u8..15 {
             let num: u64 = 1 | (7 << (shift * 4));
             let id: TemplateID = num.into();
-            let stmt = client.prepare_typed("SELECT $1", &[Type::INT8]).await?;
+            let stmt = client.prepare_typed("SELECT $1", &[TemplateID::SQL_TYPE]).await?;
             let id2: TemplateID = client.query_one(&stmt, &[&id]).await?.get(0);
             assert_eq!(id, id2);
         }

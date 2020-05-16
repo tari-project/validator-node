@@ -1,12 +1,15 @@
-use super::{AppendOnlyStatus, AssetStatus};
-use crate::db::utils::{errors::DBError, validation::ValidationErrors};
+use super::AssetStatus;
+use crate::{
+    db::utils::{errors::DBError, validation::ValidationErrors},
+    types::AssetID,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::Client;
 
-#[derive(Serialize, PostgresMapper, PartialEq, Debug)]
+#[derive(Serialize, PostgresMapper, PartialEq, Debug, Clone)]
 #[pg_mapper(table = "asset_states_view")]
 pub struct AssetState {
     pub id: uuid::Uuid,
@@ -21,7 +24,7 @@ pub struct AssetState {
     pub superseded_by: Option<uuid::Uuid>,
     pub initial_permission_bitflag: i64,
     pub initial_data_json: Value,
-    pub asset_id: String,
+    pub asset_id: AssetID,
     pub digital_asset_id: uuid::Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -40,7 +43,7 @@ pub struct NewAssetState {
     pub expiry_date: Option<DateTime<Utc>>,
     pub initial_permission_bitflag: i64,
     pub initial_data_json: Value,
-    pub asset_id: String,
+    pub asset_id: AssetID,
     pub digital_asset_id: uuid::Uuid,
 }
 
@@ -48,8 +51,9 @@ pub struct NewAssetState {
 #[derive(Default, Clone, Debug)]
 pub struct NewAssetStateAppendOnly {
     pub asset_state_id: uuid::Uuid,
-    pub status: AppendOnlyStatus,
+    pub transaction_id: uuid::Uuid,
     pub state_data_json: Value,
+    pub status: AssetStatus,
 }
 
 impl NewAssetState {
@@ -118,7 +122,7 @@ impl AssetState {
     }
 
     /// Find asset state record by asset id )
-    pub async fn find_by_asset_id(asset_id: String, client: &Client) -> Result<Option<AssetState>, DBError> {
+    pub async fn find_by_asset_id(asset_id: AssetID, client: &Client) -> Result<Option<AssetState>, DBError> {
         let stmt = "SELECT * FROM asset_states_view WHERE asset_id = $1";
         let result = client.query_opt(stmt, &[&asset_id]).await?;
         Ok(result.map(AssetState::from_row).transpose()?)
@@ -134,13 +138,15 @@ impl AssetState {
             INSERT INTO asset_state_append_only (
                 asset_state_id,
                 state_data_json,
+                transaction_id,
                 status
-            ) VALUES ($1, $2, $3) RETURNING id";
+            ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
                 &params.asset_state_id,
                 &params.state_data_json,
+                &params.transaction_id,
                 &params.status,
             ])
             .await?;
@@ -153,19 +159,20 @@ impl AssetState {
 mod test {
     use super::*;
     use crate::{
-        db::utils::validation::*,
-        test_utils::{builders::*, load_env, test_db_client},
+        db::{models::TransactionStatus, utils::validation::*},
+        test_utils::{builders::*, test_db_client},
     };
     use serde_json::json;
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
-    async fn crud() -> anyhow::Result<()> {
-        load_env();
+    async fn crud() {
         let (client, _lock) = test_db_client().await;
-        let digital_asset = DigitalAssetBuilder::default().build(&client).await?;
-        let tari_asset_id = "asset-id-placeholder-0976544466643335678667765432355555555445544".to_string();
+        let digital_asset = DigitalAssetBuilder::default().build(&client).await.unwrap();
+        let tari_asset_id: AssetID = "7e6f4b801170db0bf86c9257fe56249.469439556cba069a12afd1c72c585b0f"
+            .parse()
+            .unwrap();
 
         let params = NewAssetState {
             name: "AssetName".to_string(),
@@ -176,23 +183,20 @@ mod test {
             digital_asset_id: digital_asset.id,
             ..NewAssetState::default()
         };
-        let asset_id = AssetState::insert(params, &client).await?;
-        let asset = AssetState::load(asset_id, &client).await?;
+        let asset_id = AssetState::insert(params, &client).await.unwrap();
+        let asset = AssetState::load(asset_id, &client).await.unwrap();
         assert_eq!(asset.name, "AssetName".to_string());
         assert_eq!(asset.status, AssetStatus::Active);
         assert_eq!(asset.asset_issuer_pub_key, PUBKEY.to_string());
         assert_eq!(asset.digital_asset_id, digital_asset.id);
         assert_eq!(asset.asset_id, tari_asset_id.clone());
 
-        let found_asset = AssetState::find_by_asset_id(tari_asset_id, &client).await?;
+        let found_asset = AssetState::find_by_asset_id(tari_asset_id, &client).await.unwrap();
         assert_eq!(found_asset, Some(asset));
-
-        Ok(())
     }
 
     #[actix_rt::test]
     async fn store_append_only_state() -> anyhow::Result<()> {
-        load_env();
         let (client, _lock) = test_db_client().await;
         let initial_data = json!({"value": true, "value2": 4});
         let asset = AssetStateBuilder {
@@ -204,39 +208,58 @@ mod test {
         assert_eq!(initial_data, asset.initial_data_json);
         assert_eq!(initial_data, asset.additional_data_json);
 
+        let transaction = ContractTransactionBuilder {
+            asset_state_id: Some(asset.id),
+            status: TransactionStatus::Commit,
+            ..Default::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
         let empty_value: Option<String> = None;
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
                 state_data_json: state_data_json.clone(),
-                status: AppendOnlyStatus::Commit,
+                transaction_id: transaction.id.clone(),
+                ..Default::default()
             },
             &client,
         )
         .await?;
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(state_data_json, asset.additional_data_json);
+        assert_eq!(asset.status, AssetStatus::Active);
 
         let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
                 state_data_json: state_data_json.clone(),
-                status: AppendOnlyStatus::Commit,
+                transaction_id: transaction.id.clone(),
+                status: AssetStatus::Retired,
             },
             &client,
         )
         .await?;
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(state_data_json.clone(), asset.additional_data_json);
+        assert_eq!(asset.status, AssetStatus::Retired);
 
-        let pre_commit_state_data_json = json!({"value": true, "value3": 1});
+        let transaction = ContractTransactionBuilder {
+            asset_state_id: Some(asset.id),
+            ..Default::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
                 asset_state_id: asset.id,
-                state_data_json: pre_commit_state_data_json,
-                status: AppendOnlyStatus::PreCommit,
+                state_data_json: json!({"value": true, "value3": 1}),
+                transaction_id: transaction.id,
+                status: AssetStatus::Retired,
             },
             &client,
         )
@@ -249,7 +272,6 @@ mod test {
 
     #[actix_rt::test]
     async fn asset_id_uniqueness() -> anyhow::Result<()> {
-        load_env();
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
 
