@@ -1,5 +1,4 @@
-use super::CommitteeMode;
-use crate::db::utils::{errors::DBError, validation::ValidationErrors};
+use crate::{db::utils::errors::DBError, types::CommitteeMode};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
@@ -11,9 +10,6 @@ pub struct DigitalAsset {
     pub id: uuid::Uuid,
     pub template_type: u32,
     pub committee_mode: CommitteeMode,
-    pub node_threshold: Option<u32>,
-    pub minimum_collateral: Option<i64>,
-    pub consensus_strategy: Option<u32>,
     pub fqdn: Option<String>,
     pub raid_id: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -25,71 +21,25 @@ pub struct DigitalAsset {
 pub struct NewDigitalAsset {
     pub template_type: u32,
     pub committee_mode: CommitteeMode,
-    pub node_threshold: Option<u32>,
-    pub minimum_collateral: Option<i64>,
-    pub consensus_strategy: Option<u32>,
     pub fqdn: Option<String>,
     pub raid_id: Option<String>,
-}
-
-impl NewDigitalAsset {
-    pub fn validate_record(&self) -> Result<(), DBError> {
-        let mut validation_errors = ValidationErrors::default();
-
-        if self.committee_mode == CommitteeMode::Public {
-            if self.node_threshold.is_none() {
-                validation_errors.append_validation_error(
-                    "required",
-                    "node_threshold",
-                    "Node threshold is required for digital assets in public committee mode.",
-                );
-            }
-
-            if self.minimum_collateral.is_none() {
-                validation_errors.append_validation_error(
-                    "required",
-                    "minimum_collateral",
-                    "Minimum collateral is required for digital assets in public committee mode.",
-                );
-            }
-
-            if self.consensus_strategy.is_none() {
-                validation_errors.append_validation_error(
-                    "required",
-                    "consensus_strategy",
-                    "Consensus strategy is required for digital assets in public committee mode.",
-                );
-            }
-        }
-        validation_errors.validate()?;
-
-        Ok(())
-    }
 }
 
 impl DigitalAsset {
     /// Add digital asset record
     pub async fn insert(params: NewDigitalAsset, client: &Client) -> Result<uuid::Uuid, DBError> {
-        params.validate_record()?;
-
         const QUERY: &'static str = "
             INSERT INTO digital_assets (
                 template_type,
                 committee_mode,
-                node_threshold,
-                minimum_collateral,
-                consensus_strategy,
                 fqdn,
                 raid_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id";
+            ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
                 &params.template_type,
                 &params.committee_mode,
-                &params.node_threshold,
-                &params.minimum_collateral,
-                &params.consensus_strategy,
                 &params.fqdn,
                 &params.raid_id,
             ])
@@ -110,8 +60,8 @@ impl DigitalAsset {
 mod test {
     use super::*;
     use crate::{
-        db::utils::validation::*,
         test_utils::{load_env, test_db_client},
+        types::NodeSelectionStrategy,
     };
 
     #[actix_rt::test]
@@ -120,58 +70,21 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let params = NewDigitalAsset {
             template_type: 1,
-            committee_mode: CommitteeMode::Creator,
+            committee_mode: CommitteeMode::Public {
+                node_threshold: 5,
+                minimum_collateral: 1000,
+                node_selection_strategy: NodeSelectionStrategy::RegisterAll,
+            },
             ..NewDigitalAsset::default()
         };
         let digital_asset_id = DigitalAsset::insert(params, &client).await?;
         let digital_asset = DigitalAsset::load(digital_asset_id, &client).await?;
         assert_eq!(digital_asset.template_type, 1);
-        assert_eq!(digital_asset.committee_mode, CommitteeMode::Creator);
-
-        Ok(())
-    }
-
-    #[actix_rt::test]
-    async fn public_committee_required_fields() -> anyhow::Result<()> {
-        load_env();
-        let (client, _lock) = test_db_client().await;
-        let params = NewDigitalAsset {
-            template_type: 1,
-            committee_mode: CommitteeMode::Public,
-            ..NewDigitalAsset::default()
-        };
-        let mut expected_validation_errors = ValidationErrors::default();
-        let expected_error = ValidationError {
-            code: "required".into(),
-            message: "Node threshold is required for digital assets in public committee mode.".into(),
-        };
-        expected_validation_errors
-            .0
-            .insert("node_threshold", vec![expected_error]);
-
-        let expected_error = ValidationError {
-            code: "required".into(),
-            message: "Minimum collateral is required for digital assets in public committee mode.".into(),
-        };
-        expected_validation_errors
-            .0
-            .insert("minimum_collateral", vec![expected_error]);
-
-        let expected_error = ValidationError {
-            code: "required".into(),
-            message: "Consensus strategy is required for digital assets in public committee mode.".into(),
-        };
-        expected_validation_errors
-            .0
-            .insert("consensus_strategy", vec![expected_error]);
-
-        let result = DigitalAsset::insert(params, &client).await;
-        assert!(result.is_err());
-        if let Err(DBError::Validation(validation_errors)) = result {
-            assert_eq!(validation_errors, expected_validation_errors);
-        } else {
-            panic!("Expected an error result response from validation test");
-        }
+        assert_eq!(digital_asset.committee_mode, CommitteeMode::Public {
+            node_threshold: 5,
+            minimum_collateral: 1000,
+            node_selection_strategy: NodeSelectionStrategy::RegisterAll
+        });
 
         Ok(())
     }
