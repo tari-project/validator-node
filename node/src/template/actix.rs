@@ -188,7 +188,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_actix_template_routes() {
-        pretty_env_logger::init();
+        let _ = pretty_env_logger::try_init();
         let mut app = test::init_service(
             App::new()
                 .wrap(Logger::default())
@@ -272,8 +272,8 @@ mod test {
 
     #[actix_rt::test]
     async fn full_stack_server() {
+        let _ = pretty_env_logger::try_init();
         let pool = actix_test_pool();
-        pretty_env_logger::init();
         let srv = test::start(move || {
             App::new()
                 .app_data(pool.clone())
