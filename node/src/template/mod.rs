@@ -17,6 +17,7 @@
 // we shall provide some custom build script which disallows installing templates using unsafe on a node
 
 use crate::types::TemplateID;
+use actix_web::web;
 
 mod errors;
 pub use errors::TemplateError;
@@ -27,8 +28,13 @@ pub mod single_use_tokens;
 mod context;
 pub use context::{AssetTemplateContext, TemplateContext, TokenTemplateContext};
 
+const LOG_TARGET: &'static str = "validator_node::template";
+
 pub trait Contracts {
-    fn setup_actix_routes(scope: &mut actix_web::web::ServiceConfig);
+    fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig);
+}
+impl Contracts for () {
+    fn setup_actix_routes(_: TemplateID, _: &mut web::ServiceConfig) {}
 }
 
 #[async_trait::async_trait]

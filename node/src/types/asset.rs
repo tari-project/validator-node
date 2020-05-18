@@ -197,8 +197,7 @@ mod test {
     }
 
     #[actix_rt::test]
-    async fn sql() -> anyhow::Result<()> {
-        load_env();
+    async fn sql() {
         let (client, _lock) = test_db_client().await;
         let mut raw = vec!["A"; 64];
         raw[31] = ".";

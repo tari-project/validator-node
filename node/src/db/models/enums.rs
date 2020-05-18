@@ -73,30 +73,6 @@ string_enum! { AssetStatus [Active, Retired]}
 string_enum! { CommitteeMode [Public, Creator]}
 string_enum! { TokenStatus [Active, Retired]}
 
-impl Default for CommitteeMode {
-    fn default() -> CommitteeMode {
-        CommitteeMode::Public
-    }
-}
-
-impl Default for TransactionStatus {
-    fn default() -> Self {
-        Self::Prepare
-    }
-}
-
-impl Default for TokenStatus {
-    fn default() -> Self {
-        Self::Active
-    }
-}
-
-impl Default for AssetStatus {
-    fn default() -> Self {
-        Self::Active
-    }
-}
-
 #[test]
 fn display() {
     assert_eq!(AssetStatus::Active.to_string(), "Active");

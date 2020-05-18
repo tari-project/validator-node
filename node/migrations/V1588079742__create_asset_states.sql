@@ -21,4 +21,4 @@ CREATE INDEX index_asset_states_uuid ON asset_states (id);
 CREATE INDEX index_asset_states_name ON asset_states (name);
 CREATE INDEX index_asset_states_superseded_by ON asset_states (superseded_by);
 CREATE INDEX index_asset_states_expiry_date ON asset_states (expiry_date);
-CREATE INDEX index_asset_states_asset_id ON asset_states (asset_id);
+CREATE UNIQUE INDEX index_asset_states_asset_id ON asset_states (asset_id);

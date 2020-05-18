@@ -20,6 +20,12 @@ impl Default for TokenBuilder {
         Self {
             asset_state_id: None,
             initial_data_json: serde_json::from_str("{}").unwrap(),
+            token_id: format!(
+                "7e6f4b801170db0bf86c9257fe56249.469439556cba069a12afd1c72c585b0a{:032X}",
+                x
+            )
+            .parse()
+            .unwrap(),
             __non_exhaustive: (),
         }
     }

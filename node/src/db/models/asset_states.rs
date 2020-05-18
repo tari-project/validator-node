@@ -9,7 +9,7 @@ use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::Client;
 
-#[derive(Serialize, PostgresMapper, PartialEq, Debug)]
+#[derive(Serialize, PostgresMapper, PartialEq, Debug, Clone)]
 #[pg_mapper(table = "asset_states_view")]
 pub struct AssetState {
     pub id: uuid::Uuid,
@@ -24,7 +24,7 @@ pub struct AssetState {
     pub superseded_by: Option<uuid::Uuid>,
     pub initial_permission_bitflag: i64,
     pub initial_data_json: Value,
-    pub asset_id: String,
+    pub asset_id: AssetID,
     pub digital_asset_id: uuid::Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -43,7 +43,7 @@ pub struct NewAssetState {
     pub expiry_date: Option<DateTime<Utc>>,
     pub initial_permission_bitflag: i64,
     pub initial_data_json: Value,
-    pub asset_id: String,
+    pub asset_id: AssetID,
     pub digital_asset_id: uuid::Uuid,
 }
 
@@ -122,7 +122,7 @@ impl AssetState {
     }
 
     /// Find asset state record by asset id )
-    pub async fn find_by_asset_id(asset_id: String, client: &Client) -> Result<Option<AssetState>, DBError> {
+    pub async fn find_by_asset_id(asset_id: AssetID, client: &Client) -> Result<Option<AssetState>, DBError> {
         let stmt = "SELECT * FROM asset_states_view WHERE asset_id = $1";
         let result = client.query_opt(stmt, &[&asset_id]).await?;
         Ok(result.map(AssetState::from_row).transpose()?)
@@ -272,7 +272,6 @@ mod test {
 
     #[actix_rt::test]
     async fn asset_id_uniqueness() -> anyhow::Result<()> {
-        load_env();
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await?;
 

@@ -10,7 +10,7 @@ use serde_json::{
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
 
-#[derive(Serialize, PostgresMapper)]
+#[derive(Clone, Serialize, PostgresMapper)]
 #[pg_mapper(table = "tokens_view")]
 pub struct Token {
     pub id: uuid::Uuid,
@@ -62,6 +62,7 @@ impl Token {
             .query_one(&stmt, &[
                 &params.asset_state_id,
                 &params.initial_data_json,
+                &params.token_id,
             ])
             .await?;
 
@@ -151,18 +152,19 @@ mod test {
         test_utils::{builders::*, test_db_client},
     };
     use serde_json::json;
+
     const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
     #[actix_rt::test]
-    async fn crud() -> anyhow::Result<()> {
-        load_env();
+    async fn crud() {
         let (client, _lock) = test_db_client().await;
-        let asset = AssetStateBuilder::default().build(&client).await?;
-        let asset2 = AssetStateBuilder::default().build(&client).await?;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+        let asset2 = AssetStateBuilder::default().build(&client).await.unwrap();
 
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
+            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -173,6 +175,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
+            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -183,6 +186,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset2.id,
             initial_data_json: json!({"value": true}),
+            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -198,7 +202,7 @@ mod test {
 
         let params = NewToken {
             asset_state_id: asset.id,
-            additional_data_json: json!({"value": true}),
+            initial_data_json: json!({"value": true}),
             token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
             ..NewToken::default()
         };
