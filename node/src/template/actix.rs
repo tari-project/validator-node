@@ -49,32 +49,37 @@ impl From<&TokenCallParams> for AssetCallParams {
     }
 }
 
-pub fn install_template<T: Template>(app: &mut web::ServiceConfig) {
-    let asset_root = format!("/asset_call/{}/{{features}}/{{raid_id}}/{{hash}}", T::id());
-    info!(
-        target: LOG_TARGET,
-        "template={}, installing assets API root {}",
-        T::id(),
-        asset_root
-    );
-    app.service(
-        web::scope(asset_root.as_str())
-            .data(T::id())
-            .configure(|app| <T::AssetContracts as Contracts>::setup_actix_routes(T::id(), app)),
-    );
-    let token_root = format!("/token_call/{}/{{features}}/{{raid_id}}/{{hash}}/{{uid}}", T::id());
-    info!(
-        target: LOG_TARGET,
-        "template={}, installing tokens API root {}",
-        T::id(),
-        token_root
-    );
-    app.service(
-        web::scope(token_root.as_str())
-            .data(T::id())
-            .configure(|app| <T::TokenContracts as Contracts>::setup_actix_routes(T::id(), app)),
-    );
+pub trait ActixTemplate: Template {
+    /// Creates web::Scope with routes for template
+    fn actix_scopes() -> Vec<actix_web::Scope> {
+        let id: TemplateID = Self::id();
+
+        let asset_root = format!("/asset_call/{}/{{features}}/{{raid_id}}/{{hash}}", id);
+        info!(
+            target: LOG_TARGET,
+            "template={}, installing assets API root {}",
+            id,
+            asset_root
+        );
+        let asset_scope = web::scope(asset_root.as_str())
+            .data(id)
+            .configure(|app| <Self::AssetContracts as Contracts>::setup_actix_routes(id, app));
+        let token_root = format!("/token_call/{}/{{features}}/{{raid_id}}/{{hash}}/{{uid}}", id);
+        info!(
+            target: LOG_TARGET,
+            "template={}, installing tokens API root {}",
+            id,
+            token_root
+        );
+        let token_scope = web::scope(token_root.as_str())
+                .data(id)
+                .configure(|app| <Self::TokenContracts as Contracts>::setup_actix_routes(id, app));
+
+        vec![asset_scope, token_scope]
+    }
 }
+
+impl<A: Template> ActixTemplate for A {}
 
 /// TemplateContext can be retrieved from actix web requests at given path
 impl<'a> FromRequest for TemplateContext<'a> {
@@ -118,9 +123,12 @@ mod test {
     use super::*;
     use crate::{
         db::models::tokens::*,
-        test_utils::{actix_test_pool, builders::*, test_db_client},
+        test_utils::actix::TestAPIServer,
+        test_utils::{builders::*, test_db_client},
     };
     use actix_web::{web, HttpResponse, Result};
+    use actix_web::http::StatusCode;
+
 
     const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
@@ -150,7 +158,7 @@ mod test {
         }
     }
 
-    /// *** Test template implementation - low level API testins *****
+    // *** Test template implementation - low level API testins *****
 
     // Asset contracts
     async fn asset_handler(path: web::Path<AssetCallParams>, tpl: web::Data<TemplateID>) -> Result<HttpResponse> {
@@ -182,19 +190,11 @@ mod test {
             65536.into()
         }
     }
-    /// *** End of Test template implementation *****
-    use actix_web::{http::StatusCode, middleware::Logger, test, App};
-    use pretty_env_logger;
+    // *** End of Test template implementation *****
 
     #[actix_rt::test]
     async fn test_actix_template_routes() {
-        let _ = pretty_env_logger::try_init();
-        let mut app = test::init_service(
-            App::new()
-                .wrap(Logger::default())
-                .configure(install_template::<TestTemplate>),
-        )
-        .await;
+        let srv = TestAPIServer::new(TestTemplateContext::actix_scopes);
 
         use actix_web::http::Method;
         let tpl = TestTemplate::id();
@@ -262,24 +262,17 @@ mod test {
         ];
 
         for (method, uri, code) in &req_resp {
-            let req = test::TestRequest::with_uri(uri.as_str())
-                .method((*method).clone())
-                .to_request();
-            let resp = test::call_service(&mut app, req).await;
-            assert_eq!(resp.status(), *code, "POST {}", uri);
+            let resp = srv.request((*method).clone(), uri.as_str())
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), *code, "{} {}", method, uri);
         }
     }
 
     #[actix_rt::test]
     async fn full_stack_server() {
-        let _ = pretty_env_logger::try_init();
-        let pool = actix_test_pool();
-        let srv = test::start(move || {
-            App::new()
-                .app_data(pool.clone())
-                .wrap(Logger::default())
-                .configure(install_template::<TestTemplate>)
-        });
+        let srv = TestAPIServer::new(TestTemplateContext::actix_scopes);
 
         let tpl = TestTemplate::id();
         let asset: AssetID = format!("{}{:04X}{:015X}.{:032X}", tpl.to_hex(), 1, 2, 3)
@@ -290,7 +283,7 @@ mod test {
             .unwrap();
 
         let mut resp = srv
-            .post(format!("/asset_call/{}/{:04X}/{:015X}/{:032X}/test", tpl, 1, 2, 3))
+            .asset_call(&asset, "test")
             .send()
             .await
             .unwrap();
@@ -298,14 +291,50 @@ mod test {
         assert_eq!(resp.body().await.unwrap(), asset.to_string());
 
         let mut resp = srv
-            .post(format!(
-                "/token_call/{}/{:04X}/{:015X}/{:032X}/{:032X}/test",
-                tpl, 1, 2, 3, 4
-            ))
+            .token_call(&token, "test")
             .send()
             .await
             .unwrap();
         assert!(resp.status().is_success());
         assert_eq!(resp.body().await.unwrap(), token.to_string());
     }
+
+    // *** Test TemplateContext *****
+
+    // Asset contracts
+    async fn asset_handler_context(path: web::Path<AssetCallParams>, ctx: TemplateContext<'_>) -> Result<HttpResponse> {
+        let tpl = ctx.template_id;
+        Ok(HttpResponse::Ok().body(path.asset_id(&tpl)?.to_string()))
+    }
+    enum AssetConractsContext {}
+    impl Contracts for AssetConractsContext {
+        fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
+            log::info!("template={}, registering asset routes", tpl);
+            scope.service(web::resource("test").route(web::post().to(asset_handler_context)));
+        }
+    }
+    struct TestTemplateContext;
+    impl Template for TestTemplateContext {
+        type AssetContracts = AssetConractsContext;
+        type TokenContracts = ();
+
+        fn id() -> TemplateID {
+            65537.into()
+        }
+    }
+    //*** End of Test template implementation *****
+
+    #[actix_rt::test]
+    async fn template_context_full_stack() {
+        let srv = TestAPIServer::new(TestTemplateContext::actix_scopes);
+
+        let tpl = TestTemplateContext::id();
+        let asset_id = AssetID::test_from_template(tpl);
+
+        let mut resp = srv.asset_call(&asset_id, "test").send().await.unwrap();
+        assert!(resp.status().is_success());
+        assert_eq!(resp.body().await.unwrap(), asset_id.to_string());
+    }
+
+
 }

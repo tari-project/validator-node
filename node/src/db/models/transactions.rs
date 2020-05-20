@@ -2,12 +2,12 @@ pub use super::TransactionStatus;
 use crate::{db::utils::errors::DBError, types::TemplateID};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
 
-#[derive(Serialize, PostgresMapper, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PostgresMapper, PartialEq, Debug)]
 #[pg_mapper(table = "contract_transactions")]
 pub struct ContractTransaction {
     pub id: uuid::Uuid,

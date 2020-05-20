@@ -5,7 +5,9 @@ use deadpool_postgres::{Client, Pool};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio_postgres::NoTls;
 
-pub(crate) mod builders;
+mod types;
+pub mod builders;
+pub mod actix;
 
 lazy_static::lazy_static! {
     static ref LOCK_DB_POOL: Mutex<Pool> = {
@@ -41,7 +43,9 @@ pub fn build_test_config() -> anyhow::Result<NodeConfig> {
         "validator.wallets_keys_path",
         format!("{}/wallets", option_env!("OUT_DIR").unwrap_or("./.tari")),
     )?;
-    Ok(NodeConfig::load_from(&config, false)?)
+    let config = NodeConfig::load_from(&config, false).unwrap();
+    log::trace!(target: "test_utils", "Load test config: {:?}", config);
+    Ok(config)
 }
 
 /// Return DB pool for automated tests.

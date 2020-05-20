@@ -87,7 +87,7 @@ mod expanded_macros {
     ////// impl #[contract(asset)] for issue_tokens()
 
     #[derive(Serialize, Deserialize)]
-    struct IssueTokensPayload {
+    pub struct IssueTokensPayload {
         token_ids: Vec<TokenID>,
         user_pubkey: Pubkey,
     }
@@ -151,7 +151,7 @@ mod expanded_macros {
     //////  impl #[contract(token)] for transfer_token()
 
     #[derive(Serialize, Deserialize)]
-    struct TransferTokenPayload {
+    pub struct TransferTokenPayload {
         user_pubkey: Pubkey,
     }
 
@@ -216,4 +216,43 @@ mod expanded_macros {
     }
 
     ////// end of #[derive(Contracts)]
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        db::models::transactions::*,
+        types::AssetID,
+        test_utils::test_db_client,
+        test_utils::actix::TestAPIServer,
+        test_utils::builders::*,
+    };
+    use serde_json::json;
+
+    const PUBKEY: &'static str = "0123456789abcdef";
+
+
+    #[actix_rt::test]
+    async fn issue_tokens() {
+        let srv = TestAPIServer::new(SingleUseTokenTemplate::actix_scopes);
+        let (client, _lock) = test_db_client().await;
+
+        let tpl = SingleUseTokenTemplate::id();
+        let asset_id = AssetID::test_from_template(tpl);
+        let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
+        AssetStateBuilder { asset_id: asset_id.clone(), ..Default::default() }.build(&client).await.unwrap();
+
+        let mut resp = srv
+            .asset_call(&asset_id, "issue_tokens")
+            .send_json(&json!({"user_pubkey": PUBKEY, "token_ids": token_ids}))
+            .await
+            .unwrap();
+
+        assert!(resp.status().is_success());
+        let trans: Option<ContractTransaction> = resp.json().await.unwrap();
+        let trans = trans.unwrap();
+        assert_eq!(trans.status, TransactionStatus::Commit);
+        assert_eq!(trans.result.as_array().unwrap().len(), 10);
+    }
 }

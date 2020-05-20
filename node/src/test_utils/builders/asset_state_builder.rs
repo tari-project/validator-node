@@ -38,9 +38,7 @@ impl Default for AssetStateBuilder {
             initial_permission_bitflag: 0,
             initial_data_json: serde_json::from_str("{}").unwrap(),
             digital_asset_id: None,
-            asset_id: format!("7e6f4b801170db0bf86c9257fe56249.469439556cba069abcde{:012X}", x)
-                .parse()
-                .unwrap(), // TODO: Use a real asset ID here for consistency
+            asset_id: AssetID::test_from_template(65536.into()), // TODO: Use a real asset ID here for consistency
             __non_exhaustive: (),
         }
     }

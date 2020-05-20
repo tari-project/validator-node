@@ -1,5 +1,5 @@
 use super::AssetStateBuilder;
-use crate::{db::models::*, types::TokenID};
+use crate::{db::models::*, types::*};
 use deadpool_postgres::Client;
 use rand::prelude::*;
 use serde_json::Value;
@@ -20,12 +20,7 @@ impl Default for TokenBuilder {
         Self {
             asset_state_id: None,
             initial_data_json: serde_json::from_str("{}").unwrap(),
-            token_id: format!(
-                "7e6f4b801170db0bf86c9257fe56249.469439556cba069a12afd1c72c585b0a{:032X}",
-                x
-            )
-            .parse()
-            .unwrap(),
+            token_id: TokenID::test_from_asset(&AssetID::test_from_template(65536.into())),
             __non_exhaustive: (),
         }
     }

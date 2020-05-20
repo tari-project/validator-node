@@ -4,7 +4,7 @@ use crate::{
     db::utils::db::build_pool,
 };
 use actix_cors::Cors;
-use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
+use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer, Scope};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
@@ -52,8 +52,8 @@ impl Default for CorsConfig {
     }
 }
 
-pub async fn actix_main<F>(config: NodeConfig, configure: F) -> anyhow::Result<()>
-where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
+pub async fn actix_main<F>(config: NodeConfig, scopes: F) -> anyhow::Result<()>
+where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
     let pool = web::Data::new(build_pool(&config.postgres)?);
 
     println!(
@@ -85,7 +85,13 @@ where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
             .wrap(Logger::new(LOGGER_FORMAT).exclude("/status"))
             .wrap(Authentication::new())
             .wrap(AppVersionHeader::new());
-        app.configure(configure.clone())
+
+        // the problem we solving here is for every template scope we need to install distinct app_data with DB pool
+        let with_templates = scopes.clone()()
+            .into_iter()
+            .fold(app, |app, scope| app.service(scope.app_data(pool.clone())));
+
+        with_templates
             .configure(routing::routes)
             .default_service(web::get().to(|| HttpResponse::NotFound().json(json!({"error": "Not found"}))))
     })

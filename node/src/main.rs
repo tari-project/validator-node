@@ -8,10 +8,9 @@ use tari_validator_node::{
     db::{migrations, utils},
 };
 
-// TODO: install into actix
-fn install_templates(app: &mut actix_web::web::ServiceConfig) {
-    use tari_validator_node::template::{actix::install_template, single_use_tokens};
-    install_template::<single_use_tokens::SingleUseTokenTemplate>(app);
+fn template_scopes() -> Vec<actix_web::Scope> {
+    use tari_validator_node::template::{actix::ActixTemplate, single_use_tokens};
+    single_use_tokens::SingleUseTokenTemplate::actix_scopes()
 }
 
 #[actix_rt::main]
@@ -29,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     let node_config = NodeConfig::load_from(&config, true)?;
 
     match args.command {
-        Commands::Start => actix_main(node_config, install_templates).await?,
+        Commands::Start => actix_main(node_config, template_scopes).await?,
         Commands::Init => {
             println!("Initializing database {:?}", node_config.postgres.dbname);
             utils::db::create_database(node_config).await?;
