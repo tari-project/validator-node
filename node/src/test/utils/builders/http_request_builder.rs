@@ -1,5 +1,5 @@
 use crate::{
-    test_utils::actix_test_pool,
+    test::utils::actix_test_pool,
     types::{AssetID, TokenID},
 };
 use actix_web::test::TestRequest;

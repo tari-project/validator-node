@@ -1,0 +1,264 @@
+use crate::{
+    db::{
+        models::{InstructionStatus, NewAssetStateAppendOnly, NewTokenStateAppendOnly},
+        utils::errors::DBError,
+    },
+    types::{AssetID, NodeID, TemplateID, TokenID},
+};
+use chrono::{DateTime, Utc};
+use deadpool_postgres::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
+use tokio_postgres::types::Type;
+use uuid::v1::Context;
+
+#[derive(Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
+#[pg_mapper(table = "instructions")]
+pub struct Instruction {
+    pub id: uuid::Uuid,
+    pub initiating_node_id: NodeID,
+    pub proposal_id: Option<uuid::Uuid>,
+    pub signature: String,
+    pub asset_id: AssetID,
+    pub token_id: TokenID,
+    pub template_id: TemplateID,
+    pub contract_name: String,
+    pub status: InstructionStatus,
+    pub params: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Query parameters for adding new instruction record
+#[derive(Default, Clone, Debug)]
+pub struct NewInstruction {
+    pub id: uuid::Uuid,
+    pub initiating_node_id: NodeID,
+    pub signature: String,
+    pub asset_id: AssetID,
+    pub token_id: Option<TokenID>,
+    pub template_id: TemplateID,
+    pub contract_name: String,
+    pub status: InstructionStatus,
+    pub params: Value,
+}
+
+/// Query parameters for optionally updating instruction fields
+#[derive(Default, Clone, Debug)]
+pub struct UpdateInstruction {
+    pub status: Option<InstructionStatus>,
+    pub proposal_id: Option<uuid::Uuid>,
+}
+
+lazy_static::lazy_static! {
+    pub static ref CONTEXT: Context = Context::new(1);
+}
+
+impl Instruction {
+    pub async fn find_pending(client: &Client) -> Result<Option<(AssetID, Vec<Self>)>, DBError> {
+        Ok(None)
+    }
+
+    pub async fn generate_id(node_id: NodeID) -> Result<uuid::Uuid, DBError> {
+        use chrono::Local;
+        use uuid::{v1::Timestamp, Uuid};
+
+        let time = Local::now();
+        let ts = Timestamp::from_unix(&*CONTEXT, time.timestamp() as u64, time.timestamp_subsec_nanos());
+        let uid = Uuid::new_v1(ts, &node_id.inner())?;
+        Ok(uid)
+    }
+
+    /// Add digital asset record
+    pub async fn insert(params: NewInstruction, client: &Client) -> Result<Self, DBError> {
+        const QUERY: &'static str = "
+            INSERT INTO instructions (
+                id,
+                initiating_node_id,
+                signature,
+                asset_id,
+                token_id,
+                template_id,
+                contract_name,
+                status,
+                params
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *";
+        let stmt = client
+            .prepare_typed(QUERY, &[
+                Type::UUID,
+                Type::UUID,
+                Type::TEXT,
+                Type::UUID,
+                TemplateID::SQL_TYPE,
+                Type::TEXT,
+                Type::TEXT,
+                Type::JSONB,
+            ])
+            .await?;
+        let row = client
+            .query_one(&stmt, &[
+                &params.id,
+                &params.initiating_node_id,
+                &params.signature,
+                &params.asset_id,
+                &params.token_id,
+                &params.template_id,
+                &params.contract_name,
+                &params.status,
+                &params.params,
+            ])
+            .await?;
+        Ok(Self::from_row(row)?)
+    }
+
+    /// Marks set of instructions as given status and sets proposal id for reference if provided
+    pub async fn update_instructions_status(
+        instruction_ids: Vec<uuid::Uuid>,
+        proposal_id: Option<uuid::Uuid>,
+        status: InstructionStatus,
+        client: &Client,
+    ) -> Result<(), DBError>
+    {
+        const QUERY: &'static str = "
+            UPDATE instructions SET
+                status = $2,
+                proposal_id = $3,
+                updated_at = NOW()
+            WHERE id in ($1)
+            RETURNING *";
+        let stmt = client
+            .prepare_typed(QUERY, &[Type::UUID, Type::TEXT, Type::UUID])
+            .await?;
+        client.execute(&stmt, &[&instruction_ids, &status, &proposal_id]).await?;
+
+        Ok(())
+    }
+
+    /// Update instruction state in the database
+    ///
+    /// Updates subset of fields:
+    /// - status
+    /// - proposal_id
+    pub async fn update(self, data: UpdateInstruction, client: &Client) -> Result<Self, DBError> {
+        const QUERY: &'static str = "
+            UPDATE instructions SET
+                status = COALESCE($2, status),
+                proposal_id = $3,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING *";
+        let stmt = client
+            .prepare_typed(QUERY, &[Type::UUID, Type::TEXT, Type::UUID])
+            .await?;
+        let updated = client
+            .query_one(&stmt, &[&self.id, &data.status, &data.proposal_id])
+            .await?;
+        Ok(Self::from_row(updated)?)
+    }
+
+    /// Load instruction record
+    pub async fn load(id: uuid::Uuid, client: &Client) -> Result<Self, DBError> {
+        let stmt = "SELECT * FROM instructions WHERE id = $1";
+        let result = client.query_one(stmt, &[&id]).await?;
+        Ok(Self::from_row(result)?)
+    }
+
+    /// Execute the instruction returning append only state
+    pub async fn execute(
+        self,
+        _client: &Client,
+    ) -> Result<(Vec<NewAssetStateAppendOnly>, Vec<NewTokenStateAppendOnly>), DBError>
+    {
+        // TODO: we will need to encapsulate the running of an instruction somehow so that nodes can compare view state
+        // to expected state
+        Ok((Vec::new(), Vec::new()))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::test::utils::{
+        builders::{AssetStateBuilder, InstructionBuilder},
+        test_db_client,
+    };
+    use serde_json::json;
+
+    #[actix_rt::test]
+    async fn update_instructions_status() {
+        let (client, _lock) = test_db_client().await;
+        let proposal = ProposalBuilder::default().build(&client).await.unwrap();
+        let instruction = InstructionBuilder::default().build(&client).await.unwrap();
+        let instruction2 = InstructionBuilder::default().build(&client).await.unwrap();
+        let instruction3 = InstructionBuilder::default().build(&client).await.unwrap();
+
+        Instruction::update_instructions_status(
+            vec![instruction.id, instruction2.id],
+            Some(proposal.id),
+            InstructionStatus::Commit,
+            &client,
+        )
+        .await
+        .unwrap();
+
+        // Reload instructions confirming state changes where expected
+        let instruction = Instruction::load(instruction.id, &client).await.unwrap();
+        assert_eq!(instruction.status, InstructionStatus::Commit);
+        assert_eq!(instruction.proposal_id, Some(proposal.id));
+
+        let instruction2 = Instruction::load(instruction2.id, &client).await.unwrap();
+        assert_eq!(instruction2.status, InstructionStatus::Commit);
+        assert_eq!(instruction2.proposal_id, Some(proposal.id));
+
+        // Expects unchanged
+        let instruction3 = Instruction::load(instruction3.id, &client).await.unwrap();
+        assert_eq!(instruction3.status, InstructionStatus::Pending);
+        assert!(instruction3.proposal_id.is_none());
+    }
+
+    #[actix_rt::test]
+    async fn execute() {
+        let (client, _lock) = test_db_client().await;
+        let instruction = InstructionBuilder::default().build(&client).await.unwrap();
+        let (new_asset_state_append_only, new_token_state_append_only) = instruction.execute(client).unwrap();
+        asset_eq!(new_asset_state_append_only, Vec::new());
+        asset_eq!(new_token_state_append_only, Vec::new());
+    }
+
+    #[actix_rt::test]
+    async fn crud() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+        let params = NewInstruction {
+            asset_state_id: asset.id,
+            template_id: asset.asset_id.template_id(),
+            contract_name: "test_contract".into(),
+            params: json!({"test_param": 1}),
+            ..NewInstruction::default()
+        };
+        let instruction = Instruction::insert(params, &client).await.unwrap();
+        assert_eq!(instruction.template_id, asset.asset_id.template_id());
+        assert_eq!(instruction.params, json!({"test_param": 1}));
+        assert!(instruction.result.is_null());
+        assert_eq!(instruction.status, InstructionStatus::Prepare);
+
+        let initial_updated_at = instruction.updated_at;
+        let data = UpdateInstruction {
+            status: Some(InstructionStatus::Commit),
+            result: Some(json!({"test_result": "success"})),
+            ..UpdateInstruction::default()
+        };
+        let updated = instruction.update(data, &client).await.unwrap();
+        assert_eq!(updated.result, json!({"test_result": "success"}));
+        assert_eq!(updated.status, InstructionStatus::Commit);
+
+        let instruction2 = Instruction::load(updated.id, &client).await.unwrap();
+        assert_eq!(instruction2.id, updated.id);
+        assert_eq!(instruction2.asset_state_id, updated.asset_state_id);
+        assert_eq!(instruction2.token_id, updated.token_id);
+        assert_eq!(instruction2.result, updated.result);
+        assert_eq!(instruction2.status, updated.status);
+        assert!(instruction2.updated_at > initial_updated_at);
+    }
+}

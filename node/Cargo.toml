@@ -28,6 +28,7 @@ deadpool = "0.5.0"
 deadpool-postgres = { version = "0.5.5", features = ["config"] }
 dotenv = "0.15"
 futures = "0.3"
+itertools = "0.9"
 jsonwebtoken = "7"
 log = "0.4"
 postgres = "0.17.1"

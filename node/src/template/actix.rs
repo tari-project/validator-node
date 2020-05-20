@@ -94,8 +94,8 @@ impl<'a> FromRequest for TemplateContext<'a> {
                 Ok(client) => Ok(TemplateContext {
                     client,
                     template_id,
-                    db_transaction: None,
-                    contract_transaction: None,
+                    db_instruction: None,
+                    instruction: None,
                 }),
                 Err(err) => Err(DBError::from(err).into()),
             }
@@ -109,17 +109,15 @@ mod test {
     use super::*;
     use crate::{
         db::models::tokens::*,
-        test_utils::{builders::*, test_db_client},
+        test::utils::{builders::*, test_db_client},
     };
-
-    const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
     #[actix_rt::test]
     async fn requests() {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
         let tokens = (0..3)
-            .map(|_| TokenID::new(&asset.asset_id, NODE_ID).unwrap())
+            .map(|_| TokenID::new(&asset.asset_id, NodeID::stub()).unwrap())
             .map(|token_id| NewToken {
                 asset_state_id: asset.id,
                 token_id,

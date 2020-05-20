@@ -70,14 +70,19 @@ macro_rules! string_enum {
 
 string_enum! { AccessResource [Api, Wallet]}
 string_enum! { AssetStatus [Active, Retired]}
-string_enum! { CommitteeMode [Public, Creator]}
 string_enum! { TokenStatus [Active, Retired]}
 #[doc(hide)]
-string_enum! { TransactionStatus [Prepare, PreCommit, Commit]}
+string_enum! { ProposalStatus [Pending, Signed, Invalid, Declined, Finalized]}
+#[doc(hide)]
+string_enum! { InstructionStatus [Pending, Invalid, Commit]}
+#[doc(hide)]
+string_enum! { SignedProposalStatus [Pending, Invalid, Validated]}
+#[doc(hide)]
+string_enum! { ViewStatus [NotChosen, Prepare, PreCommit, Invalid, Commit] }
 
-impl Default for TransactionStatus {
+impl Default for InstructionStatus {
     fn default() -> Self {
-        Self::Prepare
+        Self::Pending
     }
 }
 
@@ -90,6 +95,12 @@ impl Default for TokenStatus {
 impl Default for AssetStatus {
     fn default() -> Self {
         Self::Active
+    }
+}
+
+impl Default for ViewStatus {
+    fn default() -> Self {
+        Self::Prepare
     }
 }
 
