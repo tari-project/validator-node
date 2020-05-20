@@ -34,7 +34,12 @@ impl AssetID {
     pub const SQL_TYPE: Type = Type::BPCHAR;
 
     pub fn new(template_id: TemplateID, features: u16, raid_id: RaidID, hash: String) -> Self {
-        Self { template_id, features, raid_id, hash }
+        Self {
+            template_id,
+            features,
+            raid_id,
+            hash,
+        }
     }
 
     #[inline]

@@ -1,8 +1,7 @@
-use crate::types::{AssetID, TokenID};
-use actix_web::{middleware::Logger, client::ClientRequest, Scope, test, App};
 use super::{actix_test_pool, load_env};
+use crate::types::{AssetID, TokenID};
+use actix_web::{client::ClientRequest, middleware::Logger, test, App, Scope};
 use std::ops::Deref;
-
 
 /// Full stack API server for templates testing purposes
 ///
@@ -13,13 +12,12 @@ pub struct TestAPIServer {
 }
 
 impl TestAPIServer {
-    pub fn new<F>(scopes: F) -> Self where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
+    pub fn new<F>(scopes: F) -> Self
+    where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
         load_env();
         let _ = pretty_env_logger::try_init();
         let server = test::start(move || {
-            let app = App::new()
-                .app_data(actix_test_pool())
-                .wrap(Logger::default());
+            let app = App::new().app_data(actix_test_pool()).wrap(Logger::default());
             scopes.clone()()
                 .into_iter()
                 .fold(app, |app, scope| app.service(scope.app_data(actix_test_pool())))
@@ -56,6 +54,7 @@ impl TestAPIServer {
 
 impl Deref for TestAPIServer {
     type Target = test::TestServer;
+
     fn deref(&self) -> &Self::Target {
         &self.server
     }

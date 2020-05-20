@@ -57,9 +57,7 @@ pub trait ActixTemplate: Template {
         let asset_root = format!("/asset_call/{}/{{features}}/{{raid_id}}/{{hash}}", id);
         info!(
             target: LOG_TARGET,
-            "template={}, installing assets API root {}",
-            id,
-            asset_root
+            "template={}, installing assets API root {}", id, asset_root
         );
         let asset_scope = web::scope(asset_root.as_str())
             .data(id)
@@ -67,13 +65,11 @@ pub trait ActixTemplate: Template {
         let token_root = format!("/token_call/{}/{{features}}/{{raid_id}}/{{hash}}/{{uid}}", id);
         info!(
             target: LOG_TARGET,
-            "template={}, installing tokens API root {}",
-            id,
-            token_root
+            "template={}, installing tokens API root {}", id, token_root
         );
         let token_scope = web::scope(token_root.as_str())
-                .data(id)
-                .configure(|app| <Self::TokenContracts as Contracts>::setup_actix_routes(id, app));
+            .data(id)
+            .configure(|app| <Self::TokenContracts as Contracts>::setup_actix_routes(id, app));
 
         vec![asset_scope, token_scope]
     }
@@ -123,12 +119,9 @@ mod test {
     use super::*;
     use crate::{
         db::models::tokens::*,
-        test_utils::actix::TestAPIServer,
-        test_utils::{builders::*, test_db_client},
+        test_utils::{actix::TestAPIServer, builders::*, test_db_client},
     };
-    use actix_web::{web, HttpResponse, Result};
-    use actix_web::http::StatusCode;
-
+    use actix_web::{http::StatusCode, web, HttpResponse, Result};
 
     const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
@@ -262,7 +255,8 @@ mod test {
         ];
 
         for (method, uri, code) in &req_resp {
-            let resp = srv.request((*method).clone(), srv.url(uri.as_str()))
+            let resp = srv
+                .request((*method).clone(), srv.url(uri.as_str()))
                 .send()
                 .await
                 .unwrap();
@@ -282,19 +276,11 @@ mod test {
             .parse()
             .unwrap();
 
-        let mut resp = srv
-            .asset_call(&asset, "test")
-            .send()
-            .await
-            .unwrap();
+        let mut resp = srv.asset_call(&asset, "test").send().await.unwrap();
         assert!(resp.status().is_success());
         assert_eq!(resp.body().await.unwrap(), asset.to_string());
 
-        let mut resp = srv
-            .token_call(&token, "test")
-            .send()
-            .await
-            .unwrap();
+        let mut resp = srv.token_call(&token, "test").send().await.unwrap();
         assert!(resp.status().is_success());
         assert_eq!(resp.body().await.unwrap(), token.to_string());
     }
@@ -335,6 +321,4 @@ mod test {
         assert!(resp.status().is_success());
         assert_eq!(resp.body().await.unwrap(), asset_id.to_string());
     }
-
-
 }

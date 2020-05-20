@@ -2,7 +2,7 @@ pub use super::TransactionStatus;
 use crate::{db::utils::errors::DBError, types::TemplateID};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;

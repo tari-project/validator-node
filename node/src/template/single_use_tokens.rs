@@ -223,15 +223,12 @@ mod test {
     use super::*;
     use crate::{
         db::models::transactions::*,
+        test_utils::{actix::TestAPIServer, builders::*, test_db_client},
         types::AssetID,
-        test_utils::test_db_client,
-        test_utils::actix::TestAPIServer,
-        test_utils::builders::*,
     };
     use serde_json::json;
 
     const PUBKEY: &'static str = "0123456789abcdef";
-
 
     #[actix_rt::test]
     async fn issue_tokens() {
@@ -241,7 +238,13 @@ mod test {
         let tpl = SingleUseTokenTemplate::id();
         let asset_id = AssetID::test_from_template(tpl);
         let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
-        AssetStateBuilder { asset_id: asset_id.clone(), ..Default::default() }.build(&client).await.unwrap();
+        AssetStateBuilder {
+            asset_id: asset_id.clone(),
+            ..Default::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
 
         let mut resp = srv
             .asset_call(&asset_id, "issue_tokens")

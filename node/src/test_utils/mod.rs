@@ -5,9 +5,9 @@ use deadpool_postgres::{Client, Pool};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio_postgres::NoTls;
 
-mod types;
-pub mod builders;
 pub mod actix;
+pub mod builders;
+mod types;
 
 lazy_static::lazy_static! {
     static ref LOCK_DB_POOL: Mutex<Pool> = {
