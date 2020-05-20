@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let node_config = NodeConfig::load_from(&config, true)?;
 
     match args.command {
-        Commands::Start => actix_main(node_config).await?,
+        Commands::Start => actix_main(node_config, install_templates).await?,
         Commands::Init => {
             println!("Initializing database {:?}", node_config.postgres.dbname);
             utils::db::create_database(node_config).await?;
