@@ -1,0 +1,13 @@
+sequenceDiagram
+    AI ->> Initiator node: sell_token(token_id,owner)
+    Initiator node ->> Committee: time-lock(temp_wallet,token_id,transaction_id)
+    Committee ->> Leader: Commit
+    Leader ->> Initiator node: signed_commit
+    Initiator node ->> AI: (temp_wallet,signed_commit)
+
+    AI ->> base layer: send-tari(temp_wallet)
+    base layer ->> Initiator node: got-tari(temp_wallet)
+    Initiator node ->> base layer: send-tari(asset_beneficiary)
+    Initiator node ->> Committee: sell_token(token_id,owner)
+    base layer ->> Committee: got-tari(temp_wallet,asset_beneficiary)
+    Committee ->> Leader: Commit
