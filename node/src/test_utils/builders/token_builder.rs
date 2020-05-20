@@ -16,7 +16,6 @@ pub struct TokenBuilder {
 
 impl Default for TokenBuilder {
     fn default() -> Self {
-        let x: u32 = random();
         Self {
             asset_state_id: None,
             initial_data_json: serde_json::from_str("{}").unwrap(),

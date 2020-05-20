@@ -194,7 +194,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_actix_template_routes() {
-        let srv = TestAPIServer::new(TestTemplateContext::actix_scopes);
+        let srv = TestAPIServer::new(TestTemplate::actix_scopes);
 
         use actix_web::http::Method;
         let tpl = TestTemplate::id();
@@ -262,7 +262,7 @@ mod test {
         ];
 
         for (method, uri, code) in &req_resp {
-            let resp = srv.request((*method).clone(), uri.as_str())
+            let resp = srv.request((*method).clone(), srv.url(uri.as_str()))
                 .send()
                 .await
                 .unwrap();
@@ -272,7 +272,7 @@ mod test {
 
     #[actix_rt::test]
     async fn full_stack_server() {
-        let srv = TestAPIServer::new(TestTemplateContext::actix_scopes);
+        let srv = TestAPIServer::new(TestTemplate::actix_scopes);
 
         let tpl = TestTemplate::id();
         let asset: AssetID = format!("{}{:04X}{:015X}.{:032X}", tpl.to_hex(), 1, 2, 3)
