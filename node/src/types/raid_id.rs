@@ -3,7 +3,7 @@ use super::errors::TypeError;
 /// Registered Asset Issuer Domain (RAID) TXT record
 /// It uniquely identifies pubkey with domain owner based on formula Hash256(PubKey || FQDN)
 /// [RFC-0301](https://rfc.tari.com/RFC-0301_NamespaceRegistration.html?highlight=Raid#openalias-txt-dns-records) entity
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Hash, Eq, Clone, PartialEq)]
 pub struct RaidID(String);
 
 impl RaidID {

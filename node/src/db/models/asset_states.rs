@@ -3,11 +3,16 @@ use crate::{
     db::utils::{errors::DBError, validation::ValidationErrors},
     types::AssetID,
 };
-use chrono::{DateTime, Utc};
-use serde::Serialize;
-use serde_json::Value;
+use bytes::BytesMut;
+use chrono::{DateTime, Utc, Duration};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::{error::Error};
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
-use tokio_postgres::Client;
+use tokio_postgres::{
+    types::{accepts, to_sql_checked, FromSql, IsNull, Json, ToSql, Type},
+    Client,
+};
 
 #[derive(Serialize, PostgresMapper, PartialEq, Debug, Clone)]
 #[pg_mapper(table = "asset_states_view")]
@@ -26,6 +31,7 @@ pub struct AssetState {
     pub initial_data_json: Value,
     pub asset_id: AssetID,
     pub digital_asset_id: uuid::Uuid,
+    pub blocked_until: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub additional_data_json: Value,
@@ -48,10 +54,10 @@ pub struct NewAssetState {
 }
 
 /// Query parameters for adding new token state append only
-#[derive(Default, Clone, Debug)]
+#[derive(PartialEq, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct NewAssetStateAppendOnly {
-    pub asset_state_id: uuid::Uuid,
-    pub transaction_id: uuid::Uuid,
+    pub asset_id: AssetID,
+    pub instruction_id: uuid::Uuid,
     pub state_data_json: Value,
     pub status: AssetStatus,
 }
@@ -76,6 +82,32 @@ impl NewAssetState {
 }
 
 impl AssetState {
+    /// Releases lock on asset state
+    pub async fn acquire_lock(&self, lock_period: u64, client: &Client) -> Result<(), DBError> {
+        let block_until = Utc::now() + Duration::seconds(lock_period);
+
+        const QUERY: &'static str = "UPDATE asset_states SET blocked_until = $2, updated_at = now() WHERE id = $1 AND \
+                                     blocked_until < now() RETURNING *";
+        let stmt = client.prepare(QUERY).await?;
+        let result = client.query_one(&stmt, &[&self.id, &block_until]).await?;
+        let updated_asset_state = AssetState::from_row(result)?;
+
+        self.blocked_until = updated_asset_state.blocked_until;
+        self.updated_at = updated_asset_state.updated_at;
+
+        Ok(())
+    }
+
+    /// Releases lock on asset state
+    pub async fn release_lock(&self, client: &Client) -> Result<(), DBError> {
+        const QUERY: &'static str = "UPDATE asset_states SET blocked_until = now(), updated_at = now() WHERE id = $1 \
+                                     AND blocked_until = $2 RETURNING *";
+        let stmt = client.prepare(QUERY).await?;
+        client.query_one(&stmt, &[&self.id, &self.blocked_until]).await?;
+
+        Ok(())
+    }
+
     /// Add asset record
     pub async fn insert(params: NewAssetState, client: &Client) -> Result<uuid::Uuid, DBError> {
         params.validate_record(client).await?;
@@ -136,17 +168,17 @@ impl AssetState {
     {
         const QUERY: &'static str = "
             INSERT INTO asset_state_append_only (
-                asset_state_id,
+                asset_id,
                 state_data_json,
-                transaction_id,
+                instruction_id,
                 status
             ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
-                &params.asset_state_id,
+                &params.asset_id,
                 &params.state_data_json,
-                &params.transaction_id,
+                &params.instruction_id,
                 &params.status,
             ])
             .await?;
@@ -155,12 +187,32 @@ impl AssetState {
     }
 }
 
+impl<'a> ToSql for NewAssetStateAppendOnly {
+    accepts!(JSON, JSONB);
+
+    to_sql_checked!();
+
+    fn to_sql(&self, ty: &Type, w: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        json!(self).to_sql(ty, w)
+    }
+}
+
+impl<'a> FromSql<'a> for NewAssetStateAppendOnly {
+    accepts!(JSON, JSONB);
+
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        Ok(serde_json::from_value(
+            Json::<Value>::from_sql(ty, raw).map(|json| json.0)?,
+        )?)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
-        db::{models::TransactionStatus, utils::validation::*},
-        test_utils::{builders::*, test_db_client},
+        db::{models::InstructionStatus, utils::validation::*},
+        test::utils::{builders::*, test_db_client},
     };
     use serde_json::json;
 
@@ -208,9 +260,9 @@ mod test {
         assert_eq!(initial_data, asset.initial_data_json);
         assert_eq!(initial_data, asset.additional_data_json);
 
-        let transaction = ContractTransactionBuilder {
+        let instruction = InstructionBuilder {
             asset_state_id: Some(asset.id),
-            status: TransactionStatus::Commit,
+            status: InstructionStatus::Commit,
             ..Default::default()
         }
         .build(&client)
@@ -220,9 +272,9 @@ mod test {
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
-                asset_state_id: asset.id,
+                asset_id: asset.asset_id,
                 state_data_json: state_data_json.clone(),
-                transaction_id: transaction.id.clone(),
+                instruction_id: instruction.id.clone(),
                 ..Default::default()
             },
             &client,
@@ -235,9 +287,9 @@ mod test {
         let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
-                asset_state_id: asset.id,
+                asset_id: asset.asset_id,
                 state_data_json: state_data_json.clone(),
-                transaction_id: transaction.id.clone(),
+                instruction_id: instruction.id.clone(),
                 status: AssetStatus::Retired,
             },
             &client,
@@ -247,8 +299,8 @@ mod test {
         assert_eq!(state_data_json.clone(), asset.additional_data_json);
         assert_eq!(asset.status, AssetStatus::Retired);
 
-        let transaction = ContractTransactionBuilder {
-            asset_state_id: Some(asset.id),
+        let instruction = InstructionBuilder {
+            asset_id: Some(asset.asset_id),
             ..Default::default()
         }
         .build(&client)
@@ -256,9 +308,9 @@ mod test {
         .unwrap();
         AssetState::store_append_only_state(
             NewAssetStateAppendOnly {
-                asset_state_id: asset.id,
+                asset_id: asset.asset_id,
                 state_data_json: json!({"value": true, "value3": 1}),
-                transaction_id: transaction.id,
+                instruction_id: instruction.id,
                 status: AssetStatus::Retired,
             },
             &client,

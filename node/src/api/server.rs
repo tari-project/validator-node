@@ -5,16 +5,13 @@ use crate::{
 };
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
-
-pub const DEFAULT_PORT: u16 = 3001;
-pub const DEFAULT_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+use std::net::ToSocketAddrs;
 
 // Must be valid JSON
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;
 
+<<<<<<< HEAD
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActixConfig {
     pub host: IpAddr,
@@ -54,6 +51,9 @@ impl Default for CorsConfig {
 
 pub async fn actix_main<F>(config: NodeConfig, configure: F) -> anyhow::Result<()>
 where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
+=======
+pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
+>>>>>>> Stub consensus logic
     let pool = web::Data::new(build_pool(&config.postgres)?);
 
     println!(

@@ -7,7 +7,7 @@
 
 // TODO: think - should we store our IDs as base58 perhaps in database rather than our string?
 
-use super::{errors::TypeError, AssetID};
+use super::{errors::TypeError, AssetID, NodeID};
 use bytes::BytesMut;
 use postgres_protocol::types::text_from_sql;
 use serde::{Deserialize, Serialize};
@@ -71,10 +71,10 @@ impl TokenID {
     /// Generate TokenID for AssetID on a node
     ///
     /// Cross-node uniqueness guaranteed if node_id uniquelly identifies process
-    pub fn new(asset_id: &AssetID, node_id: [u8; 6]) -> Result<Self, TypeError> {
+    pub fn new(asset_id: &AssetID, node_id: NodeID) -> Result<Self, TypeError> {
         let time = Local::now();
         let ts = Timestamp::from_unix(&*CONTEXT, time.timestamp() as u64, time.timestamp_subsec_nanos());
-        let uid = Uuid::new_v1(ts, &node_id)?;
+        let uid = Uuid::new_v1(ts, &node_id.inner())?;
         Ok(Self {
             asset_id: asset_id.clone(),
             uid,
@@ -114,7 +114,7 @@ impl<'a> ToSql for TokenID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::test_db_client;
+    use crate::test::utils::test_db_client;
 
     #[test]
     fn token_default() {

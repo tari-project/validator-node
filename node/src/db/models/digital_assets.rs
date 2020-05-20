@@ -60,7 +60,7 @@ impl DigitalAsset {
 mod test {
     use super::*;
     use crate::{
-        test_utils::{load_env, test_db_client},
+        test::utils::{load_env, test_db_client},
         types::NodeSelectionStrategy,
     };
 
