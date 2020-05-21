@@ -4,7 +4,13 @@ use crate::{
     types::{Pubkey, TemplateID, TokenID},
 };
 use anyhow::{bail, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+#[derive(Serialize, Deserialize)]
+struct TokenData {
+    pub owner_pubkey: Pubkey,
+}
 
 /// ***************** Asset contracts *******************
 
@@ -15,18 +21,17 @@ pub enum AssetContracts {
 }
 
 //#[contract(asset)]
-async fn issue_tokens<'a>(
-    context: &AssetTemplateContext<'a>,
-    user_pubkey: Pubkey,
-    token_ids: Vec<TokenID>,
-) -> Result<Vec<Token>>
-{
+async fn issue_tokens<'a>(context: &AssetTemplateContext<'a>, token_ids: Vec<TokenID>) -> Result<Vec<Token>> {
     let mut tokens = Vec::with_capacity(token_ids.len());
     let asset = &context.asset;
+    let data = TokenData {
+        owner_pubkey: asset.asset_issuer_pub_key.clone(),
+    };
+    let data = serde_json::to_value(data)?;
     let new_token = move |token_id| NewToken {
         token_id,
         asset_state_id: asset.id.clone(),
-        initial_data_json: json!({ "user_pubkey": user_pubkey }),
+        initial_data_json: data.clone(),
         ..NewToken::default()
     };
     for data in token_ids.into_iter().map(new_token) {
@@ -89,7 +94,6 @@ mod expanded_macros {
     #[derive(Serialize, Deserialize)]
     pub struct IssueTokensPayload {
         token_ids: Vec<TokenID>,
-        user_pubkey: Pubkey,
     }
 
     // wrapper will convert from actix types into Rust,
@@ -123,7 +127,7 @@ mod expanded_macros {
 
         // TODO: move following outside of actix request lifecycle
         // run contract
-        let result = issue_tokens(&context, params.user_pubkey, params.token_ids).await?;
+        let result = issue_tokens(&context, params.token_ids).await?;
         // update transaction after contract executed
         let result = serde_json::to_value(result).map_err(|err| {
             ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
@@ -152,7 +156,7 @@ mod expanded_macros {
 
     #[derive(Serialize, Deserialize)]
     pub struct TransferTokenPayload {
-        user_pubkey: Pubkey,
+        owner_pubkey: Pubkey,
     }
 
     async fn transfer_token_actix<'a>(
@@ -163,11 +167,11 @@ mod expanded_macros {
     {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
+        let token_id = params.token_id(&context.template_id)?;
         let asset = match context.load_asset(asset_id).await? {
             None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
             Some(asset) => asset,
         };
-        let token_id = params.token_id(&context.template_id)?;
         let token = match context.load_token(token_id).await? {
             None => return Err(ApplicationError::bad_request("Token ID not found").into()),
             Some(token) => token,
@@ -189,7 +193,7 @@ mod expanded_macros {
 
         // TODO: move following outside of actix request lifecycle
         // run contract
-        let result = transfer_token(&context, params.user_pubkey).await?;
+        let result = transfer_token(&context, params.owner_pubkey).await?;
         // update transaction
         let result = serde_json::to_value(result).map_err(|err| {
             ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
@@ -228,10 +232,44 @@ mod test {
     };
     use serde_json::json;
 
-    const PUBKEY: &'static str = "0123456789abcdef";
+    #[actix_rt::test]
+    async fn issue_tokens_positive() {
+        let (client, _lock) = test_db_client().await;
+        let template_id = SingleUseTokenTemplate::id();
+        let context = AssetContextBuilder {
+            template_id,
+            ..Default::default()
+        }
+        .build(client)
+        .await
+        .unwrap();
+        let asset_id = context.asset.asset_id.clone();
+        let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
+
+        let tokens = issue_tokens(&context, token_ids.clone()).await.unwrap();
+        for (token, token_id) in tokens.iter().zip(token_ids.iter()) {
+            assert_eq!(token.token_id, *token_id);
+        }
+    }
 
     #[actix_rt::test]
-    async fn issue_tokens() {
+    async fn issue_tokens_negative() {
+        let (client, _lock) = test_db_client().await;
+        let template_id = SingleUseTokenTemplate::id();
+        let context = AssetContextBuilder {
+            template_id,
+            ..Default::default()
+        }
+        .build(client)
+        .await
+        .unwrap();
+        let asset_id = AssetID::default();
+        let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
+        assert!(issue_tokens(&context, token_ids).await.is_err());
+    }
+
+    #[actix_rt::test]
+    async fn issue_tokens_full_stack() {
         let srv = TestAPIServer::new(SingleUseTokenTemplate::actix_scopes);
         let (client, _lock) = test_db_client().await;
 
@@ -248,7 +286,7 @@ mod test {
 
         let mut resp = srv
             .asset_call(&asset_id, "issue_tokens")
-            .send_json(&json!({"user_pubkey": PUBKEY, "token_ids": token_ids}))
+            .send_json(&json!({ "token_ids": token_ids }))
             .await
             .unwrap();
 

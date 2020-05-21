@@ -1,7 +1,6 @@
 use super::AssetStateBuilder;
 use crate::{db::models::*, types::*};
 use deadpool_postgres::Client;
-use rand::prelude::*;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -30,7 +29,16 @@ impl TokenBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<Token> {
         let asset_state_id = match self.asset_state_id {
             Some(asset_state_id) => asset_state_id,
-            None => AssetStateBuilder::default().build(client).await?.id,
+            None => {
+                let asset_id = self.token_id.asset_id();
+                AssetStateBuilder {
+                    asset_id,
+                    ..Default::default()
+                }
+                .build(client)
+                .await?
+                .id
+            },
         };
 
         let params = NewToken {
