@@ -13,6 +13,7 @@ tari_comms = "^0.1"
 tari_core = "^0.1"
 tari_crypto = "^0.3"
 tari_wallet = "^0.1"
+tari_template_macro = { path = "../template-macro", version = "0.1" }
 
 actix-cors = "0.2"
 actix-http = "1.0.1"

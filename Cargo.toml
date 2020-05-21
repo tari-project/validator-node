@@ -1,7 +1,8 @@
 [workspace]
 
 members = [
-    "node"
+    "node",
+    "template-macro"
 ]
 
 [patch.crates-io]

@@ -15,5 +15,4 @@ pub mod template;
 pub mod types;
 pub mod wallet;
 
-#[cfg(test)]
 pub mod test_utils;

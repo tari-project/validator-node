@@ -11,7 +11,7 @@ use log::info;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-pub(crate) struct AssetCallParams {
+pub struct AssetCallParams {
     features: String,
     raid_id: String,
     hash: String,
@@ -24,7 +24,7 @@ impl AssetCallParams {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct TokenCallParams {
+pub struct TokenCallParams {
     features: String,
     raid_id: String,
     hash: String,

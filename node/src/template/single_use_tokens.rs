@@ -48,11 +48,30 @@ async fn issue_tokens<'a>(context: &AssetTemplateContext<'a>, token_ids: Vec<Tok
 
 //#[derive(Contracts)]
 pub enum TokenContracts {
+    //#[contract(sell_token)]
+    SellToken,
     //#[contract(transfer_token)]
     TransferToken,
 }
 
-//#[contract(token)]
+#[tari_template_macro::contract(token, local_use)]
+// With token contract TokenTemplateContext is always passed as first argument
+async fn sell_token<'a>(context: &TokenTemplateContext<'a>, user_pubkey: Pubkey) -> Result<Token> {
+    let token = context.token.clone();
+    if token.status == TokenStatus::Retired {
+        bail!("Tried to transfer already used token");
+    }
+    let append_state_data_json = Some(json!({ "user_pubkey": user_pubkey }));
+    let data = UpdateToken {
+        append_state_data_json,
+        ..Default::default()
+    };
+    let token = context.update_token(token, data).await?;
+    Ok(token)
+}
+
+
+#[tari_template_macro::contract(token, local_use)]
 // With token contract TokenTemplateContext is always passed as first argument
 async fn transfer_token<'a>(context: &TokenTemplateContext<'a>, user_pubkey: Pubkey) -> Result<Token> {
     let token = context.token.clone();
@@ -152,62 +171,6 @@ mod expanded_macros {
     }
     ////// end of #[derive(Contracts)]
 
-    //////  impl #[contract(token)] for transfer_token()
-
-    #[derive(Serialize, Deserialize)]
-    pub struct TransferTokenPayload {
-        owner_pubkey: Pubkey,
-    }
-
-    async fn transfer_token_actix<'a>(
-        params: web::Path<TokenCallParams>,
-        data: web::Json<TransferTokenPayload>,
-        mut context: TemplateContext<'a>,
-    ) -> Result<web::Json<Option<ContractTransaction>>, ApiError>
-    {
-        // extract and transform parameters
-        let asset_id = params.asset_id(&context.template_id)?;
-        let token_id = params.token_id(&context.template_id)?;
-        let asset = match context.load_asset(asset_id).await? {
-            None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
-            Some(asset) => asset,
-        };
-        let token = match context.load_token(token_id).await? {
-            None => return Err(ApplicationError::bad_request("Token ID not found").into()),
-            Some(token) => token,
-        };
-        let params = data.into_inner();
-        // create transaction
-        let transaction = NewContractTransaction {
-            asset_state_id: asset.id,
-            token_id: Some(token.id),
-            template_id: context.template_id.clone(),
-            params: serde_json::to_value(&params)
-                .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
-            contract_name: "transfer_token".to_string(),
-            ..NewContractTransaction::default()
-        };
-        context.create_transaction(transaction).await?;
-        // create context
-        let mut context = TokenTemplateContext::new(context, asset.clone(), token.clone());
-
-        // TODO: move following outside of actix request lifecycle
-        // run contract
-        let result = transfer_token(&context, params.owner_pubkey).await?;
-        // update transaction
-        let result = serde_json::to_value(result).map_err(|err| {
-            ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
-        })?;
-        let data = UpdateContractTransaction {
-            result: Some(result),
-            status: Some(TransactionStatus::Commit),
-        };
-        context.update_transaction(data).await?;
-        // There must be transaction - otherwise we would fail on previous call
-        Ok(web::Json(context.into()))
-    }
-    /////// end of impl #[contract]
-
     ////// impl #[derive(Contracts)] for TokenContracts
 
     use actix_web::web;
@@ -215,7 +178,8 @@ mod expanded_macros {
     impl Contracts for TokenContracts {
         fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
             info!("template={}, installing token API transfer_token", tpl);
-            scope.service(web::resource("/transfer_token").route(web::post().to(transfer_token_actix)));
+            scope.service(web::resource("/transfer_token").route(web::post().to(transfer_token_actix::transfer_token_actix)));
+            scope.service(web::resource("/sell_token").route(web::post().to(sell_token_actix::sell_token_actix)));
         }
     }
 
