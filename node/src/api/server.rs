@@ -52,7 +52,8 @@ impl Default for CorsConfig {
     }
 }
 
-pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
+pub async fn actix_main<F>(config: NodeConfig, configure: F) -> anyhow::Result<()>
+where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
     let pool = web::Data::new(build_pool(&config.postgres)?);
 
     println!(
@@ -84,7 +85,8 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
             .wrap(Logger::new(LOGGER_FORMAT).exclude("/status"))
             .wrap(Authentication::new())
             .wrap(AppVersionHeader::new());
-        app.configure(routing::routes)
+        app.configure(configure.clone())
+            .configure(routing::routes)
             .default_service(web::get().to(|| HttpResponse::NotFound().json(json!({"error": "Not found"}))))
     })
     .bind(config.actix.addr())?;
