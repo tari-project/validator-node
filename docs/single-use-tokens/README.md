@@ -32,11 +32,8 @@ Is a multi-stage transaction involding locking token record until given conditio
 4. VN committee will validate all conditions met and provide consensus resolution `contract-transaction` as `Commit`
 5. If any of above stages fail all the tari transfers should be cancelled or reverted
 
-#### Sell token sequence diagram option 1:
-![sell token sequence option 1](sell-token-sequence-option-1.mmd.svg)
-
-#### Sell token sequence diagram option 4:
-![sell token sequence option 1](sell-token-sequence-option-4.mmd.svg)
+#### Sell token sequence diagram:
+![sell token sequence MVP](sell-token-sequence-mvp.mmd.svg)
 
 ### Transfer token
 
