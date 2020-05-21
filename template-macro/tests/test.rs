@@ -1,9 +1,9 @@
+use anyhow::Result;
 use tari_template_macro::contract;
 use tari_validator_node::{
     template::*,
     test_utils::{builders::*, test_db_client},
 };
-use anyhow::Result;
 
 #[contract(token)]
 async fn simple_contract<'a>(_: &TokenTemplateContext<'a>, input: u32) -> Result<u32> {

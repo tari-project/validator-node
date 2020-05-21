@@ -70,7 +70,6 @@ async fn sell_token<'a>(context: &TokenTemplateContext<'a>, user_pubkey: Pubkey)
     Ok(token)
 }
 
-
 #[tari_template_macro::contract(token, local_use)]
 // With token contract TokenTemplateContext is always passed as first argument
 async fn transfer_token<'a>(context: &TokenTemplateContext<'a>, user_pubkey: Pubkey) -> Result<Token> {
@@ -178,7 +177,9 @@ mod expanded_macros {
     impl Contracts for TokenContracts {
         fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
             info!("template={}, installing token API transfer_token", tpl);
-            scope.service(web::resource("/transfer_token").route(web::post().to(transfer_token_actix::transfer_token_actix)));
+            scope.service(
+                web::resource("/transfer_token").route(web::post().to(transfer_token_actix::transfer_token_actix)),
+            );
             scope.service(web::resource("/sell_token").route(web::post().to(sell_token_actix::sell_token_actix)));
         }
     }

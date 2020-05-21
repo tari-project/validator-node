@@ -1,10 +1,9 @@
-use proc_macro::TokenStream;
-use quote::{quote, format_ident};
-use syn::punctuated::Punctuated;
-use syn::{parse_macro_input, FnArg, AttributeArgs, ItemFn, Pat, Type};
 use darling::FromMeta;
+use proc_macro::TokenStream;
+use quote::{format_ident, quote};
+use syn::{parse_macro_input, punctuated::Punctuated, AttributeArgs, FnArg, ItemFn, Pat, Type};
 
-#[derive(Debug,FromMeta)]
+#[derive(Debug, FromMeta)]
 struct ContractMacroArgs {
     #[darling(default)]
     token: bool,
@@ -20,36 +19,45 @@ pub fn contract(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attrs = parse_macro_input!(attr as AttributeArgs);
     let args = match ContractMacroArgs::from_list(&attrs) {
         Ok(v) => v,
-        Err(e) => { return TokenStream::from(e.write_errors()); }
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        },
     };
     if args.asset {
-        unimplemented!("#contract(asset) is not implemented yet                                                                                                                                                             ")
+        unimplemented!(
+            "#contract(asset) is not implemented yet                                                                  \
+                                                                                                        "
+        )
     }
     generate_token_contract(parsed, args).into()
 }
 
 fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macro2::TokenStream {
     let orig_fn = parsed.clone();
-    let sig = parsed.sig;           // function signature
-    let vis = parsed.vis;           // visibility, pub or not
-    let fn_name = sig.ident;         // function name/identifier
-    let fn_args = sig.inputs;        // comma separated args
+    let sig = parsed.sig; // function signature
+    let vis = parsed.vis; // visibility, pub or not
+    let fn_name = sig.ident; // function name/identifier
+    let fn_args = sig.inputs; // comma separated args
     let fn_return_type = sig.output; // return type
 
     let return_str = format!("{}", quote! { #fn_return_type });
-    assert!(return_str.find("Result").is_some(), "contract function should return anyhow::Result<impl Serialize> type, returning {} instead", return_str);
+    assert!(
+        return_str.find("Result").is_some(),
+        "contract function should return anyhow::Result<impl Serialize> type, returning {} instead",
+        return_str
+    );
 
     let arg_idents = extract_arg_idents(fn_args.clone());
     let arg_types = extract_arg_types(fn_args.clone());
     let first_type = arg_types.first().unwrap();
 
-    assert_eq!(**first_type, syn::parse_str::<Type>("&TokenTemplateContext<'a>").unwrap(), "first argument to token contract should be of type &TokenTemplateContext<'a>");
-
-    let (params_type, params_def) = generate_type_params_struct(
-        & arg_idents[1..],
-        & arg_types[1..],
-        & fn_name,
+    assert_eq!(
+        **first_type,
+        syn::parse_str::<Type>("&TokenTemplateContext<'a>").unwrap(),
+        "first argument to token contract should be of type &TokenTemplateContext<'a>"
     );
+
+    let (params_type, params_def) = generate_type_params_struct(&arg_idents[1..], &arg_types[1..], &fn_name);
 
     let body = generate_token_contract_body(&fn_name, &arg_idents[1..]);
 
@@ -108,11 +116,10 @@ fn extract_arg_types(fn_args: Punctuated<FnArg, syn::token::Comma>) -> Vec<Box<T
 
 fn extract_type(a: FnArg) -> Box<Type> {
     match a {
-        FnArg::Typed(p) => p.ty,  // notice `ty` instead of `pat`
+        FnArg::Typed(p) => p.ty, // notice `ty` instead of `pat`
         _ => panic!("Not supported on types with `self`!"),
     }
 }
-
 
 // Output:
 // // extract and transform parameters
@@ -200,7 +207,6 @@ fn generate_token_contract_body(fn_name: &syn::Ident, fn_args: &[Box<Pat>]) -> p
     }
 }
 
-
 // Output:
 // #[derive(Serialize, Deserialize)]
 // pub struct TransferTokenPayload {
@@ -210,7 +216,8 @@ fn generate_type_params_struct(
     fn_arg_idents: &[Box<Pat>],
     fn_arg_types: &[Box<Type>],
     fn_name: &syn::Ident,
-) -> (Type, proc_macro2::TokenStream) {
+) -> (Type, proc_macro2::TokenStream)
+{
     let mut types = vec![];
 
     for (i, t) in fn_arg_idents.into_iter().zip(fn_arg_types.into_iter()) {
@@ -230,4 +237,3 @@ fn generate_type_params_struct(
 
     (name, definition)
 }
-
