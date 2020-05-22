@@ -75,11 +75,11 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let proposal = ProposalBuilder::default().build(&client).await.unwrap();
         let signature_data = SignatureData {
-            signatures: serde_json::from_value(json!({NodeID::stub(): "stub-signature"})).unwrap(),
+            signatures: serde_json::from_value(json!([[NodeID::stub(), "stub-signature"]])).unwrap(),
         };
         let params = NewAggregateSignatureMessage {
             proposal_id: proposal.id,
-            signature_data,
+            signature_data: signature_data.clone(),
         };
         let aggregate_signature_message = AggregateSignatureMessage::insert(params, &client).await.unwrap();
         assert_eq!(aggregate_signature_message.proposal_id, proposal.id);
@@ -107,11 +107,11 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let proposal = ProposalBuilder::default().build(&client).await.unwrap();
         let signature_data = SignatureData {
-            signatures: serde_json::from_value(json!({NodeID::stub(): "stub-signature"})).unwrap(),
+            signatures: serde_json::from_value(json!([[NodeID::stub(), "stub-signature"]])).unwrap(),
         };
         let params = NewAggregateSignatureMessage {
             proposal_id: proposal.id,
-            signature_data,
+            signature_data: signature_data.clone(),
         };
         let aggregate_signature_message = params.save(&client).await.unwrap();
         assert_eq!(aggregate_signature_message.proposal_id, proposal.id);

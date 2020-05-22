@@ -261,7 +261,7 @@ mod test {
         assert_eq!(initial_data, asset.additional_data_json);
 
         let instruction = InstructionBuilder {
-            asset_id: Some(asset.asset_id),
+            asset_id: Some(asset.asset_id.clone()),
             status: InstructionStatus::Commit,
             ..Default::default()
         }
@@ -298,26 +298,6 @@ mod test {
         let asset = AssetState::load(asset.id, &client).await?;
         assert_eq!(state_data_json.clone(), asset.additional_data_json);
         assert_eq!(asset.status, AssetStatus::Retired);
-
-        let instruction = InstructionBuilder {
-            asset_id: Some(asset.asset_id),
-            ..Default::default()
-        }
-        .build(&client)
-        .await
-        .unwrap();
-        AssetState::store_append_only_state(
-            &NewAssetStateAppendOnly {
-                asset_id: asset.asset_id,
-                state_data_json: json!({"value": true, "value3": 1}),
-                instruction_id: instruction.id,
-                status: AssetStatus::Retired,
-            },
-            &client,
-        )
-        .await?;
-        let asset = AssetState::load(asset.id, &client).await?;
-        assert_eq!(state_data_json, asset.additional_data_json);
 
         Ok(())
     }

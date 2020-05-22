@@ -1,7 +1,7 @@
 use crate::{
     db::models::{consensus::*, NewAssetStateAppendOnly, NewTokenStateAppendOnly, ViewStatus},
     test::utils::builders::AssetStateBuilder,
-    types::{AssetID, NodeID, ProposalID},
+    types::{consensus::AppendOnlyState, AssetID, NodeID, ProposalID},
 };
 use deadpool_postgres::Client;
 use uuid::Uuid;
@@ -52,8 +52,10 @@ impl ViewBuilder {
             signature: self.signature.clone(),
             instruction_set: self.instruction_set.clone(),
             invalid_instruction_set: self.invalid_instruction_set.clone(),
-            asset_state_append_only: self.asset_state_append_only.clone(),
-            token_state_append_only: self.token_state_append_only.clone(),
+            append_only_state: AppendOnlyState {
+                asset_state: self.asset_state_append_only.clone(),
+                token_state: self.token_state_append_only.clone(),
+            },
         })
     }
 

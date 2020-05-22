@@ -1,21 +1,6 @@
 use crate::{
     db::{
-        models::{
-            consensus::{
-                Instruction,
-                NewSignedProposal,
-                NewView,
-                NewViewAdditionalParameters,
-                SignedProposal,
-                UpdateView,
-                View,
-            },
-            AssetState,
-            InstructionStatus,
-            ProposalStatus,
-            Token,
-            ViewStatus,
-        },
+        models::{consensus::*, AssetState, InstructionStatus, ProposalStatus, Token, ViewStatus},
         utils::errors::DBError,
     },
     types::{AssetID, InstructionID, NodeID, ProposalID},
@@ -96,19 +81,19 @@ impl Proposal {
     /// - status
     pub async fn update(&self, data: UpdateProposal, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
-            UPDATE proposal SET
-                status = COALESCE($2, status),
+            UPDATE proposals SET
+                status = COALESCE($1, status),
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE id = $2::\"ProposalID\"
             RETURNING *";
-        let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
-        let updated = client.query_one(&stmt, &[&self.id, &data.status]).await?;
+        let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
+        let updated = client.query_one(&stmt, &[&data.status, &self.id]).await?;
         Ok(Self::from_row(updated)?)
     }
 
     /// Load proposal from dataase by ID
     pub async fn load(id: ProposalID, client: &Client) -> Result<Self, DBError> {
-        let stmt = "SELECT * FROM proposals WHERE id = $1";
+        let stmt = "SELECT * FROM proposals WHERE id = $1::\"ProposalID\"";
         let result = client.query_one(stmt, &[&id]).await?;
         Ok(Self::from_row(result)?)
     }
@@ -161,11 +146,11 @@ impl Proposal {
             .await?
         };
 
-        for asset_state_append_only in view.asset_state_append_only {
+        for asset_state_append_only in &*view.append_only_state.asset_state {
             AssetState::store_append_only_state(&asset_state_append_only, &client).await?;
         }
 
-        for token_state_append_only in view.token_state_append_only {
+        for token_state_append_only in &*view.append_only_state.token_state {
             Token::store_append_only_state(&token_state_append_only, &client).await?;
         }
 
@@ -208,6 +193,7 @@ mod test {
             },
             test_db_client,
         },
+        types::consensus::AppendOnlyState,
     };
     use serde_json::json;
 
@@ -233,13 +219,13 @@ mod test {
     #[actix_rt::test]
     async fn execute() {
         let (client, _lock) = test_db_client().await;
-        let proposal = ProposalBuilder::default().build(&client).await.unwrap();
+        let mut proposal = ProposalBuilder::default().build(&client).await.unwrap();
 
         let token = TokenBuilder::default().build(&client).await.unwrap();
         let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
         let instruction = InstructionBuilder {
-            asset_id: Some(asset.asset_id),
-            token_id: Some(token.token_id),
+            asset_id: Some(asset.asset_id.clone()),
+            token_id: Some(token.token_id.clone()),
             ..InstructionBuilder::default()
         }
         .build(&client)
@@ -247,20 +233,23 @@ mod test {
         .unwrap();
 
         proposal.new_view.instruction_set = vec![instruction.id.0];
-        proposal.new_view.asset_state_append_only = vec![NewAssetStateAppendOnly {
-            asset_id: asset.asset_id,
-            instruction_id: instruction.id,
-            status: AssetStatus::Active,
-            state_data_json: json!({"asset-value": true, "asset-value2": 1}),
-        }];
-        proposal.new_view.token_state_append_only = vec![NewTokenStateAppendOnly {
-            token_id: token.token_id,
-            instruction_id: instruction.id,
-            status: TokenStatus::Active,
-            state_data_json: json!({"token-value": true, "token-value2": 1}),
-        }];
+        proposal.new_view.append_only_state = AppendOnlyState {
+            asset_state: vec![NewAssetStateAppendOnly {
+                asset_id: asset.asset_id.clone(),
+                instruction_id: instruction.id,
+                status: AssetStatus::Active,
+                state_data_json: json!({"asset-value": true, "asset-value2": 1}),
+            }],
+            token_state: vec![NewTokenStateAppendOnly {
+                token_id: token.token_id,
+                instruction_id: instruction.id,
+                status: TokenStatus::Active,
+                state_data_json: json!({"token-value": true, "token-value2": 1}),
+            }],
+        };
 
         // Execute as non leader triggering new view commit along with persistence of append only data
+        let proposal_id = proposal.id.clone();
         proposal.execute(false, &client).await.unwrap();
 
         let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
@@ -273,7 +262,7 @@ mod test {
             token.additional_data_json,
             json!({"token-value": true, "token-value2": 1})
         );
-        let proposal = Proposal::load(proposal.id, &client).await.unwrap();
+        let proposal = Proposal::load(proposal_id, &client).await.unwrap();
         assert_eq!(proposal.status, ProposalStatus::Finalized);
         let view = View::load_for_proposal(proposal.id, &client).await.unwrap();
         assert_eq!(view.status, ViewStatus::Commit);
@@ -288,8 +277,8 @@ mod test {
         let params = NewProposal {
             id,
             node_id: NodeID::stub(),
-            asset_id: new_view.asset_id,
-            new_view,
+            asset_id: new_view.asset_id.clone(),
+            new_view: new_view.clone(),
         };
         let proposal = Proposal::insert(params, &client).await.unwrap();
         assert_eq!(proposal.id, id);

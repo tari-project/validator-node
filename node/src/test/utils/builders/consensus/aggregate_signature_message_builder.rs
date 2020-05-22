@@ -1,15 +1,15 @@
 use super::ProposalBuilder;
 use crate::{
     db::models::consensus::*,
-    types::{consensus::SignatureData, ProposalID},
+    types::{consensus::SignatureData, NodeID, ProposalID},
 };
 use deadpool_postgres::Client;
 use serde_json::json;
 
 #[allow(dead_code)]
 pub struct AggregateSignatureMessageBuilder {
-    proposal_id: Option<ProposalID>,
-    signature_data: SignatureData,
+    pub proposal_id: Option<ProposalID>,
+    pub signature_data: SignatureData,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -19,7 +19,7 @@ impl Default for AggregateSignatureMessageBuilder {
         Self {
             proposal_id: None,
             signature_data: SignatureData {
-                signatures: serde_json::from_value(json!({NodeID::stub(): "stub-signature"})).unwrap(),
+                signatures: serde_json::from_value(json!([[NodeID::stub(), "stub-signature"]])).unwrap(),
             },
             __non_exhaustive: (),
         }

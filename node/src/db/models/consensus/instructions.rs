@@ -17,16 +17,16 @@ use tokio_postgres::types::Type;
 pub struct Instruction {
     pub id: InstructionID,
     pub initiating_node_id: NodeID,
-    pub proposal_id: Option<ProposalID>,
     pub signature: String,
     pub asset_id: AssetID,
-    pub token_id: TokenID,
+    pub token_id: Option<TokenID>,
     pub template_id: TemplateID,
     pub contract_name: String,
     pub status: InstructionStatus,
     pub params: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub proposal_id: Option<ProposalID>,
 }
 
 /// Query parameters for adding new instruction record
@@ -59,7 +59,6 @@ impl Instruction {
     pub async fn insert(params: NewInstruction, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
             INSERT INTO instructions (
-                id,
                 initiating_node_id,
                 signature,
                 asset_id,
@@ -67,23 +66,24 @@ impl Instruction {
                 template_id,
                 contract_name,
                 status,
-                params
+                params,
+                id
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *";
         let stmt = client
             .prepare_typed(QUERY, &[
-                Type::UUID,
-                Type::UUID,
+                NodeID::SQL_TYPE,
                 Type::TEXT,
-                Type::UUID,
+                AssetID::SQL_TYPE,
+                TokenID::SQL_TYPE,
                 TemplateID::SQL_TYPE,
                 Type::TEXT,
                 Type::TEXT,
                 Type::JSONB,
             ])
             .await?;
+
         let row = client
             .query_one(&stmt, &[
-                &params.id,
                 &params.initiating_node_id,
                 &params.signature,
                 &params.asset_id,
@@ -92,6 +92,7 @@ impl Instruction {
                 &params.contract_name,
                 &params.status,
                 &params.params,
+                &params.id,
             ])
             .await?;
         Ok(Self::from_row(row)?)
@@ -110,13 +111,14 @@ impl Instruction {
                 status = $2,
                 proposal_id = $3,
                 updated_at = NOW()
-            WHERE id in ($1)
-            RETURNING *";
-        let stmt = client
-            .prepare_typed(QUERY, &[Type::UUID, Type::TEXT, Type::UUID])
-            .await?;
+            WHERE id::uuid = ANY ($1)";
+        let stmt = client.prepare_typed(QUERY, &[Type::UUID_ARRAY, Type::TEXT]).await?;
         client
-            .execute(&stmt, &[&instruction_ids, &status, &proposal_id])
+            .execute(&stmt, &[
+                &instruction_ids.iter().map(|i| i.0).collect::<Vec<uuid::Uuid>>(),
+                &status,
+                &proposal_id,
+            ])
             .await?;
 
         Ok(())
@@ -130,25 +132,23 @@ impl Instruction {
     pub async fn update(self, data: UpdateInstruction, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
             UPDATE instructions SET
-                status = COALESCE($2, status),
-                proposal_id = $3,
+                status = COALESCE($1, status),
+                proposal_id = $2::\"ProposalID\",
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE id = $3::\"InstructionID\"
             RETURNING *";
-        let stmt = client
-            .prepare_typed(QUERY, &[Type::UUID, Type::TEXT, Type::UUID])
+        let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
+        let row = client
+            .query_one(&stmt, &[&data.status, &data.proposal_id, &self.id])
             .await?;
-        let updated = client
-            .query_one(&stmt, &[&self.id, &data.status, &data.proposal_id])
-            .await?;
-        Ok(Self::from_row(updated)?)
+        Ok(Self::from_row(row)?)
     }
 
     /// Load instruction record
     pub async fn load(id: InstructionID, client: &Client) -> Result<Self, DBError> {
-        let stmt = "SELECT * FROM instructions WHERE id = $1";
-        let result = client.query_one(stmt, &[&id]).await?;
-        Ok(Self::from_row(result)?)
+        let stmt = "SELECT * FROM instructions WHERE id = $1::\"InstructionID\"";
+        let row = client.query_one(stmt, &[&id]).await?;
+        Ok(Self::from_row(row)?)
     }
 
     /// Execute the instruction returning append only state
@@ -221,7 +221,7 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
         let params = NewInstruction {
-            asset_id: asset.asset_id,
+            asset_id: asset.asset_id.clone(),
             template_id: asset.asset_id.template_id(),
             contract_name: "test_contract".into(),
             params: json!({"test_param": 1}),

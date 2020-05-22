@@ -33,7 +33,7 @@ jsonwebtoken = "7"
 log = "0.4"
 postgres = "0.17.1"
 postgres-protocol = "0.5.0"
-postgres-types = { version = "0.1.1", features = ["derive"]}
+postgres-types = { version = "0.1.1", features = ["derive", "with-serde_json-1"]}
 rand = "0.7"
 refinery = { version = "0.2", features = ["tokio-postgres"]}
 serde = { version = "1", features = ["derive"] }
