@@ -24,9 +24,7 @@ pub fn contract(attr: TokenStream, item: TokenStream) -> TokenStream {
         },
     };
     if args.asset {
-        unimplemented!(
-            "#contract(asset) is not implemented yet"
-        )
+        unimplemented!("#contract(asset) is not implemented yet")
     }
     generate_token_contract(parsed, args).into()
 }
@@ -40,7 +38,10 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
 
     let return_str = format!("{}", quote! { #fn_return_type });
     if return_str.find("Result").is_none() {
-        panic!("contract function should return anyhow::Result<impl Serialize> type, returning {} instead", return_str)
+        panic!(
+            "contract function should return anyhow::Result<impl Serialize> type, returning {} instead",
+            return_str
+        )
     }
 
     let arg_idents = extract_arg_idents(fn_args.clone());

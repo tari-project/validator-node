@@ -1,7 +1,6 @@
 use tari_template_macro::contract;
 use tari_validator_node::{
-    template::*,
-    template::errors::TemplateError,
+    template::{errors::TemplateError, *},
     test_utils::{builders::*, test_db_client},
 };
 
