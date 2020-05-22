@@ -18,7 +18,7 @@ use crate::{
         },
         utils::errors::DBError,
     },
-    types::{AssetID, NodeID},
+    types::{AssetID, InstructionID, NodeID, ProposalID},
 };
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
@@ -26,10 +26,10 @@ use serde::{Deserialize, Serialize};
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
 
-#[derive(Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
+#[derive(Clone, Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
 #[pg_mapper(table = "proposals")]
 pub struct Proposal {
-    pub id: uuid::Uuid,
+    pub id: ProposalID,
     pub new_view: NewView,
     pub asset_id: AssetID,
     pub node_id: NodeID,
@@ -40,7 +40,7 @@ pub struct Proposal {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NewProposal {
-    pub id: uuid::Uuid,
+    pub id: ProposalID,
     pub new_view: NewView,
     pub asset_id: AssetID,
     pub node_id: NodeID,
@@ -61,7 +61,7 @@ impl Proposal {
         self.update(
             UpdateProposal {
                 status: Some(ProposalStatus::Invalid),
-                ..UpdateProposal::default(),
+                ..UpdateProposal::default()
             },
             &client,
         )
@@ -80,7 +80,12 @@ impl Proposal {
             ) VALUES ($1, $2, $3, $4) RETURNING *";
         let stmt = client.prepare(QUERY).await?;
         let row = client
-            .query_one(&stmt, &[&params.id, &params.new_view, &params.asset_id, &params.node_id])
+            .query_one(&stmt, &[
+                &params.id,
+                &params.new_view,
+                &params.asset_id,
+                &params.node_id,
+            ])
             .await?;
         Ok(Self::from_row(row)?)
     }
@@ -89,7 +94,7 @@ impl Proposal {
     ///
     /// Updates subset of fields:
     /// - status
-    pub async fn update(self, data: UpdateProposal, client: &Client) -> Result<Self, DBError> {
+    pub async fn update(&self, data: UpdateProposal, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
             UPDATE proposal SET
                 status = COALESCE($2, status),
@@ -102,7 +107,7 @@ impl Proposal {
     }
 
     /// Load proposal from dataase by ID
-    pub async fn load(id: uuid::Uuid, client: &Client) -> Result<Self, DBError> {
+    pub async fn load(id: ProposalID, client: &Client) -> Result<Self, DBError> {
         let stmt = "SELECT * FROM proposals WHERE id = $1";
         let result = client.query_one(stmt, &[&id]).await?;
         Ok(Self::from_row(result)?)
@@ -114,7 +119,7 @@ impl Proposal {
     }
 
     /// Signs the proposal
-    pub async fn sign(self, client: &Client) -> Result<SignedProposal, DBError> {
+    pub async fn sign(&self, client: &Client) -> Result<SignedProposal, DBError> {
         let params = NewSignedProposal {
             proposal_id: self.id,
             node_id: NodeID::stub(),
@@ -125,10 +130,15 @@ impl Proposal {
 
     /// Execute the proposal applying append only state to the database
     pub async fn execute(self, leader: bool, client: &Client) -> Result<(), DBError> {
-        if leader {
+        let view = if leader {
             // Find pending view for asset, switch to commit
-            let asset_id = self.new_view.asset_id;
-            let found_view = View::find_by_asset_status(asset_id, ViewStatus::PreCommit, &client).await?;
+            let asset_id = self.new_view.asset_id.clone();
+            let found_view = View::find_by_asset_status(asset_id, ViewStatus::PreCommit, &client)
+                .await?
+                .first()
+                .map(|v| v.clone())
+                .ok_or_else(|| DBError::NotFound)?;
+
             found_view
                 .update(
                     UpdateView {
@@ -138,25 +148,25 @@ impl Proposal {
                     },
                     &client,
                 )
-                .await?;
+                .await?
         } else {
             View::insert(
-                self.new_view,
+                self.new_view.clone(),
                 NewViewAdditionalParameters {
                     status: Some(ViewStatus::Commit),
                     proposal_id: Some(self.id),
                 },
                 &client,
             )
-            .await?;
+            .await?
+        };
+
+        for asset_state_append_only in view.asset_state_append_only {
+            AssetState::store_append_only_state(&asset_state_append_only, &client).await?;
         }
 
-        for asset_state_append_only in self.new_view.asset_state_append_only {
-            AssetState::store_append_only_state(asset_state_append_only, &client).await?;
-        }
-
-        for token_state_append_only in self.new_view.token_state_append_only {
-            Token::store_append_only_state(token_state_append_only, &client).await?;
+        for token_state_append_only in view.token_state_append_only {
+            Token::store_append_only_state(&token_state_append_only, &client).await?;
         }
 
         self.update(
@@ -168,20 +178,21 @@ impl Proposal {
         )
         .await?;
 
-        Ok(Instruction::update_instructions_status(
-            self.new_view.instruction_set,
-            Some(self.id),
-            InstructionStatus::Commit,
-            &client,
-        )
-        .await?);
-        Ok(Instruction::update_instructions_status(
-            self.new_view.invalid_instruction_set,
+        let instruction_set: Vec<InstructionID> = view.instruction_set.iter().map(|i| InstructionID(*i)).collect();
+        let invalid_instruction_set: Vec<InstructionID> =
+            view.invalid_instruction_set.iter().map(|i| InstructionID(*i)).collect();
+
+        Instruction::update_instructions_status(&instruction_set, Some(self.id), InstructionStatus::Commit, &client)
+            .await?;
+        Instruction::update_instructions_status(
+            &invalid_instruction_set,
             Some(self.id),
             InstructionStatus::Invalid,
             &client,
         )
-        .await?);
+        .await?;
+
+        Ok(())
     }
 }
 
@@ -189,17 +200,22 @@ impl Proposal {
 mod test {
     use super::*;
     use crate::{
-        db::models::TokenStatus,
-        test::utils::{builders::ProposalBuilder, test_db_client},
+        db::models::{AssetStatus, NewAssetStateAppendOnly, NewTokenStateAppendOnly, TokenStatus},
+        test::utils::{
+            builders::{
+                consensus::{InstructionBuilder, ProposalBuilder, ViewBuilder},
+                TokenBuilder,
+            },
+            test_db_client,
+        },
     };
-    use chrono::Local;
     use serde_json::json;
 
     #[actix_rt::test]
     async fn mark_invalid() {
         let (client, _lock) = test_db_client().await;
         let proposal = ProposalBuilder::default().build(&client).await.unwrap();
-        proposal.mark_invalid.await.unwrap();
+        proposal.mark_invalid(&client).await.unwrap();
 
         let proposal = Proposal::load(proposal.id, &client).await.unwrap();
         assert_eq!(proposal.status, ProposalStatus::Invalid);
@@ -209,7 +225,9 @@ mod test {
     async fn sign() {
         let (client, _lock) = test_db_client().await;
         let proposal = ProposalBuilder::default().build(&client).await.unwrap();
-        proposal.sign(&client).await.unwrap()
+        let signed_proposal = proposal.sign(&client).await.unwrap();
+
+        assert_eq!(signed_proposal.proposal_id, proposal.id);
     }
 
     #[actix_rt::test]
@@ -220,15 +238,15 @@ mod test {
         let token = TokenBuilder::default().build(&client).await.unwrap();
         let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
         let instruction = InstructionBuilder {
-            asset_id: asset.asset_id,
-            token_id: token.token_id,
+            asset_id: Some(asset.asset_id),
+            token_id: Some(token.token_id),
             ..InstructionBuilder::default()
         }
         .build(&client)
         .await
         .unwrap();
 
-        proposal.new_view.instruction_set = vec![instruction.id];
+        proposal.new_view.instruction_set = vec![instruction.id.0];
         proposal.new_view.asset_state_append_only = vec![NewAssetStateAppendOnly {
             asset_id: asset.asset_id,
             instruction_id: instruction.id,
@@ -243,7 +261,7 @@ mod test {
         }];
 
         // Execute as non leader triggering new view commit along with persistence of append only data
-        proposal.execute(&client).await.unwrap();
+        proposal.execute(false, &client).await.unwrap();
 
         let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
         assert_eq!(
@@ -257,20 +275,22 @@ mod test {
         );
         let proposal = Proposal::load(proposal.id, &client).await.unwrap();
         assert_eq!(proposal.status, ProposalStatus::Finalized);
-        let view = View::load(proposal.id, &client).await.unwrap();
+        let view = View::load_for_proposal(proposal.id, &client).await.unwrap();
         assert_eq!(view.status, ViewStatus::Commit);
     }
 
     #[actix_rt::test]
     async fn crud() {
         let (client, _lock) = test_db_client().await;
-        let time = Local::now();
-        let context: Context = Context::new(1);
-        let ts = Timestamp::from_unix(&*context, time.timestamp() as u64, time.timestamp_subsec_nanos());
-        let id = Uuid::new_v1(ts, &NodeID::stub().into())?;
+        let id = ProposalID::new(NodeID::stub()).await.unwrap();
 
         let new_view = ViewBuilder::default().prepare(&client).await.unwrap();
-        let params = NewProposal { id, node_id: NodeID::stub().inner(), asset_id: new_view.asset_id, new_view: new_view };
+        let params = NewProposal {
+            id,
+            node_id: NodeID::stub(),
+            asset_id: new_view.asset_id,
+            new_view,
+        };
         let proposal = Proposal::insert(params, &client).await.unwrap();
         assert_eq!(proposal.id, id);
         assert_eq!(proposal.new_view, new_view);

@@ -119,6 +119,7 @@ mod test {
     use crate::{
         db::models::tokens::*,
         test::utils::{actix_test_pool, builders::*, test_db_client},
+        types::NodeID,
     };
     use actix_web::{web, HttpResponse, Result};
 
@@ -126,13 +127,14 @@ mod test {
     async fn requests() {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
-        let tokens = (0..3)
-            .map(|_| TokenID::new(&asset.asset_id, NodeID::stub()).unwrap())
+        let tokens: Vec<NewToken> = (0..3)
+            .map(|_| TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap())
             .map(|token_id| NewToken {
                 asset_state_id: asset.id,
                 token_id,
                 ..NewToken::default()
-            });
+            })
+            .collect();
 
         let request = HttpRequestBuilder::default()
             .asset_call(&asset.asset_id, "test_contract")

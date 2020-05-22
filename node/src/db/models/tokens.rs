@@ -1,5 +1,8 @@
 use super::{consensus::Instruction, TokenStatus};
-use crate::{db::utils::errors::DBError, types::TokenID};
+use crate::{
+    db::utils::errors::DBError,
+    types::{InstructionID, TokenID},
+};
 use bytes::BytesMut;
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
@@ -39,7 +42,7 @@ pub struct NewToken {
 #[derive(PartialEq, Deserialize, Serialize, Default, Clone, Debug)]
 pub struct NewTokenStateAppendOnly {
     pub token_id: TokenID,
-    pub instruction_id: uuid::Uuid,
+    pub instruction_id: InstructionID,
     pub status: TokenStatus,
     pub state_data_json: Value,
 }
@@ -93,11 +96,11 @@ impl Token {
         };
         let state = NewTokenStateAppendOnly {
             token_id: token.token_id.clone(),
-            instruction_id: instruction.id.clone(),
+            instruction_id: instruction.id,
             status: data.status.unwrap_or_else(|| token.status.clone()),
             state_data_json,
         };
-        Self::store_append_only_state(state, client).await?;
+        Self::store_append_only_state(&state, client).await?;
         Self::load(token.id, &client).await
     }
 
@@ -109,7 +112,7 @@ impl Token {
     }
 
     /// Find token record by token id )
-    pub async fn find_by_token_id(token_id: TokenID, client: &Client) -> Result<Option<Token>, DBError> {
+    pub async fn find_by_token_id(token_id: &TokenID, client: &Client) -> Result<Option<Token>, DBError> {
         const QUERY: &'static str = "SELECT * FROM tokens_view WHERE token_id = $1";
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let result = client.query_opt(&stmt, &[&token_id]).await?;
@@ -120,7 +123,7 @@ impl Token {
     ///
     /// NOTE: This call will not merge new values provided, they are stored as is
     pub async fn store_append_only_state(
-        params: NewTokenStateAppendOnly,
+        params: &NewTokenStateAppendOnly,
         client: &Client,
     ) -> Result<uuid::Uuid, DBError>
     {
@@ -169,8 +172,12 @@ impl<'a> FromSql<'a> for NewTokenStateAppendOnly {
 mod test {
     use super::*;
     use crate::{
-        db::models::{InstructionStatus, UpdateInstruction},
-        test::utils::{builders::*, test_db_client},
+        db::models::{consensus::UpdateInstruction, AssetState, InstructionStatus},
+        test::utils::{
+            builders::{consensus::InstructionBuilder, AssetStateBuilder, TokenBuilder},
+            test_db_client,
+        },
+        types::NodeID,
     };
     use serde_json::json;
 
@@ -183,7 +190,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NodeID::stub()).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -194,7 +201,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NodeID::stub()).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -205,7 +212,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset2.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NodeID::stub()).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -222,7 +229,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NodeID::stub()).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         Token::insert(params.clone(), &client).await.unwrap();
@@ -240,11 +247,12 @@ mod test {
         .build(&client)
         .await
         .unwrap();
+        let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
         assert_eq!(json!(initial_data), token.initial_data_json);
         assert_eq!(json!(initial_data), token.additional_data_json);
 
         let instruction = InstructionBuilder {
-            asset_state_id: Some(token.asset_state_id),
+            asset_id: Some(asset.asset_id),
             status: InstructionStatus::Commit,
             ..Default::default()
         }
@@ -254,8 +262,8 @@ mod test {
         let empty_value: Option<String> = None;
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         Token::store_append_only_state(
-            NewTokenStateAppendOnly {
-                token_id: token.id,
+            &NewTokenStateAppendOnly {
+                token_id: token.token_id,
                 state_data_json: state_data_json.clone(),
                 status: token.status,
                 instruction_id: instruction.id.clone(),
@@ -269,8 +277,8 @@ mod test {
 
         let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         Token::store_append_only_state(
-            NewTokenStateAppendOnly {
-                token_id: token.id,
+            &NewTokenStateAppendOnly {
+                token_id: token.token_id,
                 state_data_json: state_data_json.clone(),
                 status: token.status,
                 instruction_id: instruction.id,
@@ -283,16 +291,16 @@ mod test {
         assert_eq!(state_data_json.clone(), token.additional_data_json);
 
         let instruction = InstructionBuilder {
-            asset_state_id: Some(token.asset_state_id),
-            status: InstructionStatus::PreCommit,
+            asset_id: Some(asset.asset_id),
+            status: InstructionStatus::Pending,
             ..Default::default()
         }
         .build(&client)
         .await
         .unwrap();
         Token::store_append_only_state(
-            NewTokenStateAppendOnly {
-                token_id: token.id,
+            &NewTokenStateAppendOnly {
+                token_id: token.token_id,
                 state_data_json: json!({"value": true, "value3": 1}),
                 status: TokenStatus::Retired,
                 instruction_id: instruction.id,
@@ -316,8 +324,9 @@ mod test {
         .build(&client)
         .await
         .unwrap();
+        let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
         let instruction = InstructionBuilder {
-            asset_state_id: Some(token.asset_state_id),
+            asset_id: Some(asset.asset_id),
             ..Default::default()
         }
         .build(&client)

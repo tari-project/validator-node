@@ -1,7 +1,7 @@
 use crate::db::models::consensus::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, PartialEq, Debug, Deserialize)]
+#[derive(Clone, Serialize, PartialEq, Debug, Deserialize)]
 pub enum CommitteeState {
     PreparingView {
         pending_instructions: Vec<Instruction>,

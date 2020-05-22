@@ -1,10 +1,10 @@
 CREATE TABLE views (
                        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
                        asset_id char(64) NOT NULL,
-                       initiating_node_id BYTEA[] NOT NULL,
+                       initiating_node_id "NodeID" NOT NULL,
                        signature TEXT NOT NULL,
-                       instruction_set uuid[] NOT NULL,
-                       invalid_instruction_set uuid[] NOT NULL,
+                       instruction_set uuid [] NOT NULL,
+                       invalid_instruction_set uuid [] NOT NULL,
                        asset_state_append_only JSONB NOT NULL DEFAULT '{}',
                        token_state_append_only JSONB NOT NULL DEFAULT '{}',
                        status TEXT NOT NULL DEFAULT 'Prepare',

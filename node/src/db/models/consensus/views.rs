@@ -3,7 +3,7 @@ use crate::{
         models::{NewAssetStateAppendOnly, NewTokenStateAppendOnly, ViewStatus},
         utils::errors::DBError,
     },
-    types::{AssetID, NodeID},
+    types::{AssetID, NodeID, ProposalID},
 };
 use bytes::BytesMut;
 use chrono::{DateTime, Utc};
@@ -16,7 +16,7 @@ use tokio_postgres::{
     Client,
 };
 
-#[derive(Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
+#[derive(Deserialize, Serialize, Clone, PostgresMapper, PartialEq, Debug)]
 #[pg_mapper(table = "views")]
 pub struct View {
     pub id: uuid::Uuid,
@@ -47,19 +47,18 @@ pub struct NewView {
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct NewViewAdditionalParameters {
     pub status: Option<ViewStatus>,
-    pub proposal_id: Option<uuid::Uuid>,
+    pub proposal_id: Option<ProposalID>,
 }
 
 #[derive(Default, Clone, Debug)]
 pub struct UpdateView {
     pub status: Option<ViewStatus>,
-    pub proposal_id: Option<uuid::Uuid>,
+    pub proposal_id: Option<ProposalID>,
 }
 
 impl View {
     pub async fn invalidate(views: Vec<View>, client: &Client) -> Result<(), DBError> {
         let view_ids: Vec<uuid::Uuid> = views.into_iter().map(|s| s.id).collect();
-
         const QUERY: &'static str = "
             UPDATE views SET
                 status = $2,
@@ -67,7 +66,8 @@ impl View {
             WHERE id in ($1)
             RETURNING *";
         let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
-        client.execute(&stmt, &[&view_ids, ViewStatus::Invalid]).await?;
+        client.execute(&stmt, &[&view_ids, &ViewStatus::Invalid]).await?;
+        Ok(())
     }
 
     pub async fn threshold_met(client: &Client) -> Result<HashMap<AssetID, Vec<View>>, DBError> {
@@ -139,7 +139,7 @@ impl View {
 
     /// Marks set of views as given status
     pub async fn update_views_status(
-        view_ids: Vec<uuid::Uuid>,
+        view_ids: &[uuid::Uuid],
         status: ViewStatus,
         client: &Client,
     ) -> Result<(), DBError>
@@ -150,9 +150,7 @@ impl View {
                 updated_at = NOW()
             WHERE id in ($1)
             RETURNING *";
-        let stmt = client
-            .prepare_typed(QUERY, &[Type::UUID, Type::TEXT])
-            .await?;
+        let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
         client.execute(&stmt, &[&view_ids, &status]).await?;
 
         Ok(())
@@ -165,7 +163,29 @@ impl View {
         Ok(Self::from_row(result)?)
     }
 
-    pub async fn find_by_asset_status()
+    /// Load view record
+    pub async fn load_for_proposal(id: ProposalID, client: &Client) -> Result<Self, DBError> {
+        let stmt = "SELECT * FROM views WHERE proposal_id = $1";
+        let result = client.query_one(stmt, &[&id]).await?;
+        Ok(Self::from_row(result)?)
+    }
+
+    pub async fn find_by_asset_status(
+        asset_id: AssetID,
+        status: ViewStatus,
+        client: &Client,
+    ) -> Result<Vec<View>, DBError>
+    {
+        const QUERY: &'static str = "SELECT * FROM views WHERE asset_id = $1 and status = $2";
+
+        let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
+        Ok(client
+            .query(&stmt, &[&asset_id, &status])
+            .await?
+            .into_iter()
+            .map(|row| View::from_row(row))
+            .collect::<Result<Vec<_>, _>>()?)
+    }
 }
 
 impl<'a> ToSql for NewView {
@@ -188,14 +208,24 @@ impl<'a> FromSql<'a> for NewView {
     }
 }
 
+impl From<View> for NewView {
+    fn from(view: View) -> Self {
+        NewView {
+            asset_id: view.asset_id,
+            initiating_node_id: view.initiating_node_id,
+            signature: view.signature.to_owned(),
+            instruction_set: view.instruction_set.to_owned(),
+            invalid_instruction_set: view.invalid_instruction_set.to_owned(),
+            asset_state_append_only: view.asset_state_append_only.to_owned(),
+            token_state_append_only: view.token_state_append_only.to_owned(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::{
-        builders::{AssetStateBuilder, InstructionBuilder},
-        test_db_client,
-    };
-    use serde_json::json;
+    use crate::test::utils::{builders::AssetStateBuilder, test_db_client};
 
     #[actix_rt::test]
     async fn crud() {
@@ -204,14 +234,16 @@ mod test {
         let params = NewView {
             asset_id: asset.asset_id,
             initiating_node_id: NodeID::stub(),
-            signature: "stub-signature",
+            signature: "stub-signature".to_string(),
             instruction_set: Vec::new(),
+            invalid_instruction_set: Vec::new(),
             asset_state_append_only: Vec::new(),
             token_state_append_only: Vec::new(),
         };
-        let view = View::insert(params, ViewStatus::Prepare, &client).await.unwrap();
+        let view = View::insert(params, NewViewAdditionalParameters::default(), &client)
+            .await
+            .unwrap();
         assert_eq!(view.asset_id, asset.asset_id);
-        assert_eq!(view.initiating_node_id, asset.initiating_node_id);
         assert_eq!(view.status, ViewStatus::Prepare);
 
         let initial_updated_at = view.updated_at;
@@ -224,9 +256,8 @@ mod test {
 
         let view2 = View::load(updated.id, &client).await.unwrap();
         assert_eq!(view2.id, updated.id);
-        assert_eq!(view2.asset_id, asset.asset_id);
-        assert_eq!(view2.initiating_node_id, asset.initiating_node_id);
+        assert_eq!(view2.asset_id, updated.asset_id);
         assert_eq!(view2.status, ViewStatus::Commit);
-        assert!(instruction2.updated_at > initial_updated_at);
+        assert!(view2.updated_at > initial_updated_at);
     }
 }

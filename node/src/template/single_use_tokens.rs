@@ -1,7 +1,7 @@
 use super::{actix::*, AssetTemplateContext, Contracts, Template, TemplateContext, TokenTemplateContext};
 use crate::{
     db::models::{InstructionStatus, NewToken, Token, TokenStatus, UpdateToken},
-    types::{NodeID, Pubkey, TemplateID, TokenID},
+    types::{InstructionID, NodeID, Pubkey, TemplateID, TokenID},
 };
 use anyhow::{bail, Result};
 use serde_json::json;
@@ -103,7 +103,7 @@ mod expanded_macros {
     {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
-        let asset = match context.load_asset(asset_id).await? {
+        let asset = match context.load_asset(&asset_id).await? {
             None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
             Some(asset) => asset,
         };
@@ -134,6 +134,7 @@ mod expanded_macros {
             // TODO: Instruction should not be run at this point in consensus
             // result: Some(result),
             status: Some(InstructionStatus::Commit),
+            ..UpdateInstruction::default()
         };
         context.update_instruction(data).await?;
         // There must be instruction - otherwise we would fail on previous call
@@ -166,12 +167,12 @@ mod expanded_macros {
     {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
-        let asset = match context.load_asset(asset_id).await? {
+        let asset = match context.load_asset(&asset_id).await? {
             None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
             Some(asset) => asset,
         };
         let token_id = params.token_id(&context.template_id)?;
-        let token = match context.load_token(token_id).await? {
+        let token = match context.load_token(&token_id).await? {
             None => return Err(ApplicationError::bad_request("Token ID not found").into()),
             Some(token) => token,
         };
@@ -179,7 +180,7 @@ mod expanded_macros {
         let params = data.into_inner();
         // create instruction
         let instruction = NewInstruction {
-            id: Instruction::generate_id(NodeID::stub()).await?,
+            id: InstructionID::new(NodeID::stub()).await?,
             initiating_node_id: NodeID::stub(),
             signature: "signature-stub".into(),
             asset_id,

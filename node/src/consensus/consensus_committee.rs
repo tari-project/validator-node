@@ -1,24 +1,16 @@
 use super::errors::ConsensusError;
 use crate::{
-    db::models::{consensus::*, AssetState},
-    types::{consensus::*, AssetID, NodeID},
+    db::models::{consensus::*, AssetState, ViewStatus},
+    types::{consensus::*, AssetID, NodeID, ProposalID},
 };
-use chrono::Local;
 use deadpool_postgres::Client;
 use std::collections::HashMap;
-use uuid::{
-    v1::{Context, Timestamp},
-    Uuid,
-};
+use uuid::Uuid;
 
 pub struct ConsensusCommittee {
     pub state: CommitteeState,
     pub asset_id: AssetID,
     pub leader_node_id: NodeID,
-}
-
-lazy_static::lazy_static! {
-    pub static ref CONTEXT: Context = Context::new(1);
 }
 
 impl ConsensusCommittee {
@@ -37,11 +29,11 @@ impl ConsensusCommittee {
         // Find any pending signature messages indicating a state is pending finalization
         if let Some(aggregate_signature_message) = AggregateSignatureMessage::find_pending(&client).await? {
             let proposal = aggregate_signature_message.proposal(&client).await?;
-            let leader_node_id = ConsensusCommittee::determine_leader_node_id(proposal.asset_id).await?;
+            let leader_node_id = ConsensusCommittee::determine_leader_node_id(&proposal.asset_id).await?;
 
             return Ok(Some(ConsensusCommittee {
                 leader_node_id,
-                asset_id: proposal.asset_id,
+                asset_id: proposal.asset_id.clone(),
                 state: CommitteeState::LeaderFinalizedProposalReceived {
                     proposal,
                     aggregate_signature_message,
@@ -54,7 +46,7 @@ impl ConsensusCommittee {
         // Only the first valid asset ID where the current node is the leader is returned
         let asset_id_signed_proposal_mapping = SignedProposal::threshold_met(&client).await?;
         for (asset_id, signed_proposals) in asset_id_signed_proposal_mapping {
-            let leader_node_id = ConsensusCommittee::determine_leader_node_id(asset_id).await?;
+            let leader_node_id = ConsensusCommittee::determine_leader_node_id(&asset_id).await?;
             let proposal_id = signed_proposals[0].proposal_id;
             let proposal = Proposal::load(proposal_id, &client).await?;
 
@@ -75,12 +67,12 @@ impl ConsensusCommittee {
 
         // Find any pending proposal
         if let Some(proposal) = Proposal::find_pending(&client).await? {
-            let leader_node_id = ConsensusCommittee::determine_leader_node_id(proposal.asset_id).await?;
+            let leader_node_id = ConsensusCommittee::determine_leader_node_id(&proposal.asset_id).await?;
 
             if proposal.node_id == leader_node_id {
                 return Ok(Some(ConsensusCommittee {
                     leader_node_id,
-                    asset_id: proposal.asset_id,
+                    asset_id: proposal.asset_id.clone(),
                     state: CommitteeState::ReceivedLeaderProposal { proposal },
                 }));
             } else {
@@ -94,7 +86,7 @@ impl ConsensusCommittee {
         // Only the first valid asset ID where the current node is the leader is returned
         let asset_id_view_mapping = View::threshold_met(&client).await?;
         for (asset_id, views) in asset_id_view_mapping {
-            let leader_node_id = ConsensusCommittee::determine_leader_node_id(asset_id).await?;
+            let leader_node_id = ConsensusCommittee::determine_leader_node_id(&asset_id).await?;
 
             if leader_node_id == node_id {
                 return Ok(Some(ConsensusCommittee {
@@ -109,7 +101,7 @@ impl ConsensusCommittee {
         }
 
         if let Some((asset_id, pending_instructions)) = Instruction::find_pending(&client).await? {
-            let leader_node_id = ConsensusCommittee::determine_leader_node_id(asset_id).await?;
+            let leader_node_id = ConsensusCommittee::determine_leader_node_id(&asset_id).await?;
             return Ok(Some(ConsensusCommittee {
                 asset_id,
                 leader_node_id,
@@ -121,22 +113,22 @@ impl ConsensusCommittee {
     }
 
     // Determines leader node ID for this round of consensus
-    pub async fn determine_leader_node_id(asset_id: AssetID) -> Result<NodeID, ConsensusError> {
+    pub async fn determine_leader_node_id(_asset_id: &AssetID) -> Result<NodeID, ConsensusError> {
         Ok(NodeID::stub())
     }
 
     /// Aquires a lock on the asset state table preventing other consensus workers from working on these
     /// instructions in tandem
     pub async fn acquire_lock(&self, lock_period: u64, client: &Client) -> Result<(), ConsensusError> {
-        match AssetState::find_by_asset_id(self.asset_id, &client).await? {
-            Some(asset_state) => Ok(asset_state.acquire_lock(lock_period, &client).await?),
+        match AssetState::find_by_asset_id(&self.asset_id, &client).await? {
+            Some(mut asset_state) => Ok(asset_state.acquire_lock(lock_period, &client).await?),
             None => Err(ConsensusError::error("Failed to load asset state")),
         }
     }
 
     /// Removes time lock on asset state allowing other consensus workers to handle next state transition
     pub async fn release_lock(&self, client: &Client) -> Result<(), ConsensusError> {
-        match AssetState::find_by_asset_id(self.asset_id, &client).await? {
+        match AssetState::find_by_asset_id(&self.asset_id, &client).await? {
             Some(asset_state) => Ok(asset_state.release_lock(&client).await?),
             None => Err(ConsensusError::error("Failed to load asset state")),
         }
@@ -156,14 +148,14 @@ impl ConsensusCommittee {
 
         for pending_instruction in pending_instructions {
             match pending_instruction.execute(&client).await {
-                Ok((new_asset_state_append_only, new_token_state_append_only)) => {
-                    instruction_set.push(pending_instruction.id);
+                Ok((mut new_asset_state_append_only, mut new_token_state_append_only)) => {
+                    instruction_set.push(pending_instruction.id.0);
                     asset_state_append_only.append(&mut new_asset_state_append_only);
                     token_state_append_only.append(&mut new_token_state_append_only);
                 },
                 Err(_) => {
                     // Instruction failed to execute
-                    invalid_instruction_set.push(pending_instruction.id)
+                    invalid_instruction_set.push(pending_instruction.id.0)
                 },
             }
         }
@@ -173,60 +165,70 @@ impl ConsensusCommittee {
             invalid_instruction_set,
             asset_state_append_only,
             token_state_append_only,
-            asset_id: self.asset_id,
+            asset_id: self.asset_id.clone(),
             initiating_node_id: NodeID::stub(),
             signature: "stub-signature".into(),
         })
     }
 
     /// Leader creates proposal
-    pub async fn create_proposal(&self, views: Vec<View>, client: &Client) -> Result<Proposal, ConsensusError> {
-        let time = Local::now();
-        let ts = Timestamp::from_unix(&*CONTEXT, time.timestamp() as u64, time.timestamp_subsec_nanos());
-        let id = Uuid::new_v1(ts, &NodeID::stub().inner())?;
-
-        let view = self.select_view(views)?;
-        let params = NewProposal { id, node_id: NodeID::stub().inner(), asset_id: new_view.asset_id, new_view: view.into() };
+    pub async fn create_proposal(
+        &self,
+        node_id: NodeID,
+        views: &mut [View],
+        client: &Client,
+    ) -> Result<Proposal, ConsensusError>
+    {
+        let view = self.select_view(views, &client).await?;
+        let params = NewProposal {
+            id: ProposalID::new(node_id).await?,
+            node_id: NodeID::stub(),
+            asset_id: view.asset_id.clone(),
+            new_view: view.into(),
+        };
         let proposal = Proposal::insert(params, &client).await.unwrap();
 
         // Leader signs proposal and stores record so their approval is included in the supermajority
+        proposal.sign(&client).await?;
+
+        Ok(proposal)
     }
 
     /// Select view from set of views provided by committee
-    fn select_view(&self, views: &mut Vec<View>) -> Result<View, ConsensusError> {
+    pub async fn select_view(&self, views: &mut [View], client: &Client) -> Result<View, ConsensusError> {
         // TODO: this logic needs to be adjusted for logic to select the winning view to propose
         // Hardcoded to the last view currently.
-        let view = views
-            .pop()
-            .ok_or("No view available for selection")
-            .map(|v| *v.clone())?;
+        let (first_view, remaining_views) = views
+            .split_first()
+            .ok_or_else(|| ConsensusError::error("No view available for selection"))?;
 
         // Update state of view to PreCommit
         let data = UpdateView {
             status: Some(ViewStatus::PreCommit),
             ..UpdateView::default()
         };
-        let view = view.update(data, &client).await?;
+        let first_view = first_view.clone().update(data, &client).await?;
 
         // Update state of other views to NotChosen
+        let view_ids: Vec<Uuid> = remaining_views.into_iter().map(|v| v.id).collect();
+        View::update_views_status(&view_ids, ViewStatus::NotChosen, &client).await?;
 
-
-        Ok(view)
+        Ok(first_view)
     }
 
     /// Confirm proposal provided by leader node checking the resulting state
-    pub async fn confirm_proposal(&self, proposal: Proposal) -> Result<(), ConsensusError> {
+    pub async fn confirm_proposal(&self, _proposal: &Proposal) -> Result<bool, ConsensusError> {
         // TODO: Should the logic fetch any missing instructions it sees in the proposal from its peers at this point?
         //       Or immediately fail and take part in the next consensus period?
 
-        Ok(())
+        Ok(true)
     }
 
     /// Prepares aggregate signature for broadcasting to committee members to finalize state
     pub async fn prepare_aggregate_signature_message(
         &self,
-        proposal: Proposal,
-        signed_proposals: Vec<SignedProposal>,
+        proposal: &Proposal,
+        signed_proposals: &[SignedProposal],
     ) -> Result<NewAggregateSignatureMessage, ConsensusError>
     {
         let mut signatures: HashMap<NodeID, String> = HashMap::new();

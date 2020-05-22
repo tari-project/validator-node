@@ -1,16 +1,14 @@
-use super::AssetStateBuilder;
-use crate::{db::models::*, types::TemplateID};
-use chrono::Local;
+use crate::{
+    db::models::{consensus::*, InstructionStatus},
+    test::utils::builders::AssetStateBuilder,
+    types::{AssetID, InstructionID, NodeID, TemplateID, TokenID},
+};
 use deadpool_postgres::Client;
 use serde_json::{json, Value};
-use uuid::{
-    v1::{Context, Timestamp},
-    Uuid,
-};
 
 #[allow(dead_code)]
 pub struct InstructionBuilder {
-    pub id: Option<uuid::Uuid>,
+    pub id: Option<InstructionID>,
     pub initiating_node_id: NodeID,
     pub signature: String,
     pub asset_id: Option<AssetID>,
@@ -28,6 +26,7 @@ impl Default for InstructionBuilder {
         Self {
             id: None,
             initiating_node_id: NodeID::stub(),
+            signature: "stub-signature".to_string(),
             asset_id: None,
             token_id: None,
             template_id: 999.into(),
@@ -49,12 +48,7 @@ impl InstructionBuilder {
 
         let id = match self.id {
             Some(id) => id,
-            None => {
-                let time = Local::now();
-                let context: Context = Context::new(1);
-                let ts = Timestamp::from_unix(&*context, time.timestamp() as u64, time.timestamp_subsec_nanos());
-                Uuid::new_v1(ts, &node_id)?
-            },
+            None => InstructionID::new(self.initiating_node_id).await?,
         };
 
         let params = NewInstruction {

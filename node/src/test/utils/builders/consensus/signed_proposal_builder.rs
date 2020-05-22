@@ -1,28 +1,24 @@
-use super::AssetStateBuilder;
-use crate::{db::models::*, types::TemplateID};
-use chrono::Local;
-use deadpool_postgres::Client;
-use serde_json::{json, Value};
-use uuid::{
-    v1::{Context, Timestamp},
-    Uuid,
+use crate::{
+    db::models::consensus::*,
+    test::utils::builders::consensus::ProposalBuilder,
+    types::{NodeID, ProposalID},
 };
+use deadpool_postgres::Client;
 
 #[allow(dead_code)]
 pub struct SignedProposalBuilder {
     pub node_id: NodeID,
-    pub signature: Option<String>,
-    pub proposal_id: Option<Uuid>,
+    pub signature: String,
+    pub proposal_id: Option<ProposalID>,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
 
 impl Default for SignedProposalBuilder {
     fn default() -> Self {
-        let x: u32 = random();
         Self {
             node_id: NodeID::stub(),
-            signature: "stub-signature",
+            signature: "stub-signature".to_string(),
             proposal_id: None,
             __non_exhaustive: (),
         }
@@ -34,14 +30,13 @@ impl SignedProposalBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<SignedProposal> {
         let proposal_id = match self.proposal_id {
             Some(proposal_id) => proposal_id,
-            None => ProposalBuilder::default().build(client).await?,
+            None => ProposalBuilder::default().build(client).await?.id,
         };
         let params = NewSignedProposal {
             proposal_id,
             node_id: self.node_id,
             signature: self.signature,
         };
-        let signed_proposal_id = SignedProposal::insert(params, client).await?;
-        Ok(SignedProposal::load(signed_proposal_id, client).await?)
+        Ok(SignedProposal::insert(params, client).await?)
     }
 }

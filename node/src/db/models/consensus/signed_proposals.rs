@@ -1,6 +1,6 @@
 use crate::{
     db::{models::ProposalStatus, utils::errors::DBError},
-    types::{AssetID, NodeID},
+    types::{AssetID, NodeID, ProposalID},
 };
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
@@ -10,11 +10,11 @@ use std::collections::HashMap;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
 
-#[derive(Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
+#[derive(Deserialize, Serialize, PostgresMapper, PartialEq, Debug, Clone)]
 #[pg_mapper(table = "signed_proposals")]
 pub struct SignedProposal {
     pub id: uuid::Uuid,
-    pub proposal_id: uuid::Uuid,
+    pub proposal_id: ProposalID,
     pub node_id: NodeID,
     pub signature: String,
     pub created_at: DateTime<Utc>,
@@ -23,7 +23,7 @@ pub struct SignedProposal {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NewSignedProposal {
-    pub proposal_id: uuid::Uuid,
+    pub proposal_id: ProposalID,
     pub node_id: NodeID,
     pub signature: String,
 }
@@ -40,7 +40,7 @@ impl SignedProposal {
             RETURNING *";
         let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
         client
-            .execute(&stmt, &[&signed_proposal_ids, ProposalStatus::Invalid])
+            .execute(&stmt, &[&signed_proposal_ids, &ProposalStatus::Invalid])
             .await?;
 
         Ok(())
@@ -59,16 +59,17 @@ impl SignedProposal {
             AND as.blocked_until <= now()
             ORDER BY p.asset_id
         ";
-        let signed_proposal_data: Vec<(AssetID, SignedProposal)> = client
-            .query(stmt, &[])
-            .await?
-            .into_iter()
-            .map(|row| (SignedProposal::from_row(row), row.get(0)))
-            .collect();
+        let mut signed_proposal_data: Vec<(AssetID, SignedProposal)> = Vec::new();
+        for row in client.query(stmt, &[]).await? {
+            signed_proposal_data.push((row.get(0), SignedProposal::from_row(row)?));
+        }
 
         let mut asset_id_signed_proposal_mapping = HashMap::new();
-        for (asset_id, signed_proposal_data) in &signed_proposal_data.iter().group_by(|data| data.0) {
-            asset_id_signed_proposal_mapping.insert(asset_id, signed_proposal_data.map(|d| d.1).collect_vec());
+        for (asset_id, signed_proposal_data) in &signed_proposal_data.iter().group_by(|data| &data.0) {
+            asset_id_signed_proposal_mapping.insert(
+                asset_id.clone(),
+                signed_proposal_data.map(|d| d.1.clone()).collect_vec(),
+            );
         }
 
         Ok(asset_id_signed_proposal_mapping)
@@ -92,8 +93,7 @@ impl SignedProposal {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::{builders::ProposalBuilder, test_db_client};
-    use serde_json::json;
+    use crate::test::utils::{builders::consensus::ProposalBuilder, test_db_client};
 
     #[actix_rt::test]
     async fn crud() {
@@ -102,11 +102,11 @@ mod test {
         let proposal = ProposalBuilder::default().build(&client).await.unwrap();
         let params = NewSignedProposal {
             proposal_id: proposal.id,
-            initiating_node_id: NodeID::stub(),
-            signature: "stub-signature",
+            node_id: NodeID::stub(),
+            signature: "stub-signature".to_string(),
         };
         let signed_proposal = SignedProposal::insert(params, &client).await.unwrap();
         assert_eq!(signed_proposal.proposal_id, proposal.id);
-        assert_eq!(signed_proposal.initiating_node_id, NodeID::stub());
+        assert_eq!(signed_proposal.node_id, NodeID::stub());
     }
 }

@@ -5,7 +5,7 @@ use std::{convert::TryInto, error::Error};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
 
 #[derive(Serialize, Hash, Eq, Deserialize, Default, Debug, Clone, Copy, PartialEq)]
-pub struct NodeID([u8; 6]);
+pub struct NodeID(pub(crate) [u8; 6]);
 
 impl NodeID {
     pub fn inner(&self) -> [u8; 6] {
@@ -22,7 +22,7 @@ impl<'a> FromSql<'a> for NodeID {
     accepts!(BYTEA);
 
     fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<NodeID, Box<dyn Error + Sync + Send>> {
-        Ok(NodeID(<&[u8] as FromSql>::from_sql(ty, raw).try_into()?))
+        Ok(NodeID(<&[u8] as FromSql>::from_sql(ty, raw)?.try_into()?))
     }
 }
 
@@ -32,6 +32,6 @@ impl<'a> ToSql for NodeID {
     to_sql_checked!();
 
     fn to_sql(&self, ty: &Type, w: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-        <&[u8] as ToSql>::to_sql(&*self.inner(), ty, w)
+        <&[u8] as ToSql>::to_sql(&&self.inner()[..], ty, w)
     }
 }

@@ -1,13 +1,13 @@
 use super::AssetStatus;
 use crate::{
     db::utils::{errors::DBError, validation::ValidationErrors},
-    types::AssetID,
+    types::{AssetID, InstructionID},
 };
 use bytes::BytesMut;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{error::Error};
+use std::error::Error;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::{
     types::{accepts, to_sql_checked, FromSql, IsNull, Json, ToSql, Type},
@@ -57,7 +57,7 @@ pub struct NewAssetState {
 #[derive(PartialEq, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct NewAssetStateAppendOnly {
     pub asset_id: AssetID,
-    pub instruction_id: uuid::Uuid,
+    pub instruction_id: InstructionID,
     pub state_data_json: Value,
     pub status: AssetStatus,
 }
@@ -65,10 +65,7 @@ pub struct NewAssetStateAppendOnly {
 impl NewAssetState {
     pub async fn validate_record(&self, client: &Client) -> Result<(), DBError> {
         let mut validation_errors = ValidationErrors::default();
-        if AssetState::find_by_asset_id(self.asset_id.clone(), client)
-            .await?
-            .is_some()
-        {
+        if AssetState::find_by_asset_id(&self.asset_id, client).await?.is_some() {
             validation_errors.append_validation_error(
                 "uniqueness",
                 "asset_id",
@@ -83,8 +80,8 @@ impl NewAssetState {
 
 impl AssetState {
     /// Releases lock on asset state
-    pub async fn acquire_lock(&self, lock_period: u64, client: &Client) -> Result<(), DBError> {
-        let block_until = Utc::now() + Duration::seconds(lock_period);
+    pub async fn acquire_lock(&mut self, lock_period: u64, client: &Client) -> Result<(), DBError> {
+        let block_until = Utc::now() + Duration::seconds(lock_period as i64);
 
         const QUERY: &'static str = "UPDATE asset_states SET blocked_until = $2, updated_at = now() WHERE id = $1 AND \
                                      blocked_until < now() RETURNING *";
@@ -92,8 +89,8 @@ impl AssetState {
         let result = client.query_one(&stmt, &[&self.id, &block_until]).await?;
         let updated_asset_state = AssetState::from_row(result)?;
 
-        self.blocked_until = updated_asset_state.blocked_until;
-        self.updated_at = updated_asset_state.updated_at;
+        self.blocked_until = updated_asset_state.blocked_until.clone();
+        self.updated_at = updated_asset_state.updated_at.clone();
 
         Ok(())
     }
@@ -154,7 +151,7 @@ impl AssetState {
     }
 
     /// Find asset state record by asset id )
-    pub async fn find_by_asset_id(asset_id: AssetID, client: &Client) -> Result<Option<AssetState>, DBError> {
+    pub async fn find_by_asset_id(asset_id: &AssetID, client: &Client) -> Result<Option<AssetState>, DBError> {
         let stmt = "SELECT * FROM asset_states_view WHERE asset_id = $1";
         let result = client.query_opt(stmt, &[&asset_id]).await?;
         Ok(result.map(AssetState::from_row).transpose()?)
@@ -162,7 +159,7 @@ impl AssetState {
 
     // Store append only state
     pub async fn store_append_only_state(
-        params: NewAssetStateAppendOnly,
+        params: &NewAssetStateAppendOnly,
         client: &Client,
     ) -> Result<uuid::Uuid, DBError>
     {
@@ -212,7 +209,10 @@ mod test {
     use super::*;
     use crate::{
         db::{models::InstructionStatus, utils::validation::*},
-        test::utils::{builders::*, test_db_client},
+        test::utils::{
+            builders::{consensus::InstructionBuilder, AssetStateBuilder, DigitalAssetBuilder},
+            test_db_client,
+        },
     };
     use serde_json::json;
 
@@ -243,7 +243,7 @@ mod test {
         assert_eq!(asset.digital_asset_id, digital_asset.id);
         assert_eq!(asset.asset_id, tari_asset_id.clone());
 
-        let found_asset = AssetState::find_by_asset_id(tari_asset_id, &client).await.unwrap();
+        let found_asset = AssetState::find_by_asset_id(&tari_asset_id, &client).await.unwrap();
         assert_eq!(found_asset, Some(asset));
     }
 
@@ -261,7 +261,7 @@ mod test {
         assert_eq!(initial_data, asset.additional_data_json);
 
         let instruction = InstructionBuilder {
-            asset_state_id: Some(asset.id),
+            asset_id: Some(asset.asset_id),
             status: InstructionStatus::Commit,
             ..Default::default()
         }
@@ -271,7 +271,7 @@ mod test {
         let empty_value: Option<String> = None;
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         AssetState::store_append_only_state(
-            NewAssetStateAppendOnly {
+            &NewAssetStateAppendOnly {
                 asset_id: asset.asset_id,
                 state_data_json: state_data_json.clone(),
                 instruction_id: instruction.id.clone(),
@@ -286,7 +286,7 @@ mod test {
 
         let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         AssetState::store_append_only_state(
-            NewAssetStateAppendOnly {
+            &NewAssetStateAppendOnly {
                 asset_id: asset.asset_id,
                 state_data_json: state_data_json.clone(),
                 instruction_id: instruction.id.clone(),
@@ -307,7 +307,7 @@ mod test {
         .await
         .unwrap();
         AssetState::store_append_only_state(
-            NewAssetStateAppendOnly {
+            &NewAssetStateAppendOnly {
                 asset_id: asset.asset_id,
                 state_data_json: json!({"value": true, "value3": 1}),
                 instruction_id: instruction.id,
