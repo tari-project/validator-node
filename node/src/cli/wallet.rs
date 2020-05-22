@@ -1,7 +1,7 @@
 use crate::{
     config::NodeConfig,
     db::utils::db::db_client,
-    wallet::{WalletID, WalletStore},
+    wallet::{NodeWallet, WalletStore},
 };
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
@@ -32,7 +32,7 @@ impl WalletCommands {
         match self {
             Self::Create { name } => {
                 let transaction = client.transaction().await?;
-                let wallet = WalletID::new(global_config.public_address.clone(), name)?;
+                let wallet = NodeWallet::new(global_config.public_address.clone(), name)?;
                 let wallet = store.add(wallet, &transaction).await?;
                 transaction.commit().await?;
                 println!("{}", wallet);

@@ -1,14 +1,18 @@
 use super::{Contracts, Template, TemplateContext, LOG_TARGET};
 use crate::{
     api::errors::{ApiError, ApplicationError},
+    config::NodeConfig,
     db::utils::errors::DBError,
     types::{AssetID, TemplateID, TokenID},
+    wallet::WalletStore,
 };
 use actix_web::{dev::Payload, web, web::Data, FromRequest, HttpRequest};
 use deadpool_postgres::Pool;
 use futures::future::{err, FutureExt, LocalBoxFuture};
 use log::info;
 use serde::Deserialize;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Deserialize)]
 pub struct AssetCallParams {
@@ -87,10 +91,22 @@ impl<'a> FromRequest for TemplateContext<'a> {
     fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         // initialize whole context in this module - would make moduel quite complex but easier to debug
         // middleware might pass parameters via .extensions() or .app_data()
+        // TODO: this is not secure as we allow routes configuration via Contracts trait
+        // potentially template might configure a route to get access to the Pool and WalletStore
         let pool = req
-            .app_data::<Data<Pool>>()
+            .app_data::<Arc<Pool>>()
             .expect("Failed to retrieve DB pool")
-            .as_ref();
+            .as_ref()
+            .clone();
+        let wallets = req
+            .app_data::<Arc<Mutex<WalletStore>>>()
+            .expect("Failed to retrieve WalletStore")
+            .clone();
+        let config = req.app_data::<NodeConfig>().expect("Failed to retrieve NodeConfig");
+        let address = config
+            .public_address
+            .clone()
+            .expect("Public address is not configured for Node");
         let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
             Some(id) => id.get_ref().clone(),
             None => {
@@ -104,6 +120,8 @@ impl<'a> FromRequest for TemplateContext<'a> {
                 Ok(client) => Ok(TemplateContext {
                     client,
                     template_id,
+                    wallets,
+                    address,
                     db_transaction: None,
                     contract_transaction: None,
                 }),

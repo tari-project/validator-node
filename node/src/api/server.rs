@@ -2,12 +2,17 @@ use crate::{
     api::{middleware::*, routing},
     config::NodeConfig,
     db::utils::db::build_pool,
+    wallet::WalletStore,
 };
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer, Scope};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::{
+    net::{IpAddr, Ipv4Addr, ToSocketAddrs},
+    sync::Arc,
+};
+use tokio::sync::Mutex;
 
 pub const DEFAULT_PORT: u16 = 3001;
 pub const DEFAULT_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
@@ -54,7 +59,10 @@ impl Default for CorsConfig {
 
 pub async fn actix_main<F>(config: NodeConfig, scopes: F) -> anyhow::Result<()>
 where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
-    let pool = web::Data::new(build_pool(&config.postgres)?);
+    let pool = Arc::new(build_pool(&config.postgres)?);
+    let wallets = WalletStore::init(config.wallets_keys_path.clone())?;
+    let wallets = Arc::new(Mutex::new(wallets));
+    let config_arc = Arc::new(config.clone());
 
     println!(
         "Server starting at {}",
@@ -65,6 +73,8 @@ where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
     let mut server = HttpServer::new(move || {
         let app = App::new()
             .app_data(pool.clone())
+            .app_data(config_arc.clone())
+            .app_data(wallets.clone())
             .wrap({
                 let mut cors = Cors::new();
                 cors = match cors_config.allowed_origins.as_str() {
@@ -87,9 +97,14 @@ where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
             .wrap(AppVersionHeader::new());
 
         // the problem we solving here is for every template scope we need to install distinct app_data with DB pool
-        let with_templates = scopes.clone()()
-            .into_iter()
-            .fold(app, |app, scope| app.service(scope.app_data(pool.clone())));
+        let with_templates = scopes.clone()().into_iter().fold(app, |app, scope| {
+            app.service(
+                scope
+                    .app_data(pool.clone())
+                    .app_data(config_arc.clone())
+                    .app_data(wallets.clone()),
+            )
+        });
 
         with_templates
             .configure(routing::routes)

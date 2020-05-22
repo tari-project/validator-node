@@ -2,17 +2,27 @@
 //!
 //! TemplateContext is always supplied as first parameter to Smart Contract implementation
 
+use super::errors::TemplateError;
 use crate::{
-    api::errors::{ApiError, ApplicationError},
-    db::models::{
-        tokens::{NewToken, Token, UpdateToken},
-        transactions::{ContractTransaction, NewContractTransaction, UpdateContractTransaction},
-        AssetState,
+    db::{
+        models::{
+            tokens::{NewToken, Token, UpdateToken},
+            transactions::{ContractTransaction, NewContractTransaction, UpdateContractTransaction},
+            AssetState,
+        },
+        utils::errors::DBError,
     },
-    types::{AssetID, TemplateID, TokenID},
+    processing_err,
+    types::{AssetID, Pubkey, TemplateID, TokenID},
+    wallet::{NodeWallet, WalletStore},
 };
 use deadpool_postgres::{Client, Transaction};
-use std::ops::{Deref, DerefMut};
+use multiaddr::Multiaddr;
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
+use tokio::sync::Mutex;
 
 /// Smart contract request context
 ///
@@ -21,62 +31,71 @@ use std::ops::{Deref, DerefMut};
 /// - (private) DB connection
 pub struct TemplateContext<'a> {
     pub template_id: TemplateID,
+    // TODO: this is not secure, we provide access to context to template,
+    // To make it safe our templates should be completely sandboxed,
+    // having only access to the context methods...
     pub(crate) client: Client,
+    pub(crate) wallets: Arc<Mutex<WalletStore>>,
+    pub(crate) address: Multiaddr,
     pub(crate) db_transaction: Option<Transaction<'a>>,
     pub(crate) contract_transaction: Option<ContractTransaction>,
 }
 
 impl<'a> TemplateContext<'a> {
-    pub async fn create_token(&self, data: NewToken) -> Result<Token, ApiError> {
+    pub async fn create_token(&self, data: NewToken) -> Result<Token, TemplateError> {
         let id = Token::insert(data, &self.client).await?;
         Ok(Token::load(id, &self.client).await?)
     }
 
-    pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, ApiError> {
+    pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, TemplateError> {
         if let Some(transaction) = self.contract_transaction.as_ref() {
             Ok(token.update(data, transaction, &self.client).await?)
         } else {
-            Err(ApplicationError::new(format!(
-                "Failed to update token {} without ContractTransaction",
-                token.token_id
-            ))
-            .into())
+            return processing_err!("Failed to update token {} without ContractTransaction", token.token_id);
         }
     }
 
-    pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, ApiError> {
+    pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, TemplateError> {
         Ok(Token::find_by_token_id(id, &self.client).await?)
     }
 
-    pub async fn load_asset(&self, id: AssetID) -> Result<Option<AssetState>, ApiError> {
+    pub async fn load_asset(&self, id: AssetID) -> Result<Option<AssetState>, TemplateError> {
         Ok(AssetState::find_by_asset_id(id, &self.client).await?)
     }
 
     /// Creates [ContractTransaction]
     // TODO: move this somewhere outside of reach of contract code...
-    pub async fn create_transaction(&mut self, data: NewContractTransaction) -> Result<(), ApiError> {
+    pub async fn create_transaction(&mut self, data: NewContractTransaction) -> Result<(), TemplateError> {
         self.contract_transaction = Some(ContractTransaction::insert(data, &self.client).await?);
         Ok(())
     }
 
     /// Updates result and status of [ContractTransaction]
     // TODO: move this somewhere outside of reach of contract code...
-    pub async fn update_transaction(&mut self, data: UpdateContractTransaction) -> Result<(), ApiError> {
+    pub async fn update_transaction(&mut self, data: UpdateContractTransaction) -> Result<(), TemplateError> {
         if let Some(transaction) = self.contract_transaction.take() {
             self.contract_transaction = Some(transaction.update(data, &self.client).await?);
             Ok(())
         } else {
-            Err(ApplicationError::new(format!(
-                "Failed to update ContractTransaction {:?}: transaction not found",
-                data
-            ))
-            .into())
+            return processing_err!("Failed to update ContractTransaction {:?}: transaction not found", data);
         }
     }
 
-    pub async fn commit(&self) -> Result<(), ApiError> {
+    pub async fn commit(&self) -> Result<(), DBError> {
         // TODO: implement database transactino through the whole Context
         Ok(())
+    }
+
+    pub async fn create_temp_wallet(&mut self) -> Result<Pubkey, TemplateError> {
+        if self.contract_transaction.is_none() {
+            return processing_err!("Failed to create temporary wallet for Contract: ContractTransaction not found");
+        }
+        let transaction = self.client.transaction().await.map_err(DBError::from)?;
+        let wallet_name = self.contract_transaction.as_ref().unwrap().id.to_string();
+        let wallet = NodeWallet::new(self.address.clone(), wallet_name)?;
+        let wallet = self.wallets.lock().await.add(wallet, &transaction).await?;
+        transaction.commit().await.map_err(DBError::from)?;
+        Ok(wallet.public_key_hex())
     }
 }
 

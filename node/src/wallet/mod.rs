@@ -6,7 +6,7 @@ use log::info;
 use std::{collections::HashMap, path::PathBuf};
 
 mod hot_wallet;
-pub use hot_wallet::{HotWallet, WalletID};
+pub use hot_wallet::{HotWallet, NodeWallet};
 
 const LOG_TARGET: &'static str = "wallet";
 
@@ -28,7 +28,7 @@ impl WalletStore {
     }
 
     /// Add wallet to the file store and database
-    pub async fn add<'t>(&mut self, wallet: WalletID, trans: &Transaction<'t>) -> Result<HotWallet, WalletError> {
+    pub async fn add<'t>(&mut self, wallet: NodeWallet, trans: &Transaction<'t>) -> Result<HotWallet, WalletError> {
         let data = NewWallet::from(&wallet);
         let model = Wallet::insert(data, trans).await?;
         let wallet = HotWallet::new(wallet, model);
@@ -54,7 +54,7 @@ impl WalletStore {
             return Err(WalletError::not_found(pubkey));
         }
         let id_str = std::fs::read_to_string(path)?;
-        let id: WalletID = serde_json::from_str(&id_str)?;
+        let id: NodeWallet = serde_json::from_str(&id_str)?;
         let model = Wallet::select_by_key(&pubkey, client).await?;
         let wallet = HotWallet::new(id, model);
         info!(
@@ -79,8 +79,8 @@ impl WalletStore {
         Ok(res)
     }
 
-    /// Load [`WalletID`] from disk
-    async fn load_id(&mut self, pubkey: &String) -> Result<WalletID, WalletError> {
+    /// Load [`NodeWallet`] from disk
+    async fn load_id(&mut self, pubkey: &String) -> Result<NodeWallet, WalletError> {
         if let Some(wallet) = self.cache.get(pubkey) {
             return Ok(wallet.identity().clone());
         }
@@ -90,7 +90,7 @@ impl WalletStore {
         }
         let id_str = std::fs::read_to_string(path)?;
         let id = serde_json::from_str(&id_str)?;
-        info!(target: LOG_TARGET, "WalletID loaded with public key {}", pubkey);
+        info!(target: LOG_TARGET, "NodeWallet loaded with public key {}", pubkey);
         Ok(id)
     }
 
@@ -116,7 +116,7 @@ mod test {
         let address = Multiaddr::empty();
 
         let mut store = WalletStore::init(temp_dir.path().to_path_buf())?;
-        let wallet = WalletID::new(address, "taris".into())?;
+        let wallet = NodeWallet::new(address, "taris".into())?;
         let pubkey = wallet.public_key_hex();
         let transaction = client.transaction().await?;
         store.add(wallet.clone(), &transaction).await?;
@@ -139,7 +139,7 @@ mod test {
         let address = Multiaddr::empty();
 
         let mut store = WalletStore::init(temp_dir.path().to_path_buf())?;
-        let wallet = WalletID::new(address, "taris".to_string())?;
+        let wallet = NodeWallet::new(address, "taris".to_string())?;
 
         let transaction = client.transaction().await?;
         store.add(wallet.clone(), &transaction).await?;

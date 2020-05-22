@@ -1,9 +1,17 @@
-use super::{actix::*, AssetTemplateContext, Contracts, Template, TemplateContext, TokenTemplateContext};
+use super::{
+    actix::*,
+    errors::TemplateError,
+    AssetTemplateContext,
+    Contracts,
+    Template,
+    TemplateContext,
+    TokenTemplateContext,
+};
 use crate::{
     db::models::{NewToken, Token, TokenStatus, UpdateToken},
     types::{Pubkey, TemplateID, TokenID},
+    validation_err,
 };
-use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -21,13 +29,17 @@ pub enum AssetContracts {
 }
 
 //#[contract(asset)]
-async fn issue_tokens<'a>(context: &AssetTemplateContext<'a>, token_ids: Vec<TokenID>) -> Result<Vec<Token>> {
+async fn issue_tokens<'a>(
+    context: &AssetTemplateContext<'a>,
+    token_ids: Vec<TokenID>,
+) -> Result<Vec<Token>, TemplateError>
+{
     let mut tokens = Vec::with_capacity(token_ids.len());
     let asset = &context.asset;
     let data = TokenData {
         owner_pubkey: asset.asset_issuer_pub_key.clone(),
     };
-    let data = serde_json::to_value(data)?;
+    let data = serde_json::to_value(data).map_err(anyhow::Error::from)?;
     let new_token = move |token_id| NewToken {
         token_id,
         asset_state_id: asset.id.clone(),
@@ -36,7 +48,7 @@ async fn issue_tokens<'a>(context: &AssetTemplateContext<'a>, token_ids: Vec<Tok
     };
     for data in token_ids.into_iter().map(new_token) {
         if data.token_id.asset_id() != asset.asset_id {
-            bail!("Token ID {} does not match asset {}", data.token_id, asset.asset_id);
+            return validation_err!("Token ID {} does not match asset {}", data.token_id, asset.asset_id);
         }
         let token = context.create_token(data).await?;
         tokens.push(token);
@@ -55,27 +67,38 @@ pub enum TokenContracts {
 }
 
 #[tari_template_macro::contract(token, local_use)]
-// With token contract TokenTemplateContext is always passed as first argument
-async fn sell_token<'a>(context: &TokenTemplateContext<'a>, user_pubkey: Pubkey) -> Result<Token> {
+/// Initiate sell token instruction
+///
+/// ### Input Parameters:
+/// - price - amount of tari
+/// - user_pubkey - new owner of a token
+///
+/// # Returns:
+/// - Temporary wallet pubkey, where user need to transfer price amount of tari's
+async fn sell_token<'a>(
+    context: &mut TokenTemplateContext<'a>,
+    price: u64,
+    user_pubkey: Pubkey,
+) -> Result<Pubkey, TemplateError>
+{
     let token = context.token.clone();
     if token.status == TokenStatus::Retired {
-        bail!("Tried to transfer already used token");
+        return validation_err!("Tried to transfer already used token");
     }
-    let append_state_data_json = Some(json!({ "user_pubkey": user_pubkey }));
-    let data = UpdateToken {
-        append_state_data_json,
-        ..Default::default()
-    };
-    let token = context.update_token(token, data).await?;
-    Ok(token)
+    let wallet = context.create_temp_wallet().await?;
+    Ok(wallet)
 }
 
 #[tari_template_macro::contract(token, local_use)]
 // With token contract TokenTemplateContext is always passed as first argument
-async fn transfer_token<'a>(context: &TokenTemplateContext<'a>, user_pubkey: Pubkey) -> Result<Token> {
+async fn transfer_token<'a>(
+    context: &mut TokenTemplateContext<'a>,
+    user_pubkey: Pubkey,
+) -> Result<Token, TemplateError>
+{
     let token = context.token.clone();
     if token.status == TokenStatus::Retired {
-        bail!("Tried to transfer already used token");
+        return validation_err!("Tried to transfer already used token");
     }
     let append_state_data_json = Some(json!({ "user_pubkey": user_pubkey }));
     let data = UpdateToken {
@@ -104,6 +127,7 @@ mod expanded_macros {
         api::errors::{ApiError, ApplicationError},
         db::models::transactions::*,
     };
+    use actix_web::web;
     use log::info;
     use serde::{Deserialize, Serialize};
 
@@ -171,8 +195,6 @@ mod expanded_macros {
     ////// end of #[derive(Contracts)]
 
     ////// impl #[derive(Contracts)] for TokenContracts
-
-    use actix_web::web;
 
     impl Contracts for TokenContracts {
         fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {

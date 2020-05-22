@@ -25,8 +25,7 @@ pub fn contract(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
     if args.asset {
         unimplemented!(
-            "#contract(asset) is not implemented yet                                                                  \
-                                                                                                        "
+            "#contract(asset) is not implemented yet"
         )
     }
     generate_token_contract(parsed, args).into()
@@ -35,27 +34,22 @@ pub fn contract(attr: TokenStream, item: TokenStream) -> TokenStream {
 fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macro2::TokenStream {
     let orig_fn = parsed.clone();
     let sig = parsed.sig; // function signature
-    let vis = parsed.vis; // visibility, pub or not
     let fn_name = sig.ident; // function name/identifier
     let fn_args = sig.inputs; // comma separated args
     let fn_return_type = sig.output; // return type
 
     let return_str = format!("{}", quote! { #fn_return_type });
-    assert!(
-        return_str.find("Result").is_some(),
-        "contract function should return anyhow::Result<impl Serialize> type, returning {} instead",
-        return_str
-    );
+    if return_str.find("Result").is_none() {
+        panic!("contract function should return anyhow::Result<impl Serialize> type, returning {} instead", return_str)
+    }
 
     let arg_idents = extract_arg_idents(fn_args.clone());
     let arg_types = extract_arg_types(fn_args.clone());
     let first_type = arg_types.first().unwrap();
 
-    assert_eq!(
-        **first_type,
-        syn::parse_str::<Type>("&TokenTemplateContext<'a>").unwrap(),
-        "first argument to token contract should be of type &TokenTemplateContext<'a>"
-    );
+    if **first_type != syn::parse_str::<Type>("&mut TokenTemplateContext<'a>").unwrap() {
+        panic!("first argument to token contract should be of type &mut TokenTemplateContext<'a>");
+    }
 
     let (params_type, params_def) = generate_type_params_struct(&arg_idents[1..], &arg_types[1..], &fn_name);
 
@@ -192,7 +186,7 @@ fn generate_token_contract_body(fn_name: &syn::Ident, fn_args: &[Box<Pat>]) -> p
 
         // TODO: move following outside of actix request lifecycle
         // run contract
-        let result = #fn_name (&context, #( params.#fn_args ),*).await?;
+        let result = #fn_name (&mut context, #( params.#fn_args ),*).await?;
         // update transaction
         let result = serde_json::to_value(result).map_err(|err| {
             ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())

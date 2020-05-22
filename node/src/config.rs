@@ -2,7 +2,7 @@ use crate::api::server::{ActixConfig, CorsConfig};
 use config::{Config, Environment, Source};
 use deadpool_postgres::config::Config as DeadpoolConfig;
 use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
-use tari_common::{ConfigurationError, DefaultConfigLoader, NetworkConfigPath};
+use tari_common::{ConfigurationError, DefaultConfigLoader, GlobalConfig, NetworkConfigPath};
 
 pub const DEFAULT_DBNAME: &'static str = "validator";
 
@@ -14,10 +14,12 @@ pub struct NodeConfig {
     /// see [deadpool_postgres::config::Config] on env + config vars details
     #[serde(serialize_with = "default_postgres_config")]
     pub postgres: DeadpoolConfig,
-    /// Path to directory for storing wallets keys. Defaults to `~/.tari/wallets`.
-    pub wallets_keys_path: std::path::PathBuf,
     /// will load from [validator.cors], overloaded with CORS_* env vars
     pub cors: CorsConfig,
+    /// Path to directory for storing wallets keys. Defaults to `~/.tari/wallets`
+    pub wallets_keys_path: std::path::PathBuf,
+    /// Node's public address. Defaults to [tari.public_address]
+    pub public_address: Option<multiaddr::Multiaddr>,
 }
 
 impl NetworkConfigPath for NodeConfig {
@@ -27,7 +29,7 @@ impl NetworkConfigPath for NodeConfig {
 }
 
 impl NodeConfig {
-    pub fn load_from(config: &Config, env: bool) -> Result<Self, ConfigurationError> {
+    pub fn load_from(config: &Config, global: &GlobalConfig, env: bool) -> Result<Self, ConfigurationError> {
         let mut config = config.clone();
         if env {
             let actix = Environment::with_prefix("ACTIX").collect()?;
@@ -37,6 +39,7 @@ impl NodeConfig {
             config.set("validator.postgres", pg)?;
             config.set("validator.cors", cors)?;
         }
+        config.set_default("validator.public_address", global.public_address.to_string())?;
         <Self as DefaultConfigLoader>::load_from(&config)
     }
 }
@@ -51,7 +54,7 @@ fn default_postgres_config<S: Serializer>(_: &DeadpoolConfig, s: S) -> Result<S:
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::api::server::*;
+    use crate::{api::server::*, test_utils::build_test_global_config};
     use config::{Config, File, FileFormat::Toml};
 
     lazy_static::lazy_static! {
@@ -61,7 +64,8 @@ mod test {
     #[test]
     fn default_config() -> Result<(), ConfigurationError> {
         let _guard = LOCK_ENV.read().unwrap();
-        let cfg = NodeConfig::load_from(&Config::new(), false)?;
+        let global = build_test_global_config().unwrap();
+        let cfg = NodeConfig::load_from(&Config::new(), &global, false)?;
         assert_eq!(cfg.actix.port, DEFAULT_PORT);
         assert_eq!(cfg.actix.host, DEFAULT_ADDR);
         assert_eq!(cfg.postgres.host, None);
@@ -80,10 +84,11 @@ mod test {
     #[test]
     fn load_config() -> Result<(), ConfigurationError> {
         let _guard = LOCK_ENV.read().unwrap();
+        let global = build_test_global_config().unwrap();
         let mut settings = Config::new();
         settings.merge(File::from_str(TEST_CONFIG, Toml))?;
 
-        let cfg = NodeConfig::load_from(&settings, false)?;
+        let cfg = NodeConfig::load_from(&settings, &global, false)?;
         assert_eq!(cfg.actix.port, 9999);
         assert_eq!(cfg.actix.host, DEFAULT_ADDR);
         assert_eq!(cfg.actix.workers, Some(3));
@@ -107,11 +112,12 @@ mod test {
         use std::net::IpAddr;
 
         let _guard = LOCK_ENV.read().unwrap();
+        let global = build_test_global_config().unwrap();
         let mut settings = Config::new();
         let cfg_with_network = format!("{}{}", TEST_CONFIG, TEST_CONFIG_NETWORK);
         settings.merge(File::from_str(cfg_with_network.as_str(), Toml))?;
 
-        let cfg = NodeConfig::load_from(&settings, false)?;
+        let cfg = NodeConfig::load_from(&settings, &global, false)?;
         assert_eq!(cfg.actix.port, 9999);
         assert_eq!(cfg.actix.host, "10.0.0.1".parse::<IpAddr>().unwrap());
         assert_eq!(cfg.actix.workers, Some(3));
@@ -126,6 +132,7 @@ mod test {
     fn env_overload_config() -> Result<(), ConfigurationError> {
         // make sure that env settings do not interfere with other tests
         let _guard = LOCK_ENV.write().unwrap();
+        let global = build_test_global_config().unwrap();
         let mut settings = Config::new();
         settings.merge(File::from_str(TEST_CONFIG, Toml))?;
         std::env::remove_var("PG_USER");
@@ -135,7 +142,7 @@ mod test {
         std::env::set_var("ACTIX_WORKERS", "5");
         std::env::set_var("ACTIX_PORT", "5000");
 
-        let cfg = NodeConfig::load_from(&settings, true)?;
+        let cfg = NodeConfig::load_from(&settings, &global, true)?;
         assert_eq!(cfg.actix.port, 5000);
         assert_eq!(cfg.actix.host, DEFAULT_ADDR);
         assert_eq!(cfg.actix.workers, Some(5));

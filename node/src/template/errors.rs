@@ -1,7 +1,43 @@
+use crate::{db::utils::errors::DBError, errors::WalletError};
+use std::backtrace::Backtrace;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum TemplateError {
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    #[error("DB error in Template: {source}")]
+    DB {
+        #[from]
+        source: DBError,
+        backtrace: Backtrace,
+    },
+    #[error("Wallet error in Template: {source}")]
+    Wallet {
+        #[from]
+        source: WalletError,
+        backtrace: Backtrace,
+    },
+    #[error("Template processing failed: {0}")]
+    Processing(String),
+    #[error("Contract parameters validation failed: {0}")]
+    Validation(#[from] anyhow::Error),
+}
+
+#[macro_export]
+macro_rules! processing_err {
+    ($msg:literal $(,)?) => {
+        Err(TemplateError::Processing($msg.into()))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err(TemplateError::Processing(format!($fmt, $($arg)*)))
+    };
+}
+
+#[macro_export]
+macro_rules! validation_err {
+    ($msg:literal $(,)?) => {
+        Err(TemplateError::Validation(anyhow::anyhow!($msg)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err(TemplateError::Validation(anyhow::anyhow!($fmt, $($arg)*)))
+    };
 }

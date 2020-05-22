@@ -19,8 +19,7 @@
 use crate::types::TemplateID;
 use actix_web::web;
 
-mod errors;
-pub use errors::TemplateError;
+pub mod errors;
 
 pub mod actix;
 pub mod single_use_tokens;

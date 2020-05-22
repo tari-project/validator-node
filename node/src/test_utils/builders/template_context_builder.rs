@@ -1,14 +1,31 @@
 use super::*;
-use crate::{db::models::*, template::*, types::*};
+use crate::{db::models::*, template::*, types::*, wallet::WalletStore};
 use deadpool_postgres::Client;
-use serde_json::Value;
+use multiaddr::Multiaddr;
+use serde_json::{json, Value};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-#[derive(Default)]
 pub struct AssetContextBuilder {
     pub template_id: TemplateID,
     pub asset: Option<AssetState>,
+    pub wallets: WalletStore,
+    pub address: Multiaddr,
     pub params: Value,
     pub contract_name: String,
+}
+
+impl Default for AssetContextBuilder {
+    fn default() -> Self {
+        Self {
+            template_id: 65536.into(),
+            asset: None,
+            wallets: WalletStoreBuilder::default().build().unwrap(),
+            address: Multiaddr::empty(),
+            params: json!({}),
+            contract_name: "test_contract".into(),
+        }
+    }
 }
 
 impl AssetContextBuilder {
@@ -29,6 +46,8 @@ impl AssetContextBuilder {
         let mut context = TemplateContext {
             client,
             template_id: asset.asset_id.template_id(),
+            wallets: Arc::new(Mutex::new(self.wallets)),
+            address: self.address,
             contract_transaction: None,
             db_transaction: None,
         };
@@ -45,12 +64,26 @@ impl AssetContextBuilder {
     }
 }
 
-#[derive(Default)]
 pub struct TokenContextBuilder {
     pub template_id: TemplateID,
     pub token: Option<Token>,
+    pub wallets: WalletStore,
+    pub address: Multiaddr,
     pub params: Value,
     pub contract_name: String,
+}
+
+impl Default for TokenContextBuilder {
+    fn default() -> Self {
+        Self {
+            template_id: 65536.into(),
+            token: None,
+            wallets: WalletStoreBuilder::default().build().unwrap(),
+            address: Multiaddr::empty(),
+            params: json!({}),
+            contract_name: "test_contract".into(),
+        }
+    }
 }
 
 impl TokenContextBuilder {
@@ -73,6 +106,8 @@ impl TokenContextBuilder {
         let mut context = TemplateContext {
             client,
             template_id: asset.asset_id.template_id(),
+            wallets: Arc::new(Mutex::new(self.wallets)),
+            address: self.address,
             contract_transaction: None,
             db_transaction: None,
         };

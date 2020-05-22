@@ -1,7 +1,9 @@
 use crate::{config::NodeConfig, db::migrations::migrate};
-use actix_web::web;
 use config::Source;
 use deadpool_postgres::{Client, Pool};
+use std::sync::Arc;
+use tari_common::{default_config, ConfigBootstrap, GlobalConfig};
+use tari_test_utils::random::string;
 use tokio::sync::{Mutex, MutexGuard};
 use tokio_postgres::NoTls;
 
@@ -15,10 +17,10 @@ lazy_static::lazy_static! {
         let pool = config.postgres.create_pool(NoTls).expect("LOCK_DB_POOL: failed to create DB pool");
         Mutex::new(pool)
     };
-    static ref ACTIX_DB_POOL: web::Data<Pool> = {
+    static ref ACTIX_DB_POOL: Arc<Pool> = {
         let config = build_test_config().expect("ACTIX_DB_POOL: failed to create test config");
         let pool = config.postgres.create_pool(NoTls).expect("ACTIX_DB_POOL: failed to create DB pool");
-        web::Data::new(pool)
+        Arc::new(pool)
     };
 }
 
@@ -35,6 +37,16 @@ pub async fn test_db_client<'a>() -> (Client, MutexGuard<'a, Pool>) {
 }
 
 /// Generate a standard test config
+pub fn build_test_global_config() -> anyhow::Result<GlobalConfig> {
+    let temp_dir = tempdir::TempDir::new(string(8).as_str())?;
+    let bootstrap = ConfigBootstrap {
+        base_path: temp_dir.into_path(),
+        ..Default::default()
+    };
+    Ok(GlobalConfig::convert_from(default_config(&bootstrap))?)
+}
+
+/// Generate a standard test config
 pub fn build_test_config() -> anyhow::Result<NodeConfig> {
     let mut config = config::Config::new();
     let pg = config::Environment::with_prefix("PG_TEST").collect()?;
@@ -43,7 +55,8 @@ pub fn build_test_config() -> anyhow::Result<NodeConfig> {
         "validator.wallets_keys_path",
         format!("{}/wallets", option_env!("OUT_DIR").unwrap_or("./.tari")),
     )?;
-    let config = NodeConfig::load_from(&config, false).unwrap();
+    let global = build_test_global_config()?;
+    let config = NodeConfig::load_from(&config, &global, false)?;
     log::trace!(target: "test_utils", "Load test config: {:?}", config);
     Ok(config)
 }
@@ -56,7 +69,7 @@ pub async fn test_pool<'a>() -> MutexGuard<'a, Pool> {
     LOCK_DB_POOL.lock().await
 }
 
-pub fn actix_test_pool() -> web::Data<Pool> {
+pub fn actix_test_pool() -> Arc<Pool> {
     ACTIX_DB_POOL.clone()
 }
 

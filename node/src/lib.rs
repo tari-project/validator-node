@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
 #![deny(unused_must_use)]
 #![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![feature(backtrace)]
 
 pub mod api;
 pub mod cli;

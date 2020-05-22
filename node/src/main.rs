@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     let global_config = GlobalConfig::convert_from(config.clone())?;
 
     // deriving our app configs
-    let node_config = NodeConfig::load_from(&config, true)?;
+    let node_config = NodeConfig::load_from(&config, &global_config, true)?;
 
     match args.command {
         Commands::Start => actix_main(node_config, template_scopes).await?,
