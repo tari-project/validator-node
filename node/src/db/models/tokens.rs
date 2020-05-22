@@ -172,7 +172,7 @@ impl<'a> FromSql<'a> for NewTokenStateAppendOnly {
 mod test {
     use super::*;
     use crate::{
-        db::models::{consensus::UpdateInstruction, AssetState, InstructionStatus},
+        db::models::{AssetState, InstructionStatus},
         test::utils::{
             builders::{consensus::InstructionBuilder, AssetStateBuilder, TokenBuilder},
             test_db_client,
@@ -252,7 +252,7 @@ mod test {
         assert_eq!(json!(initial_data), token.additional_data_json);
 
         let instruction = InstructionBuilder {
-            asset_id: Some(asset.asset_id),
+            asset_id: Some(asset.asset_id.clone()),
             status: InstructionStatus::Commit,
             ..Default::default()
         }
@@ -289,29 +289,6 @@ mod test {
         .unwrap();
         let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(state_data_json.clone(), token.additional_data_json);
-
-        let instruction = InstructionBuilder {
-            asset_id: Some(asset.asset_id),
-            status: InstructionStatus::Pending,
-            ..Default::default()
-        }
-        .build(&client)
-        .await
-        .unwrap();
-        Token::store_append_only_state(
-            &NewTokenStateAppendOnly {
-                token_id: token.token_id,
-                state_data_json: json!({"value": true, "value3": 1}),
-                status: TokenStatus::Retired,
-                instruction_id: instruction.id,
-            },
-            &client,
-        )
-        .await
-        .unwrap();
-        let token = Token::load(token.id, &client).await.unwrap();
-        assert_eq!(token.additional_data_json, state_data_json);
-        assert_eq!(token.status, TokenStatus::Active);
     }
 
     #[actix_rt::test]
@@ -345,15 +322,6 @@ mod test {
             ..UpdateToken::default()
         };
         let token = token.update(update, &instruction, &client).await.unwrap();
-        assert_eq!(token.additional_data_json, token2.additional_data_json);
-        assert_eq!(token.status, token2.status);
-
-        let commit = UpdateInstruction {
-            status: Some(InstructionStatus::Commit),
-            ..Default::default()
-        };
-        let instruction = instruction.update(commit, &client).await.unwrap();
-        let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(
             token.additional_data_json,
             json!({"value": true, "value2": 4, "append_initial": true})

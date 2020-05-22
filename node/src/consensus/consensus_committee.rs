@@ -4,7 +4,6 @@ use crate::{
     types::{consensus::*, AssetID, NodeID, ProposalID},
 };
 use deadpool_postgres::Client;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 pub struct ConsensusCommittee {
@@ -143,15 +142,15 @@ impl ConsensusCommittee {
     {
         let mut instruction_set = Vec::new();
         let mut invalid_instruction_set = Vec::new();
-        let mut asset_state_append_only = Vec::new();
-        let mut token_state_append_only = Vec::new();
+        let mut asset_state = Vec::new();
+        let mut token_state = Vec::new();
 
         for pending_instruction in pending_instructions {
             match pending_instruction.execute(&client).await {
-                Ok((mut new_asset_state_append_only, mut new_token_state_append_only)) => {
+                Ok((mut new_asset_state, mut new_token_state)) => {
                     instruction_set.push(pending_instruction.id.0);
-                    asset_state_append_only.append(&mut new_asset_state_append_only);
-                    token_state_append_only.append(&mut new_token_state_append_only);
+                    asset_state.append(&mut new_asset_state);
+                    token_state.append(&mut new_token_state);
                 },
                 Err(_) => {
                     // Instruction failed to execute
@@ -163,8 +162,10 @@ impl ConsensusCommittee {
         Ok(NewView {
             instruction_set,
             invalid_instruction_set,
-            asset_state_append_only,
-            token_state_append_only,
+            append_only_state: AppendOnlyState {
+                asset_state,
+                token_state,
+            },
             asset_id: self.asset_id.clone(),
             initiating_node_id: NodeID::stub(),
             signature: "stub-signature".into(),
@@ -231,11 +232,11 @@ impl ConsensusCommittee {
         signed_proposals: &[SignedProposal],
     ) -> Result<NewAggregateSignatureMessage, ConsensusError>
     {
-        let mut signatures: HashMap<NodeID, String> = HashMap::new();
+        let mut signatures: Vec<(NodeID, String)> = Vec::new();
         // TODO: validate signatures as part of comms behavior on signed proposal message from replicants as condition
         // of entering database
         for signed_proposal in signed_proposals {
-            signatures.insert(signed_proposal.node_id, signed_proposal.signature.clone());
+            signatures.push((signed_proposal.node_id, signed_proposal.signature.clone()));
         }
         Ok(NewAggregateSignatureMessage {
             proposal_id: proposal.id,

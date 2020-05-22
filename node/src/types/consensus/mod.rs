@@ -1,3 +1,6 @@
+mod append_only_state;
+pub use append_only_state::AppendOnlyState;
+
 mod committee_state;
 pub use committee_state::CommitteeState;
 

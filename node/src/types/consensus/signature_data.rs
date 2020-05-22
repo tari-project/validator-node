@@ -3,19 +3,17 @@ use bytes::BytesMut;
 use postgres_types::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::HashMap, error::Error};
+use std::error::Error;
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
 
 #[derive(Clone, Serialize, PartialEq, Debug, Deserialize)]
 pub struct SignatureData {
-    pub signatures: HashMap<NodeID, String>,
+    pub signatures: Vec<(NodeID, String)>,
 }
 
 impl Default for SignatureData {
     fn default() -> SignatureData {
-        SignatureData {
-            signatures: HashMap::new(),
-        }
+        SignatureData { signatures: Vec::new() }
     }
 }
 

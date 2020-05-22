@@ -8,6 +8,8 @@ use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Typ
 pub struct NodeID(pub(crate) [u8; 6]);
 
 impl NodeID {
+    pub const SQL_TYPE: Type = Type::BYTEA;
+
     pub fn inner(&self) -> [u8; 6] {
         self.0
     }

@@ -1,9 +1,6 @@
 use crate::{
-    db::{
-        models::{NewAssetStateAppendOnly, NewTokenStateAppendOnly, ViewStatus},
-        utils::errors::DBError,
-    },
-    types::{AssetID, NodeID, ProposalID},
+    db::{models::ViewStatus, utils::errors::DBError},
+    types::{consensus::AppendOnlyState, AssetID, NodeID, ProposalID},
 };
 use bytes::BytesMut;
 use chrono::{DateTime, Utc};
@@ -25,11 +22,11 @@ pub struct View {
     pub signature: String,
     pub instruction_set: Vec<uuid::Uuid>,
     pub invalid_instruction_set: Vec<uuid::Uuid>,
-    pub asset_state_append_only: Vec<NewAssetStateAppendOnly>,
-    pub token_state_append_only: Vec<NewTokenStateAppendOnly>,
+    pub append_only_state: AppendOnlyState,
     pub status: ViewStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub proposal_id: Option<ProposalID>,
 }
 
 #[derive(PartialEq, Clone, Debug, Deserialize, Serialize)]
@@ -39,8 +36,7 @@ pub struct NewView {
     pub signature: String,
     pub instruction_set: Vec<uuid::Uuid>,
     pub invalid_instruction_set: Vec<uuid::Uuid>,
-    pub asset_state_append_only: Vec<NewAssetStateAppendOnly>,
-    pub token_state_append_only: Vec<NewTokenStateAppendOnly>,
+    pub append_only_state: AppendOnlyState,
 }
 
 /// Additional parameters that may supplied by the node but not serialized as part of a proposal
@@ -82,36 +78,35 @@ impl View {
     {
         const QUERY: &'static str = "
             INSERT INTO views (
+                asset_id,
                 initiating_node_id,
                 signature,
                 instruction_set,
                 invalid_instruction_set,
-                asset_state_append_only,
-                token_state_append_only,
+                append_only_state,
                 status,
                 proposal_id
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *";
         let stmt = client
             .prepare_typed(QUERY, &[
+                AssetID::SQL_TYPE,
                 Type::BYTEA,
                 Type::TEXT,
-                Type::UUID,
-                Type::UUID,
-                Type::JSONB,
+                Type::UUID_ARRAY,
+                Type::UUID_ARRAY,
                 Type::JSONB,
                 Type::TEXT,
-                Type::UUID,
             ])
             .await?;
         let row = client
             .query_one(&stmt, &[
+                &params.asset_id,
                 &params.initiating_node_id,
                 &params.signature,
                 &params.instruction_set,
                 &params.invalid_instruction_set,
-                &params.asset_state_append_only,
-                &params.token_state_append_only,
-                &additional_params.status,
+                &params.append_only_state,
+                &additional_params.status.unwrap_or(ViewStatus::Prepare),
                 &additional_params.proposal_id,
             ])
             .await?;
@@ -126,7 +121,7 @@ impl View {
         const QUERY: &'static str = "
             UPDATE views SET
                 status = COALESCE($2, status),
-                proposal_id = COALESCE($3, proposal_id),
+                proposal_id = COALESCE($3::\"ProposalID\", proposal_id),
                 updated_at = NOW()
             WHERE id = $1
             RETURNING *";
@@ -165,7 +160,7 @@ impl View {
 
     /// Load view record
     pub async fn load_for_proposal(id: ProposalID, client: &Client) -> Result<Self, DBError> {
-        let stmt = "SELECT * FROM views WHERE proposal_id = $1";
+        let stmt = "SELECT * FROM views WHERE proposal_id = $1::\"ProposalID\"";
         let result = client.query_one(stmt, &[&id]).await?;
         Ok(Self::from_row(result)?)
     }
@@ -216,8 +211,10 @@ impl From<View> for NewView {
             signature: view.signature.to_owned(),
             instruction_set: view.instruction_set.to_owned(),
             invalid_instruction_set: view.invalid_instruction_set.to_owned(),
-            asset_state_append_only: view.asset_state_append_only.to_owned(),
-            token_state_append_only: view.token_state_append_only.to_owned(),
+            append_only_state: AppendOnlyState {
+                asset_state: view.append_only_state.asset_state.to_owned(),
+                token_state: view.append_only_state.token_state.to_owned(),
+            },
         }
     }
 }
@@ -232,13 +229,15 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
         let params = NewView {
-            asset_id: asset.asset_id,
+            asset_id: asset.asset_id.clone(),
             initiating_node_id: NodeID::stub(),
             signature: "stub-signature".to_string(),
             instruction_set: Vec::new(),
             invalid_instruction_set: Vec::new(),
-            asset_state_append_only: Vec::new(),
-            token_state_append_only: Vec::new(),
+            append_only_state: AppendOnlyState {
+                asset_state: Vec::new(),
+                token_state: Vec::new(),
+            },
         };
         let view = View::insert(params, NewViewAdditionalParameters::default(), &client)
             .await
