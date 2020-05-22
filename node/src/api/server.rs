@@ -1,12 +1,14 @@
 use crate::{
     api::{middleware::*, routing},
     config::NodeConfig,
+    consensus::ConsensusProcessor,
     db::utils::db::build_pool,
 };
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
 use serde_json::json;
-use std::net::ToSocketAddrs;
+use std::{net::ToSocketAddrs, sync::mpsc};
+use tokio::runtime;
 
 // Must be valid JSON
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;
@@ -18,6 +20,13 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
         "Server starting at {}",
         config.actix.addr().to_socket_addrs()?.next().unwrap()
     );
+
+    let consensus_runtime = runtime::Builder::new().basic_scheduler().build()?;
+    let mut consensus_processor = ConsensusProcessor::new(config.clone());
+    let (consensus_sender, consensus_receiver) = mpsc::channel::<()>();
+    consensus_runtime.spawn(async move {
+        consensus_processor.start(consensus_receiver).await;
+    });
 
     let cors_config = config.cors.clone();
     let mut server = HttpServer::new(move || {
@@ -61,6 +70,7 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
     };
 
     server.run().await?;
+    consensus_sender.send(())?;
 
     Ok(())
 }

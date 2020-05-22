@@ -5,6 +5,7 @@ use tari_crypto::tari_utilities::hex::HexError;
 use thiserror::Error;
 use tokio_pg_mapper::Error as PGMError;
 use tokio_postgres::error::Error as PgError;
+use uuid::Error as UUIDError;
 
 #[derive(Error, Debug)]
 pub enum DBError {
@@ -24,6 +25,8 @@ pub enum DBError {
     BadQuery { msg: String },
     #[error("Not found")]
     NotFound,
+    #[error("UUID error: {0}")]
+    UUIDError(#[from] UUIDError),
     #[error("Validation error: {0}")]
     Validation(#[from] ValidationErrors),
 }

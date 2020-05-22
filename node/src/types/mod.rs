@@ -7,14 +7,22 @@ pub use asset_id::AssetID;
 mod committee_mode;
 pub use committee_mode::{CommitteeMode, NodeSelectionStrategy};
 
+pub(crate) mod identity;
+
+mod instruction_id;
+pub use instruction_id::InstructionID;
+
 mod node_id;
 pub use node_id::NodeID;
 
-mod template;
-pub use template::TemplateID;
+mod proposal_id;
+pub use proposal_id::ProposalID;
 
-mod token;
-pub use token::TokenID;
+mod template_id;
+pub use template_id::TemplateID;
+
+mod token_id;
+pub use token_id::TokenID;
 
 mod raid_id;
 pub use raid_id::RaidID;

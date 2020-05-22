@@ -40,12 +40,12 @@ impl<'a> TemplateContext<'a> {
         }
     }
 
-    pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, ApiError> {
-        Ok(Token::find_by_token_id(id, &self.client).await?)
+    pub async fn load_token(&self, id: &TokenID) -> Result<Option<Token>, ApiError> {
+        Ok(Token::find_by_token_id(&id, &self.client).await?)
     }
 
-    pub async fn load_asset(&self, id: AssetID) -> Result<Option<AssetState>, ApiError> {
-        Ok(AssetState::find_by_asset_id(id, &self.client).await?)
+    pub async fn load_asset(&self, id: &AssetID) -> Result<Option<AssetState>, ApiError> {
+        Ok(AssetState::find_by_asset_id(&id, &self.client).await?)
     }
 
     /// Creates [Instruction]

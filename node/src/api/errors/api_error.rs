@@ -1,5 +1,5 @@
 use super::*;
-use crate::db::utils::errors::DBError;
+use crate::{db::utils::errors::DBError, types::errors::TypeError};
 use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
 use log::error;
 use serde_json::json;
@@ -9,6 +9,8 @@ use thiserror::Error;
 pub enum ApiError {
     #[error("DB error: {0}")]
     DBError(#[from] DBError),
+    #[error("Type error: {0}")]
+    TypeError(#[from] TypeError),
     #[error("Contract error: {0}")]
     Contract(#[from] anyhow::Error),
     #[error("Application error: {0}")]
@@ -102,6 +104,7 @@ impl ApiError {
                 error_response: HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                     .json(json!({ "error": err.to_string() })),
             },
+            _ => generic_error_response_data,
         }
     }
 }

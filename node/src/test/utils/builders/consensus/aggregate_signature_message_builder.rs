@@ -1,21 +1,26 @@
 use super::ProposalBuilder;
-use crate::{db::models::*, types::AssetID};
-use chrono::{DateTime, Utc};
+use crate::{
+    db::models::consensus::*,
+    types::{consensus::SignatureData, ProposalID},
+};
 use deadpool_postgres::Client;
-use rand::prelude::*;
-use serde_json::Value;
-use uuid::Uuid;
+use serde_json::json;
 
 #[allow(dead_code)]
 pub struct AggregateSignatureMessageBuilder {
-    proposal_id: Option<Uuid>,
+    proposal_id: Option<ProposalID>,
+    signature_data: SignatureData,
+    #[doc(hidden)]
+    pub __non_exhaustive: (),
 }
 
 impl Default for AggregateSignatureMessageBuilder {
     fn default() -> Self {
         Self {
             proposal_id: None,
-            signature_data: SignatureData { signatures: serde_json::from_value(json!({NodeID::stub(): "stub-signature"}))};
+            signature_data: SignatureData {
+                signatures: serde_json::from_value(json!({NodeID::stub(): "stub-signature"})).unwrap(),
+            },
             __non_exhaustive: (),
         }
     }
@@ -30,9 +35,8 @@ impl AggregateSignatureMessageBuilder {
         };
         let params = NewAggregateSignatureMessage {
             proposal_id,
-            signature_data,
+            signature_data: self.signature_data,
         };
-        let asset_id = AggregateSignatureMessage::insert(params, client).await?;
-        Ok(AggregateSignatureMessage::load(asset_id, client).await?)
+        Ok(AggregateSignatureMessage::insert(params, client).await?)
     }
 }
