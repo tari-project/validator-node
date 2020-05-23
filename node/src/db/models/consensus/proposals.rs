@@ -91,7 +91,7 @@ impl Proposal {
         Ok(Self::from_row(updated)?)
     }
 
-    /// Load proposal from dataase by ID
+    /// Load proposal from database by ID
     pub async fn load(id: ProposalID, client: &Client) -> Result<Self, DBError> {
         let stmt = "SELECT * FROM proposals WHERE id = $1::\"ProposalID\"";
         let result = client.query_one(stmt, &[&id]).await?;
@@ -104,10 +104,10 @@ impl Proposal {
     }
 
     /// Signs the proposal
-    pub async fn sign(&self, client: &Client) -> Result<SignedProposal, DBError> {
+    pub async fn sign(&self, node_id: NodeID, client: &Client) -> Result<SignedProposal, DBError> {
         let params = NewSignedProposal {
+            node_id,
             proposal_id: self.id,
-            node_id: NodeID::stub(),
             signature: "stub-signature".to_string(),
         };
         Ok(SignedProposal::insert(params, &client).await?)
@@ -211,7 +211,7 @@ mod test {
     async fn sign() {
         let (client, _lock) = test_db_client().await;
         let proposal = ProposalBuilder::default().build(&client).await.unwrap();
-        let signed_proposal = proposal.sign(&client).await.unwrap();
+        let signed_proposal = proposal.sign(NodeID::stub(), &client).await.unwrap();
 
         assert_eq!(signed_proposal.proposal_id, proposal.id);
     }

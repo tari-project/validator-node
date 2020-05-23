@@ -1,12 +1,13 @@
 use super::Proposal;
 use crate::{
-    db::utils::errors::DBError,
+    db::{models::AggregateSignatureMessageStatus, utils::errors::DBError},
     types::{consensus::SignatureData, ProposalID},
 };
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
 use serde::{Deserialize, Serialize};
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
+use tokio_postgres::types::Type;
 
 #[derive(Clone, Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
 #[pg_mapper(table = "aggregate_signature_messages")]
@@ -14,6 +15,7 @@ pub struct AggregateSignatureMessage {
     pub id: uuid::Uuid,
     pub proposal_id: ProposalID,
     pub signature_data: SignatureData,
+    pub status: AggregateSignatureMessageStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -24,6 +26,11 @@ pub struct NewAggregateSignatureMessage {
     pub signature_data: SignatureData,
 }
 
+#[derive(Default, Clone, Debug)]
+pub struct UpdateAggregateSignatureMessage {
+    pub status: Option<AggregateSignatureMessageStatus>,
+}
+
 impl AggregateSignatureMessage {
     pub async fn find_pending(client: &Client) -> Result<Option<Self>, DBError> {
         Ok(None)
@@ -32,6 +39,22 @@ impl AggregateSignatureMessage {
     pub async fn validate(&self) -> Result<(), DBError> {
         // Stub
         Ok(())
+    }
+
+    /// Update aggregate_signature_message state in the database
+    ///
+    /// Updates subset of fields:
+    /// - status
+    pub async fn update(self, data: UpdateAggregateSignatureMessage, client: &Client) -> Result<Self, DBError> {
+        const QUERY: &'static str = "
+            UPDATE aggregate_signature_messages SET
+                status = COALESCE($1, status),
+                updated_at = NOW()
+            WHERE id = $2
+            RETURNING *";
+        let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
+        let row = client.query_one(&stmt, &[&data.status, &self.id]).await?;
+        Ok(Self::from_row(row)?)
     }
 
     pub async fn proposal(&self, client: &Client) -> Result<Proposal, DBError> {

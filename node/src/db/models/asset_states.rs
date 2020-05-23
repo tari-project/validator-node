@@ -83,24 +83,20 @@ impl AssetState {
     pub async fn acquire_lock(&mut self, lock_period: u64, client: &Client) -> Result<(), DBError> {
         let block_until = Utc::now() + Duration::seconds(lock_period as i64);
 
-        const QUERY: &'static str = "UPDATE asset_states SET blocked_until = $2, updated_at = now() WHERE id = $1 AND \
-                                     blocked_until < now() RETURNING *";
+        const QUERY: &'static str =
+            "UPDATE asset_states SET blocked_until = $2, updated_at = now() WHERE id = $1 AND blocked_until <= now()";
         let stmt = client.prepare(QUERY).await?;
-        let result = client.query_one(&stmt, &[&self.id, &block_until]).await?;
-        let updated_asset_state = AssetState::from_row(result)?;
-
-        self.blocked_until = updated_asset_state.blocked_until.clone();
-        self.updated_at = updated_asset_state.updated_at.clone();
+        client.execute(&stmt, &[&self.id, &block_until]).await?;
 
         Ok(())
     }
 
     /// Releases lock on asset state
     pub async fn release_lock(&self, client: &Client) -> Result<(), DBError> {
-        const QUERY: &'static str = "UPDATE asset_states SET blocked_until = now(), updated_at = now() WHERE id = $1 \
-                                     AND blocked_until = $2 RETURNING *";
+        const QUERY: &'static str =
+            "UPDATE asset_states SET blocked_until = now(), updated_at = now() WHERE id = $1 AND blocked_until = $2";
         let stmt = client.prepare(QUERY).await?;
-        client.query_one(&stmt, &[&self.id, &self.blocked_until]).await?;
+        client.execute(&stmt, &[&self.id, &self.blocked_until]).await?;
 
         Ok(())
     }

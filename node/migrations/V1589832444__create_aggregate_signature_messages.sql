@@ -2,6 +2,7 @@ CREATE TABLE aggregate_signature_messages (
                        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
                        proposal_id "ProposalID" NOT NULL references proposals(id),
                        signature_data JSONB NOT NULL,
+                       status TEXT NOT NULL DEFAULT 'Pending',
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

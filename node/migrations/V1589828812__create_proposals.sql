@@ -21,7 +21,5 @@ CREATE INDEX index_proposals_uuid ON proposals (id);
 CREATE INDEX index_proposals_asset_id ON proposals (asset_id);
 CREATE INDEX index_proposals_status ON proposals (status);
 
-
-
 CREATE INDEX index_instructions_proposal_id ON instructions (proposal_id);
 CREATE INDEX index_views_proposal_id ON views (proposal_id);
