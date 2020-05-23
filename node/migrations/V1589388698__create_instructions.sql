@@ -4,7 +4,7 @@ CREATE TABLE instructions (
                        id "InstructionID" PRIMARY KEY NOT NULL,
                        initiating_node_id BYTEA NOT NULL,
                        signature TEXT NOT NULL,
-                       asset_id char(64) NOT NULL,
+                       asset_id char(64) NOT NULL references asset_states(asset_id),
                        token_id char(96) NULL references tokens(token_id),
                        template_id BIGINT NOT NULL,
                        contract_name TEXT NOT NULL,

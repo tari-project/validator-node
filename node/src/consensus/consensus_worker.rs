@@ -47,7 +47,7 @@ impl ConsensusWorker {
                         match committee.state.clone() {
                             // All nodes prepare new view, all but leader send to the leader node
                             CommitteeState::PreparingView { pending_instructions } => {
-                                let new_view = committee.prepare_new_view(pending_instructions, &client).await?;
+                                let new_view = committee.prepare_new_view(&pending_instructions, &client).await?;
                                 if !committee.is_leader(node_id) {
                                     submit_new_view(&committee, &new_view).await?;
                                 }
@@ -60,7 +60,7 @@ impl ConsensusWorker {
                             // All but leader receive proposal, confirm instruction set, and sign proposal if accepted
                             CommitteeState::ReceivedLeaderProposal { proposal } => {
                                 if committee.confirm_proposal(&proposal).await? {
-                                    let signed_proposal = proposal.sign(&client).await?;
+                                    let signed_proposal = proposal.sign(node_id, &client).await?;
                                     submit_signed_proposal(&committee, &signed_proposal).await?;
                                 } else {
                                     warn!(

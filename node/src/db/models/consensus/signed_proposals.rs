@@ -1,5 +1,8 @@
 use crate::{
-    db::{models::ProposalStatus, utils::errors::DBError},
+    db::{
+        models::{ProposalStatus, SignedProposalStatus},
+        utils::errors::DBError,
+    },
     types::{AssetID, NodeID, ProposalID},
 };
 use chrono::{DateTime, Utc};
@@ -17,6 +20,7 @@ pub struct SignedProposal {
     pub proposal_id: ProposalID,
     pub node_id: NodeID,
     pub signature: String,
+    pub status: SignedProposalStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -26,6 +30,11 @@ pub struct NewSignedProposal {
     pub proposal_id: ProposalID,
     pub node_id: NodeID,
     pub signature: String,
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct UpdateSignedProposal {
+    pub status: Option<SignedProposalStatus>,
 }
 
 impl SignedProposal {
@@ -46,6 +55,22 @@ impl SignedProposal {
         Ok(())
     }
 
+    /// Update aggregate_signature_message state in the database
+    ///
+    /// Updates subset of fields:
+    /// - status
+    pub async fn update(self, data: UpdateSignedProposal, client: &Client) -> Result<Self, DBError> {
+        const QUERY: &'static str = "
+            UPDATE signed_proposals SET
+                status = COALESCE($1, status),
+                updated_at = NOW()
+            WHERE id = $2
+            RETURNING *";
+        let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
+        let row = client.query_one(&stmt, &[&data.status, &self.id]).await?;
+        Ok(Self::from_row(row)?)
+    }
+
     pub async fn threshold_met(client: &Client) -> Result<HashMap<AssetID, Vec<SignedProposal>>, DBError> {
         // TODO: logic is currently hardcoded / stubbed for a committee of 1 so a single signed proposal meets the
         // threshold       we will need to iterate on this logic in the future to determine a viable threshold
@@ -54,9 +79,9 @@ impl SignedProposal {
             SELECT p.asset_id, sp.*
             FROM signed_proposals sp
             JOIN proposals p ON sp.proposal_id = p.id
-            JOIN asset_states as ON as.asset_id = p.asset_id
+            JOIN asset_states ast ON ast.asset_id = p.asset_id
             WHERE p.status = 'Signed'
-            AND as.blocked_until <= now()
+            AND ast.blocked_until <= now()
             ORDER BY p.asset_id
         ";
         let mut signed_proposal_data: Vec<(AssetID, SignedProposal)> = Vec::new();
@@ -73,6 +98,17 @@ impl SignedProposal {
         }
 
         Ok(asset_id_signed_proposal_mapping)
+    }
+
+    /// Load signed proposals from database by ProposalID
+    pub async fn load_by_proposal_id(id: ProposalID, client: &Client) -> Result<Vec<Self>, DBError> {
+        let stmt = "SELECT * FROM signed_proposals WHERE proposal_id = $1::\"ProposalID\"";
+        Ok(client
+            .query(stmt, &[&id])
+            .await?
+            .into_iter()
+            .map(|row| Self::from_row(row))
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     pub async fn insert(params: NewSignedProposal, client: &Client) -> Result<Self, DBError> {

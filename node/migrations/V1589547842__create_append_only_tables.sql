@@ -1,6 +1,6 @@
 CREATE TABLE token_state_append_only (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-    token_id char(96) NOT NULL,
+    token_id char(96) NOT NULL references tokens(token_id),
     instruction_id "InstructionID" NOT NULL references instructions(id),
     status TEXT NOT NULL DEFAULT 'Active',
     state_data_json JSONB NOT NULL DEFAULT '{}',

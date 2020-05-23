@@ -143,9 +143,9 @@ impl View {
             UPDATE views SET
                 status = $2,
                 updated_at = NOW()
-            WHERE id in ($1)
+            WHERE id = ANY ($1)
             RETURNING *";
-        let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
+        let stmt = client.prepare_typed(QUERY, &[Type::UUID_ARRAY, Type::TEXT]).await?;
         client.execute(&stmt, &[&view_ids, &status]).await?;
 
         Ok(())
