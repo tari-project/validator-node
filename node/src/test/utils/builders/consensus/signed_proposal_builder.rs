@@ -1,5 +1,5 @@
 use crate::{
-    db::models::consensus::*,
+    db::models::{consensus::*, ProposalStatus},
     test::utils::builders::consensus::ProposalBuilder,
     types::{NodeID, ProposalID},
 };
@@ -30,7 +30,15 @@ impl SignedProposalBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<SignedProposal> {
         let proposal_id = match self.proposal_id {
             Some(proposal_id) => proposal_id,
-            None => ProposalBuilder::default().build(client).await?.id,
+            None => {
+                ProposalBuilder {
+                    status: Some(ProposalStatus::Signed),
+                    ..ProposalBuilder::default()
+                }
+                .build(client)
+                .await?
+                .id
+            },
         };
         let params = NewSignedProposal {
             proposal_id,

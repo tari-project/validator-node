@@ -39,7 +39,16 @@ pub struct UpdateProposal {
 
 impl Proposal {
     pub async fn find_pending(client: &Client) -> Result<Option<Self>, DBError> {
-        Ok(None)
+        let stmt = "
+            SELECT p.*
+            FROM proposals p
+            JOIN asset_states ast ON ast.asset_id = p.asset_id
+            WHERE p.status = 'Pending'
+            AND ast.blocked_until <= now()
+            LIMIT 1
+        ";
+
+        Ok(client.query_opt(stmt, &[]).await?.map(Proposal::from_row).transpose()?)
     }
 
     pub async fn mark_invalid(&self, client: &Client) -> Result<(), DBError> {

@@ -80,7 +80,7 @@ impl SignedProposal {
             FROM signed_proposals sp
             JOIN proposals p ON sp.proposal_id = p.id
             JOIN asset_states ast ON ast.asset_id = p.asset_id
-            WHERE p.status = 'Signed'
+            WHERE sp.status = 'Pending'
             AND ast.blocked_until <= now()
             ORDER BY p.asset_id
         ";
@@ -90,7 +90,7 @@ impl SignedProposal {
         }
 
         let mut asset_id_signed_proposal_mapping = HashMap::new();
-        for (asset_id, signed_proposal_data) in &signed_proposal_data.iter().group_by(|data| &data.0) {
+        for (asset_id, signed_proposal_data) in &signed_proposal_data.iter().group_by(|data| data.0.clone()) {
             asset_id_signed_proposal_mapping.insert(
                 asset_id.clone(),
                 signed_proposal_data.map(|d| d.1.clone()).collect_vec(),

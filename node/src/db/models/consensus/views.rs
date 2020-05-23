@@ -4,6 +4,7 @@ use crate::{
 };
 use bytes::BytesMut;
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::HashMap, error::Error};
@@ -67,7 +68,31 @@ impl View {
     }
 
     pub async fn threshold_met(client: &Client) -> Result<HashMap<AssetID, Vec<View>>, DBError> {
-        Ok(HashMap::new())
+        // TODO: logic is currently hardcoded / stubbed for a committee of 1 so a single view meets the
+        // threshold... we will need to iterate on this logic in the future to determine a viable threshold
+        // dynamically by asset
+        let stmt = "
+            SELECT v.*
+            FROM views v
+            JOIN asset_states ast ON ast.asset_id = v.asset_id
+            WHERE v.status = 'Prepare'
+            AND ast.blocked_until <= now()
+            ORDER BY v.asset_id
+        ";
+
+        let mut asset_id_view_mapping = HashMap::new();
+        let views: Vec<View> = client
+            .query(stmt, &[])
+            .await?
+            .into_iter()
+            .map(|v| View::from_row(v))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for (asset_id, views) in &views.into_iter().group_by(|view| view.asset_id.clone()) {
+            asset_id_view_mapping.insert(asset_id.clone(), views.collect_vec().clone());
+        }
+
+        Ok(asset_id_view_mapping)
     }
 
     pub async fn insert(
