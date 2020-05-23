@@ -33,7 +33,26 @@ pub struct UpdateAggregateSignatureMessage {
 
 impl AggregateSignatureMessage {
     pub async fn find_pending(client: &Client) -> Result<Option<Self>, DBError> {
-        Ok(None)
+        let stmt = "
+            SELECT asm.*
+            FROM aggregate_signature_messages asm
+            JOIN (
+                SELECT asm.proposal_id
+                FROM aggregate_signature_messages asm
+                JOIN proposals p ON asm.proposal_id = p.id
+                JOIN asset_states ast ON ast.asset_id = p.asset_id
+                WHERE asm.status = 'Pending'
+                AND ast.blocked_until <= now()
+            ) asm2 ON asm.proposal_id = asm2.proposal_id
+            AND asm.status = 'Pending'
+            LIMIT 1
+        ";
+
+        let aggregate_signature_message: Option<AggregateSignatureMessage> = match client.query_opt(stmt, &[]).await? {
+            Some(row) => Some(AggregateSignatureMessage::from_row(row)?),
+            None => None,
+        };
+        Ok(aggregate_signature_message)
     }
 
     pub async fn validate(&self) -> Result<(), DBError> {

@@ -1,5 +1,6 @@
 use super::ProposalBuilder;
 use crate::{
+    db::models::ProposalStatus,
     db::models::consensus::*,
     types::{consensus::SignatureData, NodeID, ProposalID},
 };
@@ -31,7 +32,15 @@ impl AggregateSignatureMessageBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<AggregateSignatureMessage> {
         let proposal_id = match self.proposal_id {
             Some(proposal_id) => proposal_id,
-            None => ProposalBuilder::default().build(client).await?.id,
+            None => {
+                ProposalBuilder {
+                    status: Some(ProposalStatus::Signed),
+                    ..ProposalBuilder::default()
+                }
+                .build(client)
+                .await?
+                .id
+            },
         };
         let params = NewAggregateSignatureMessage {
             proposal_id,

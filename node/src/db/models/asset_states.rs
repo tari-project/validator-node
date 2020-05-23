@@ -146,7 +146,7 @@ impl AssetState {
         Ok(AssetState::from_row(result)?)
     }
 
-    /// Find asset state record by asset id )
+    /// Find asset state record by asset id
     pub async fn find_by_asset_id(asset_id: &AssetID, client: &Client) -> Result<Option<AssetState>, DBError> {
         let stmt = "SELECT * FROM asset_states_view WHERE asset_id = $1";
         let result = client.query_opt(stmt, &[&asset_id]).await?;

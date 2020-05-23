@@ -1,5 +1,5 @@
 use crate::{
-    db::models::consensus::*,
+    db::models::{consensus::*, ProposalStatus},
     test::utils::builders::consensus::ViewBuilder,
     types::{NodeID, ProposalID},
 };
@@ -7,9 +7,10 @@ use deadpool_postgres::Client;
 
 #[allow(dead_code)]
 pub struct ProposalBuilder {
-    id: Option<ProposalID>,
-    new_view: Option<NewView>,
-    node_id: Option<NodeID>,
+    pub id: Option<ProposalID>,
+    pub new_view: Option<NewView>,
+    pub node_id: Option<NodeID>,
+    pub status: Option<ProposalStatus>,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
@@ -20,6 +21,7 @@ impl Default for ProposalBuilder {
             id: None,
             new_view: None,
             node_id: None,
+            status: None,
             __non_exhaustive: (),
         }
     }
@@ -43,6 +45,19 @@ impl ProposalBuilder {
             id,
             new_view,
         };
-        Ok(Proposal::insert(params, client).await?)
+        let proposal = Proposal::insert(params, client).await?;
+        if let Some(status) = self.status {
+            proposal
+                .update(
+                    UpdateProposal {
+                        status: Some(status),
+                        ..UpdateProposal::default()
+                    },
+                    &client,
+                )
+                .await?;
+        }
+
+        Ok(proposal)
     }
 }

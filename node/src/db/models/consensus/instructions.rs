@@ -52,7 +52,32 @@ pub struct UpdateInstruction {
 
 impl Instruction {
     pub async fn find_pending(client: &Client) -> Result<Option<(AssetID, Vec<Self>)>, DBError> {
-        Ok(None)
+        let stmt = "
+            SELECT i.*
+            FROM instructions i
+            JOIN (
+                SELECT i.asset_id
+                FROM instructions i
+                JOIN asset_states ast ON ast.asset_id = i.asset_id
+                WHERE i.status = 'Pending'
+                AND ast.blocked_until <= now()
+                LIMIT 1
+            ) i2 ON i.asset_id = i2.asset_id
+            AND i.status = 'Pending'
+        ";
+
+        let instructions: Vec<Instruction> = client
+            .query(stmt, &[])
+            .await?
+            .into_iter()
+            .map(|row| Instruction::from_row(row))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if instructions.len() > 0 {
+            Ok(Some((instructions[0].asset_id.clone(), instructions)))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Add digital asset record
