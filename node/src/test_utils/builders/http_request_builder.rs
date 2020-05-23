@@ -1,5 +1,6 @@
+use super::WalletStoreBuilder;
 use crate::{
-    test_utils::actix_test_pool,
+    test_utils::{actix_test_pool, build_test_config},
     types::{AssetID, TokenID},
 };
 use actix_web::test::TestRequest;
@@ -14,7 +15,12 @@ pub struct HttpRequestBuilder {
 impl Default for HttpRequestBuilder {
     fn default() -> Self {
         let pool = actix_test_pool();
-        let test_request = TestRequest::default().app_data(pool);
+        let wallets = WalletStoreBuilder::default().build().unwrap();
+        let config = build_test_config().unwrap();
+        let test_request = TestRequest::default()
+            .app_data(pool)
+            .app_data(config)
+            .app_data(wallets);
         Self {
             test_request,
             __non_exhaustive: (),

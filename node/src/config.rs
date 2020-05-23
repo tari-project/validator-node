@@ -39,7 +39,9 @@ impl NodeConfig {
             config.set("validator.postgres", pg)?;
             config.set("validator.cors", cors)?;
         }
-        config.set_default("validator.public_address", global.public_address.to_string())?;
+        if config.get_str("validator.public_address").is_err() {
+            config.set("validator.public_address", global.public_address.to_string())?;
+        }
         <Self as DefaultConfigLoader>::load_from(&config)
     }
 }

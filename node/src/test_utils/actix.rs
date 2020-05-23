@@ -1,4 +1,4 @@
-use super::{actix_test_pool, load_env};
+use super::{actix_test_pool, build_test_config, load_env, builders::*};
 use crate::types::{AssetID, TokenID};
 use actix_web::{client::ClientRequest, middleware::Logger, test, App, Scope};
 use std::ops::Deref;
@@ -16,11 +16,21 @@ impl TestAPIServer {
     where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
         load_env();
         let _ = pretty_env_logger::try_init();
+        let wallets = WalletStoreBuilder::default().build().unwrap();
+        let config = build_test_config().unwrap();
         let server = test::start(move || {
-            let app = App::new().app_data(actix_test_pool()).wrap(Logger::default());
+            let app = App::new()
+                .app_data(actix_test_pool())
+                .wrap(Logger::default());
             scopes.clone()()
                 .into_iter()
-                .fold(app, |app, scope| app.service(scope.app_data(actix_test_pool())))
+                .fold(app, |app, scope|
+                    app.service(scope
+                        .app_data(actix_test_pool())
+                        .app_data(wallets.clone())
+                        .app_data(config.clone())
+                    )
+                )
         });
         Self { server }
     }

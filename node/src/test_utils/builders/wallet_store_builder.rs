@@ -1,6 +1,8 @@
 use crate::wallet::WalletStore;
 use tari_test_utils::random::string;
 use tempdir::TempDir;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct WalletStoreBuilder {
     pub temp_dir: TempDir,
@@ -15,7 +17,8 @@ impl Default for WalletStoreBuilder {
 }
 
 impl WalletStoreBuilder {
-    pub fn build(self) -> anyhow::Result<WalletStore> {
-        Ok(WalletStore::init(self.temp_dir.path().to_path_buf())?)
+    pub fn build(self) -> anyhow::Result<Arc<Mutex<WalletStore>>> {
+        let wallets = WalletStore::init(self.temp_dir.path().to_path_buf())?;
+        Ok(Arc::new(Mutex::new(wallets)))
     }
 }

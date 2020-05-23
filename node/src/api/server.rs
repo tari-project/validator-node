@@ -100,6 +100,7 @@ where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
         let with_templates = scopes.clone()().into_iter().fold(app, |app, scope| {
             app.service(
                 scope
+                //TODO: abstract this configuration, make it reusable in tests too
                     .app_data(pool.clone())
                     .app_data(config_arc.clone())
                     .app_data(wallets.clone()),

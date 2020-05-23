@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 pub struct AssetContextBuilder {
     pub template_id: TemplateID,
     pub asset: Option<AssetState>,
-    pub wallets: WalletStore,
+    pub wallets: Arc<Mutex<WalletStore>>,
     pub address: Multiaddr,
     pub params: Value,
     pub contract_name: String,
@@ -46,7 +46,7 @@ impl AssetContextBuilder {
         let mut context = TemplateContext {
             client,
             template_id: asset.asset_id.template_id(),
-            wallets: Arc::new(Mutex::new(self.wallets)),
+            wallets: self.wallets,
             address: self.address,
             contract_transaction: None,
             db_transaction: None,
@@ -67,7 +67,7 @@ impl AssetContextBuilder {
 pub struct TokenContextBuilder {
     pub template_id: TemplateID,
     pub token: Option<Token>,
-    pub wallets: WalletStore,
+    pub wallets: Arc<Mutex<WalletStore>>,
     pub address: Multiaddr,
     pub params: Value,
     pub contract_name: String,
@@ -106,7 +106,7 @@ impl TokenContextBuilder {
         let mut context = TemplateContext {
             client,
             template_id: asset.asset_id.template_id(),
-            wallets: Arc::new(Mutex::new(self.wallets)),
+            wallets: self.wallets,
             address: self.address,
             contract_transaction: None,
             db_transaction: None,
