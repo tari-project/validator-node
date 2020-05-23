@@ -81,6 +81,7 @@ mod expanded_macros {
         api::errors::{ApiError, ApplicationError},
         db::models::consensus::instructions::*,
     };
+    use log::info;
     use serde::{Deserialize, Serialize};
 
     ////// impl #[contract(asset)] for issue_tokens()
@@ -144,7 +145,8 @@ mod expanded_macros {
     ////// impl #[derive(Contracts)] for AssetContracts
 
     impl Contracts for AssetContracts {
-        fn setup_actix_routes(scope: &mut web::ServiceConfig) {
+        fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
+            info!("template={}, installing assets API issue_tokens", tpl);
             scope.service(web::resource("/issue_tokens").route(web::post().to(issue_tokens_actix)));
         }
     }
@@ -218,7 +220,8 @@ mod expanded_macros {
     use actix_web::web;
 
     impl Contracts for TokenContracts {
-        fn setup_actix_routes(scope: &mut web::ServiceConfig) {
+        fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
+            info!("template={}, installing token API transfer_token", tpl);
             scope.service(web::resource("/transfer_token").route(web::post().to(transfer_token_actix)));
         }
     }

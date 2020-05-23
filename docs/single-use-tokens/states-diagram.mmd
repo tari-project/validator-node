@@ -1,0 +1,10 @@
+stateDiagram-v2
+    [*] --> Available: Issue
+    Available --> Active: Sell token
+    Active --> Active: Transfer token
+    Active --> Used: Redeem
+    Used --> Active: UnRedeem
+    Available --> Retired: Retire asset
+    Active --> Retired: Retire asset
+    Used --> Retired: Retire asset
+    Retired --> [*]

@@ -6,3 +6,5 @@ pub mod middleware;
 pub mod models;
 pub mod routing;
 pub mod server;
+
+pub(crate) const LOG_TARGET: &'static str = "validator_node::api";

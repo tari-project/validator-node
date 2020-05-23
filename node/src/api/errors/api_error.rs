@@ -1,7 +1,6 @@
 use super::*;
 use crate::{db::utils::errors::DBError, types::errors::TypeError};
 use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
-use log::error;
 use serde_json::json;
 use thiserror::Error;
 
@@ -99,6 +98,11 @@ impl ApiError {
                 },
                 _ => generic_error_response_data,
             },
+            ApiError::Type(err) => ResponseData {
+                status_code: StatusCode::BAD_REQUEST,
+                error_response: HttpResponse::build(StatusCode::BAD_REQUEST)
+                    .json(json!({ "error": err.to_string() })),
+            },
             ApiError::Contract(err) => ResponseData {
                 status_code: StatusCode::INTERNAL_SERVER_ERROR,
                 error_response: HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
@@ -116,8 +120,10 @@ impl ResponseError for ApiError {
 
     fn error_response(&self) -> HttpResponse {
         let response_data = self.load_response_data();
-        if response_data.status_code != StatusCode::NOT_FOUND {
-            error!("{:?}", self);
+        if response_data.status_code.is_server_error() {
+            log::error!(target: LOG_TARGET, "Server error: {}", self);
+        } else if response_data.status_code.is_client_error() {
+            log::info!(target: LOG_TARGET, "Client error: {}", self);
         }
 
         response_data.error_response

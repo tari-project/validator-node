@@ -12,7 +12,8 @@ use std::{net::ToSocketAddrs, sync::mpsc};
 // Must be valid JSON
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;
 
-pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
+pub async fn actix_main<F>(config: NodeConfig, configure: F) -> anyhow::Result<()>
+where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
     let pool = web::Data::new(build_pool(&config.postgres)?);
 
     println!(
@@ -50,7 +51,8 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
             .wrap(Logger::new(LOGGER_FORMAT).exclude("/status"))
             .wrap(Authentication::new())
             .wrap(AppVersionHeader::new());
-        app.configure(routing::routes)
+        app.configure(configure.clone())
+            .configure(routing::routes)
             .default_service(web::get().to(|| HttpResponse::NotFound().json(json!({"error": "Not found"}))))
     })
     .bind(config.actix.addr())?;
