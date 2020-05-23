@@ -1,7 +1,6 @@
 use super::ProposalBuilder;
 use crate::{
-    db::models::ProposalStatus,
-    db::models::consensus::*,
+    db::models::{consensus::*, ProposalStatus},
     types::{consensus::SignatureData, NodeID, ProposalID},
 };
 use deadpool_postgres::Client;

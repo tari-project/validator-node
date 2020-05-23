@@ -5,31 +5,24 @@ use crate::{
     db::utils::db::db_client,
     types::{consensus::CommitteeState, NodeID},
 };
-use log::warn;
-use tokio::runtime;
+use log::{error, warn};
 
 pub struct ConsensusWorker {
     node_config: NodeConfig,
-    tokio_runtime: runtime::Runtime,
 }
 
 impl ConsensusWorker {
     pub fn new(node_config: NodeConfig) -> Result<Self, ConsensusError> {
-        let mut tokio_runtime = runtime::Builder::new();
-
-        if let Some(worker_count) = node_config.consensus.workers {
-            tokio_runtime.core_threads(worker_count);
-        }
-
-        Ok(ConsensusWorker {
-            node_config,
-            tokio_runtime: tokio_runtime.threaded_scheduler().build()?,
-        })
+        Ok(ConsensusWorker { node_config })
     }
 
     pub fn work(&self, node_id: NodeID) -> Result<(), ConsensusError> {
-        self.tokio_runtime
-            .spawn(ConsensusWorker::task(node_id, self.node_config.clone()));
+        let config = self.node_config.clone();
+        actix_rt::spawn(async move {
+            if let Err(e) = ConsensusWorker::task(node_id, config).await {
+                error!("ConsensusWorker work error: {}", e)
+            };
+        });
 
         Ok(())
     }
@@ -47,7 +40,9 @@ impl ConsensusWorker {
                         match committee.state.clone() {
                             // All nodes prepare new view, all but leader send to the leader node
                             CommitteeState::PreparingView { pending_instructions } => {
-                                let new_view = committee.prepare_new_view(&pending_instructions, &client).await?;
+                                let new_view = committee
+                                    .prepare_new_view(node_id, &pending_instructions, &client)
+                                    .await?;
                                 if !committee.is_leader(node_id) {
                                     submit_new_view(&committee, &new_view).await?;
                                 }

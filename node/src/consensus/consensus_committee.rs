@@ -136,6 +136,7 @@ impl ConsensusCommittee {
     /// Prepares new view that includes append only state data for the purpose of broadcasting to the leader
     pub async fn prepare_new_view(
         &self,
+        node_id: NodeID,
         pending_instructions: &[Instruction],
         client: &Client,
     ) -> Result<NewView, ConsensusError>
@@ -158,8 +159,7 @@ impl ConsensusCommittee {
                 },
             }
         }
-
-        Ok(NewView {
+        let new_view = NewView {
             instruction_set,
             invalid_instruction_set,
             append_only_state: AppendOnlyState {
@@ -169,7 +169,14 @@ impl ConsensusCommittee {
             asset_id: self.asset_id.clone(),
             initiating_node_id: NodeID::stub(),
             signature: "stub-signature".into(),
-        })
+        };
+
+        // Leader stores the view
+        if self.is_leader(node_id) {
+            View::insert(new_view.clone(), NewViewAdditionalParameters::default(), &client).await?;
+        }
+
+        Ok(new_view)
     }
 
     /// Leader creates proposal
@@ -470,7 +477,7 @@ mod test {
         let instructions = vec![instruction.clone()];
         let consensus_committee = test_committee(None, NodeID::stub(), &client).await;
         let new_view = consensus_committee
-            .prepare_new_view(&instructions, &client)
+            .prepare_new_view(NodeID::stub(), &instructions, &client)
             .await
             .unwrap();
         assert_eq!(new_view.asset_id, consensus_committee.asset_id);
