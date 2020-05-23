@@ -8,7 +8,6 @@ use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
 use serde_json::json;
 use std::{net::ToSocketAddrs, sync::mpsc};
-use tokio::runtime;
 
 // Must be valid JSON
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;
@@ -63,10 +62,9 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
         config.actix.addr().to_socket_addrs()?.next().unwrap()
     );
 
-    let consensus_runtime = runtime::Builder::new().basic_scheduler().build()?;
     let mut consensus_processor = ConsensusProcessor::new(config.clone());
     let (consensus_sender, consensus_receiver) = mpsc::channel::<()>();
-    consensus_runtime.spawn(async move {
+    actix_rt::spawn(async move {
         consensus_processor.start(consensus_receiver).await;
     });
 

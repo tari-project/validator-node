@@ -198,7 +198,7 @@ impl View {
     {
         const QUERY: &'static str = "SELECT * FROM views WHERE asset_id = $1 and status = $2";
 
-        let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
+        let stmt = client.prepare_typed(QUERY, &[AssetID::SQL_TYPE, Type::TEXT]).await?;
         Ok(client
             .query(&stmt, &[&asset_id, &status])
             .await?
