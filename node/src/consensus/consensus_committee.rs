@@ -1,6 +1,6 @@
 use super::errors::ConsensusError;
 use crate::{
-    db::models::{consensus::*, AssetState, ViewStatus},
+    db::models::{consensus::*, AggregateSignatureMessageStatus, AssetState, SignedProposalStatus, ViewStatus},
     types::{consensus::*, AssetID, NodeID, ProposalID},
 };
 use deadpool_postgres::Client;
@@ -237,6 +237,7 @@ impl ConsensusCommittee {
         &self,
         proposal: &Proposal,
         signed_proposals: &[SignedProposal],
+        client: &Client,
     ) -> Result<NewAggregateSignatureMessage, ConsensusError>
     {
         let mut signatures: Vec<(NodeID, String)> = Vec::new();
@@ -244,11 +245,27 @@ impl ConsensusCommittee {
         // of entering database
         for signed_proposal in signed_proposals {
             signatures.push((signed_proposal.node_id, signed_proposal.signature.clone()));
+            signed_proposal
+                .update(
+                    UpdateSignedProposal {
+                        status: Some(SignedProposalStatus::Validated),
+                    },
+                    &client,
+                )
+                .await?;
         }
-        Ok(NewAggregateSignatureMessage {
+        let new_message = NewAggregateSignatureMessage {
             proposal_id: proposal.id,
             signature_data: SignatureData { signatures },
-        })
+            status: AggregateSignatureMessageStatus::Pending,
+        };
+
+        // Save aggregate message in accepted state for leader
+        let mut leader_message = new_message.clone();
+        leader_message.status = AggregateSignatureMessageStatus::Accepted;
+        leader_message.save(&client).await?;
+
+        Ok(new_message)
     }
 
     /// Validates aggregate signature message contents confirming signatures

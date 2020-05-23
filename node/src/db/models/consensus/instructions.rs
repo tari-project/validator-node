@@ -184,12 +184,7 @@ impl Instruction {
     {
         // TODO: we will need to encapsulate the running of an instruction somehow so that nodes can compare view state
         // to expected state
-        Ok((vec![NewAssetStateAppendOnly{
-            asset_id: "7E6F4B801170DB0Bf86c9257fe56249.469439556cba069abcde00001F51DC3A".parse().unwrap(),
-            instruction_id: InstructionID(uuid::Uuid::parse_str("dff9ec48-9cc2-11ea-8003-000102030405").unwrap()),
-            state_data_json: serde_json::json!({"testing": true}),
-            status: crate::db::models::AssetStatus::Retired,
-        }], Vec::new()))
+        Ok((Vec::new(), Vec::new()))
     }
 }
 
