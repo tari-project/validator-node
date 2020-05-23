@@ -13,6 +13,7 @@ use std::{net::ToSocketAddrs, sync::mpsc};
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActixConfig {
     pub host: IpAddr,
@@ -55,6 +56,10 @@ where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
 =======
 pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
 >>>>>>> Stub consensus logic
+=======
+pub async fn actix_main<F>(config: NodeConfig, configure: F) -> anyhow::Result<()>
+where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
+>>>>>>> Merge with development branch (#15)
     let pool = web::Data::new(build_pool(&config.postgres)?);
 
     println!(

@@ -108,7 +108,6 @@ impl ApiError {
                 error_response: HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                     .json(json!({ "error": err.to_string() })),
             },
-            _ => generic_error_response_data,
         }
     }
 }
