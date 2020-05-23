@@ -98,7 +98,7 @@ impl ApiError {
                 },
                 _ => generic_error_response_data,
             },
-            ApiError::Type(err) => ResponseData {
+            ApiError::TypeError(err) => ResponseData {
                 status_code: StatusCode::BAD_REQUEST,
                 error_response: HttpResponse::build(StatusCode::BAD_REQUEST)
                     .json(json!({ "error": err.to_string() })),
@@ -108,7 +108,6 @@ impl ApiError {
                 error_response: HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                     .json(json!({ "error": err.to_string() })),
             },
-            _ => generic_error_response_data,
         }
     }
 }

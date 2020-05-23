@@ -118,7 +118,7 @@ mod test {
     use super::*;
     use crate::{
         db::models::tokens::*,
-        test::utils::{builders::*, test_db_client},
+        test::utils::{builders::*, test_db_client, actix_test_pool},
         types::NodeID,
     };
     use actix_web::{web, HttpResponse, Result};
