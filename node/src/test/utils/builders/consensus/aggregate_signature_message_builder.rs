@@ -1,6 +1,6 @@
 use super::ProposalBuilder;
 use crate::{
-    db::models::{consensus::*, ProposalStatus},
+    db::models::{consensus::*, AggregateSignatureMessageStatus, ProposalStatus},
     types::{consensus::SignatureData, NodeID, ProposalID},
 };
 use deadpool_postgres::Client;
@@ -44,6 +44,7 @@ impl AggregateSignatureMessageBuilder {
         let params = NewAggregateSignatureMessage {
             proposal_id,
             signature_data: self.signature_data,
+            status: AggregateSignatureMessageStatus::Pending,
         };
         Ok(AggregateSignatureMessage::insert(params, client).await?)
     }

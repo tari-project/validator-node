@@ -24,6 +24,7 @@ pub struct AggregateSignatureMessage {
 pub struct NewAggregateSignatureMessage {
     pub proposal_id: ProposalID,
     pub signature_data: SignatureData,
+    pub status: AggregateSignatureMessageStatus,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -55,8 +56,16 @@ impl AggregateSignatureMessage {
         Ok(aggregate_signature_message)
     }
 
-    pub async fn validate(&self) -> Result<(), DBError> {
-        // Stub
+    pub async fn validate(&self, client: &Client) -> Result<(), DBError> {
+        // Stub, always validates as valid
+        self.update(
+            UpdateAggregateSignatureMessage {
+                status: Some(self.status),
+            },
+            client,
+        )
+        .await?;
+
         Ok(())
     }
 
@@ -64,7 +73,7 @@ impl AggregateSignatureMessage {
     ///
     /// Updates subset of fields:
     /// - status
-    pub async fn update(self, data: UpdateAggregateSignatureMessage, client: &Client) -> Result<Self, DBError> {
+    pub async fn update(&self, data: UpdateAggregateSignatureMessage, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
             UPDATE aggregate_signature_messages SET
                 status = COALESCE($1, status),
@@ -84,11 +93,12 @@ impl AggregateSignatureMessage {
         const QUERY: &'static str = "
             INSERT INTO aggregate_signature_messages (
                 proposal_id,
-                signature_data
-            ) VALUES ($1, $2) RETURNING *";
+                signature_data,
+                status
+            ) VALUES ($1, $2, $3) RETURNING *";
         let stmt = client.prepare(QUERY).await?;
         let row = client
-            .query_one(&stmt, &[&params.proposal_id, &params.signature_data])
+            .query_one(&stmt, &[&params.proposal_id, &params.signature_data, &params.status])
             .await?;
         Ok(Self::from_row(row)?)
     }
@@ -122,6 +132,7 @@ mod test {
         let params = NewAggregateSignatureMessage {
             proposal_id: proposal.id,
             signature_data: signature_data.clone(),
+            status: AggregateSignatureMessageStatus::Pending,
         };
         let aggregate_signature_message = AggregateSignatureMessage::insert(params, &client).await.unwrap();
         assert_eq!(aggregate_signature_message.proposal_id, proposal.id);
@@ -154,6 +165,7 @@ mod test {
         let params = NewAggregateSignatureMessage {
             proposal_id: proposal.id,
             signature_data: signature_data.clone(),
+            status: AggregateSignatureMessageStatus::Pending,
         };
         let aggregate_signature_message = params.save(&client).await.unwrap();
         assert_eq!(aggregate_signature_message.proposal_id, proposal.id);

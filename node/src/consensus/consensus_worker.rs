@@ -71,12 +71,10 @@ impl ConsensusWorker {
                                 signed_proposals,
                             } => {
                                 let aggregate_signature_message = committee
-                                    .prepare_aggregate_signature_message(&proposal, &signed_proposals)
+                                    .prepare_aggregate_signature_message(&proposal, &signed_proposals, &client)
                                     .await?;
                                 broadcast_aggregate_signature_message(&committee, &aggregate_signature_message).await?;
 
-                                // Save aggregate message
-                                aggregate_signature_message.save(&client).await?;
                                 // Execute proposal for leader (other nodes will receive signed proposal and execute
                                 // upon validating supermajority signatures)
                                 proposal.execute(true, &client).await?;
@@ -86,7 +84,7 @@ impl ConsensusWorker {
                                 proposal,
                                 aggregate_signature_message,
                             } => {
-                                aggregate_signature_message.validate().await?;
+                                aggregate_signature_message.validate(&client).await?;
 
                                 // Execute proposal for non leader nodes
                                 proposal.execute(false, &client).await?;

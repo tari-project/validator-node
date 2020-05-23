@@ -59,7 +59,7 @@ impl SignedProposal {
     ///
     /// Updates subset of fields:
     /// - status
-    pub async fn update(self, data: UpdateSignedProposal, client: &Client) -> Result<Self, DBError> {
+    pub async fn update(&self, data: UpdateSignedProposal, client: &Client) -> Result<Self, DBError> {
         const QUERY: &'static str = "
             UPDATE signed_proposals SET
                 status = COALESCE($1, status),
