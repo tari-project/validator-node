@@ -203,6 +203,7 @@ mod test {
 
     #[actix_rt::test]
     async fn issue_tokens_positive() {
+        let (_client, _lock) = test_db_client().await;
         let template_id = SingleUseTokenTemplate::id();
         let context = AssetContextBuilder {
             template_id,
@@ -222,6 +223,7 @@ mod test {
 
     #[actix_rt::test]
     async fn issue_tokens_negative() {
+        let (_client, _lock) = test_db_client().await;
         let template_id = SingleUseTokenTemplate::id();
         let context = AssetContextBuilder {
             template_id,

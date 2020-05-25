@@ -48,7 +48,6 @@ pub fn build_test_global_config() -> anyhow::Result<GlobalConfig> {
 
 /// Generate a standard test config
 pub fn build_test_config() -> anyhow::Result<NodeConfig> {
-    load_env();
     let mut config = config::Config::new();
     let pg = config::Environment::with_prefix("PG_TEST").collect()?;
     config.set("validator.postgres", pg)?;
