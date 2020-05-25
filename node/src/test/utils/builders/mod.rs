@@ -6,7 +6,6 @@ pub use self::{
     node_wallet_builder::*,
     template_context_builder::*,
     token_builder::*,
-    instruction_builder::*,
     wallet_store_builder::*,
 };
 
@@ -18,5 +17,4 @@ mod http_request_builder;
 mod node_wallet_builder;
 mod template_context_builder;
 mod token_builder;
-mod instruction_builder;
 mod wallet_store_builder;
