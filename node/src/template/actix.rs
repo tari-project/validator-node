@@ -7,7 +7,7 @@ use crate::{
 };
 use actix_web::{dev::Payload, web, web::Data, FromRequest, HttpRequest};
 use deadpool_postgres::Pool;
-use futures::future::{Ready, ok, err};
+use futures::future::{err, ok, Ready};
 use log::info;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -92,10 +92,7 @@ impl FromRequest for TemplateContext {
         // middleware might pass parameters via .extensions() or .app_data()
         // TODO: this is not secure as we allow routes configuration via Contracts trait
         // potentially template might configure a route to get access to the Pool and WalletStore
-        let pool = req
-            .app_data::<Arc<Pool>>()
-            .expect("Failed to retrieve DB pool")
-            .clone();
+        let pool = req.app_data::<Arc<Pool>>().expect("Failed to retrieve DB pool").clone();
         let wallets = req
             .app_data::<Arc<Mutex<WalletStore>>>()
             .expect("Failed to retrieve WalletStore")
@@ -107,9 +104,7 @@ impl FromRequest for TemplateContext {
             .expect("Public address is not configured for Node");
         let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
             Some(id) => id.get_ref().clone(),
-            None => {
-                return err(ApplicationError::bad_request("Template data not found by this path").into())
-            },
+            None => return err(ApplicationError::bad_request("Template data not found by this path").into()),
         };
 
         ok(TemplateContext {
@@ -127,7 +122,7 @@ mod test {
     use crate::{
         db::models::consensus::instructions::*,
         test::utils::{actix::TestAPIServer, builders::*, test_db_client},
-        types::{NodeID, InstructionID},
+        types::{InstructionID, NodeID},
     };
     use actix_web::{http::StatusCode, web, HttpResponse, Result};
 
@@ -144,12 +139,15 @@ mod test {
             .await
             .unwrap();
         assert_eq!(context.template_id(), asset.asset_id.template_id());
-        let instruction = context.create_instruction(NewInstruction {
-            id: InstructionID::new(NodeID::stub()).unwrap(),
-            asset_id: asset.asset_id,
-            status: InstructionStatus::Scheduled,
-            ..Default::default()
-        }).await.unwrap();
+        context
+            .create_instruction(NewInstruction {
+                id: InstructionID::new(NodeID::stub()).unwrap(),
+                asset_id: asset.asset_id,
+                status: InstructionStatus::Scheduled,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
     }
 
     // *** Test template implementation - low level API testins *****

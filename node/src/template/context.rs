@@ -17,7 +17,7 @@ use crate::{
     types::*,
     wallet::{NodeWallet, WalletStore},
 };
-use deadpool_postgres::{Pool, Client};
+use deadpool_postgres::{Client, Pool};
 use multiaddr::Multiaddr;
 use std::{
     ops::{Deref, DerefMut},
@@ -51,7 +51,10 @@ impl TemplateContext {
     /// Creates [Instruction]
     pub async fn create_instruction(&self, data: NewInstruction) -> Result<Instruction, TemplateError> {
         if data.status != InstructionStatus::Scheduled {
-            return processing_err!("Failed to create Instruction in status {}, initial status should be Scheduled", data.status);
+            return processing_err!(
+                "Failed to create Instruction in status {}, initial status should be Scheduled",
+                data.status
+            );
         }
         let client = self.pool.get().await.map_err(DBError::from)?;
         Ok(Instruction::insert(data, &client).await?)
@@ -67,7 +70,6 @@ impl TemplateContext {
             template_context: self.clone(),
         })
     }
-
 }
 
 pub struct InstructionContext {
@@ -101,11 +103,17 @@ impl InstructionContext {
 
     /// Updates result and status of [Instruction]
     pub async fn update_instruction_status(&mut self, status: InstructionStatus) -> Result<(), TemplateError> {
-        if status == InstructionStatus::Scheduled || status == InstructionStatus::Processing || status == InstructionStatus::Invalid {
+        if status == InstructionStatus::Scheduled ||
+            status == InstructionStatus::Processing ||
+            status == InstructionStatus::Invalid
+        {
             Instruction::update_instructions_status(&[self.instruction.id], None, status, &self.client).await?;
             self.instruction.status = status;
         } else {
-            return processing_err!("Failed to update Instruction status to {} from within InstructionContext", status);
+            return processing_err!(
+                "Failed to update Instruction status to {} from within InstructionContext",
+                status
+            );
         }
         Ok(())
     }
@@ -114,12 +122,17 @@ impl InstructionContext {
         let transaction = self.client.transaction().await.map_err(DBError::from)?;
         let wallet_name = self.instruction.id.to_string();
         let wallet = NodeWallet::new(self.template_context.address.clone(), wallet_name)?;
-        let wallet = self.template_context.wallets.lock().await.add(wallet, &transaction).await?;
+        let wallet = self
+            .template_context
+            .wallets
+            .lock()
+            .await
+            .add(wallet, &transaction)
+            .await?;
         transaction.commit().await.map_err(DBError::from)?;
         Ok(wallet.public_key_hex())
     }
 }
-
 
 /// Extract [Instruction] from InstructionContext
 impl From<InstructionContext> for Instruction {

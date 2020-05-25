@@ -29,11 +29,7 @@ pub enum AssetContracts {
 }
 
 //#[contract(asset)]
-async fn issue_tokens(
-    context: &AssetInstructionContext,
-    token_ids: Vec<TokenID>,
-) -> Result<Vec<Token>, TemplateError>
-{
+async fn issue_tokens(context: &AssetInstructionContext, token_ids: Vec<TokenID>) -> Result<Vec<Token>, TemplateError> {
     let mut tokens = Vec::with_capacity(token_ids.len());
     let asset = &context.asset;
     let data = TokenData {
@@ -91,11 +87,7 @@ async fn sell_token(
 
 #[tari_template_macro::contract(token, local_use)]
 // With token contract TokenInstructionContext is always passed as first argument
-async fn transfer_token(
-    context: &mut TokenInstructionContext,
-    user_pubkey: Pubkey,
-) -> Result<Token, TemplateError>
-{
+async fn transfer_token(context: &mut TokenInstructionContext, user_pubkey: Pubkey) -> Result<Token, TemplateError> {
     let token = context.token.clone();
     if token.status == TokenStatus::Retired {
         return validation_err!("Tried to transfer already used token");
@@ -196,7 +188,7 @@ mod test {
     use super::*;
     use crate::{
         db::models::consensus::instructions::*,
-        test::utils::{actix::TestAPIServer, builders::*, actix_test_pool, test_db_client},
+        test::utils::{actix::TestAPIServer, actix_test_pool, builders::*, test_db_client},
         types::AssetID,
     };
     use serde_json::json;

@@ -1,3 +1,4 @@
+pub use crate::db::models::InstructionStatus;
 use crate::{
     db::{
         models::{NewAssetStateAppendOnly, NewTokenStateAppendOnly},
@@ -11,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
-pub use crate::db::models::InstructionStatus;
 
 #[derive(Clone, Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
 #[pg_mapper(table = "instructions")]
