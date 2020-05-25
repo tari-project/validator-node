@@ -9,7 +9,7 @@ use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Typ
 
 /// Assets are identified by a 64-character string that uniquely identifies an asset on the network
 /// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#asset-identification) entity
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash, Eq)]
 #[serde(into = "String", try_from = "String")]
 pub struct AssetID {
     template_id: TemplateID,
@@ -164,7 +164,7 @@ impl TryFrom<String> for AssetID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::test_db_client;
+    use crate::test::utils::test_db_client;
 
     #[test]
     fn asset_default() {

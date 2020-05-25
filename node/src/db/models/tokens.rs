@@ -1,14 +1,20 @@
-use super::{ContractTransaction, TokenStatus};
-use crate::{db::utils::errors::DBError, types::TokenID};
+use super::{consensus::Instruction, TokenStatus};
+use crate::{
+    db::utils::errors::DBError,
+    types::{InstructionID, TokenID},
+};
+use bytes::BytesMut;
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{
+    json,
     map::Map,
     Value::{self, Object},
 };
+use std::error::Error;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
-use tokio_postgres::types::Type;
+use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, Json, ToSql, Type};
 
 #[derive(Clone, Serialize, PostgresMapper)]
 #[pg_mapper(table = "tokens_view")]
@@ -33,10 +39,10 @@ pub struct NewToken {
 }
 
 /// Query parameters for adding new token state append only
-#[derive(Default, Clone, Debug)]
-pub struct NewTokenAppendOnly {
-    pub token_id: uuid::Uuid,
-    pub transaction_id: uuid::Uuid,
+#[derive(PartialEq, Deserialize, Serialize, Default, Clone, Debug)]
+pub struct NewTokenStateAppendOnly {
+    pub token_id: TokenID,
+    pub instruction_id: InstructionID,
     pub status: TokenStatus,
     pub state_data_json: Value,
 }
@@ -75,13 +81,7 @@ impl Token {
     /// - status
     /// - additional_data_json merged with UpdateToken::append_state_data_json
     // TODO: this is very expensive - think on optimization later
-    pub async fn update(
-        self,
-        data: UpdateToken,
-        transaction: &ContractTransaction,
-        client: &Client,
-    ) -> Result<Self, DBError>
-    {
+    pub async fn update(self, data: UpdateToken, instruction: &Instruction, client: &Client) -> Result<Self, DBError> {
         let mut token = Self::load(self.id, &client).await?;
         let state_data_json: Value = match data.append_state_data_json {
             Some(Object(mut update)) => {
@@ -94,13 +94,13 @@ impl Token {
             },
             _ => token.additional_data_json.clone(),
         };
-        let state = NewTokenAppendOnly {
-            token_id: token.id.clone(),
-            transaction_id: transaction.id.clone(),
+        let state = NewTokenStateAppendOnly {
+            token_id: token.token_id.clone(),
+            instruction_id: instruction.id,
             status: data.status.unwrap_or_else(|| token.status.clone()),
             state_data_json,
         };
-        Self::store_append_only_state(state, client).await?;
+        Self::store_append_only_state(&state, client).await?;
         Self::load(token.id, &client).await
     }
 
@@ -112,7 +112,7 @@ impl Token {
     }
 
     /// Find token record by token id )
-    pub async fn find_by_token_id(token_id: TokenID, client: &Client) -> Result<Option<Token>, DBError> {
+    pub async fn find_by_token_id(token_id: &TokenID, client: &Client) -> Result<Option<Token>, DBError> {
         const QUERY: &'static str = "SELECT * FROM tokens_view WHERE token_id = $1";
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let result = client.query_opt(&stmt, &[&token_id]).await?;
@@ -122,12 +122,16 @@ impl Token {
     /// Store append only state
     ///
     /// NOTE: This call will not merge new values provided, they are stored as is
-    pub async fn store_append_only_state(params: NewTokenAppendOnly, client: &Client) -> Result<uuid::Uuid, DBError> {
+    pub async fn store_append_only_state(
+        params: &NewTokenStateAppendOnly,
+        client: &Client,
+    ) -> Result<uuid::Uuid, DBError>
+    {
         const QUERY: &'static str = "
             INSERT INTO token_state_append_only (
                 token_id,
                 state_data_json,
-                transaction_id,
+                instruction_id,
                 status
             ) VALUES ($1, $2, $3, $4) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
@@ -135,7 +139,7 @@ impl Token {
             .query_one(&stmt, &[
                 &params.token_id,
                 &params.state_data_json,
-                &params.transaction_id,
+                &params.instruction_id,
                 &params.status,
             ])
             .await?;
@@ -144,16 +148,38 @@ impl Token {
     }
 }
 
+impl<'a> ToSql for NewTokenStateAppendOnly {
+    accepts!(JSON, JSONB);
+
+    to_sql_checked!();
+
+    fn to_sql(&self, ty: &Type, w: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        json!(self).to_sql(ty, w)
+    }
+}
+
+impl<'a> FromSql<'a> for NewTokenStateAppendOnly {
+    accepts!(JSON, JSONB);
+
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        Ok(serde_json::from_value(
+            Json::<Value>::from_sql(ty, raw).map(|json| json.0)?,
+        )?)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
-        db::models::{TransactionStatus, UpdateContractTransaction},
-        test_utils::{builders::*, test_db_client},
+        db::models::{AssetState, InstructionStatus},
+        test::utils::{
+            builders::{consensus::InstructionBuilder, AssetStateBuilder, TokenBuilder},
+            test_db_client,
+        },
+        types::NodeID,
     };
     use serde_json::json;
-
-    const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
     #[actix_rt::test]
     async fn crud() {
@@ -164,7 +190,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -175,7 +201,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -186,7 +212,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset2.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -203,7 +229,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, NODE_ID).unwrap(),
+            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
             ..NewToken::default()
         };
         Token::insert(params.clone(), &client).await.unwrap();
@@ -221,12 +247,13 @@ mod test {
         .build(&client)
         .await
         .unwrap();
+        let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
         assert_eq!(json!(initial_data), token.initial_data_json);
         assert_eq!(json!(initial_data), token.additional_data_json);
 
-        let transaction = ContractTransactionBuilder {
-            asset_state_id: Some(token.asset_state_id),
-            status: TransactionStatus::Commit,
+        let instruction = InstructionBuilder {
+            asset_id: Some(asset.asset_id.clone()),
+            status: InstructionStatus::Commit,
             ..Default::default()
         }
         .build(&client)
@@ -235,11 +262,11 @@ mod test {
         let empty_value: Option<String> = None;
         let state_data_json = json!({"value": empty_value.clone(), "value2": 8, "value3": 2});
         Token::store_append_only_state(
-            NewTokenAppendOnly {
-                token_id: token.id,
+            &NewTokenStateAppendOnly {
+                token_id: token.token_id,
                 state_data_json: state_data_json.clone(),
                 status: token.status,
-                transaction_id: transaction.id.clone(),
+                instruction_id: instruction.id.clone(),
             },
             &client,
         )
@@ -250,11 +277,11 @@ mod test {
 
         let state_data_json = json!({"value": false, "value3": empty_value.clone()});
         Token::store_append_only_state(
-            NewTokenAppendOnly {
-                token_id: token.id,
+            &NewTokenStateAppendOnly {
+                token_id: token.token_id,
                 state_data_json: state_data_json.clone(),
                 status: token.status,
-                transaction_id: transaction.id,
+                instruction_id: instruction.id,
             },
             &client,
         )
@@ -262,29 +289,6 @@ mod test {
         .unwrap();
         let token = Token::load(token.id, &client).await.unwrap();
         assert_eq!(state_data_json.clone(), token.additional_data_json);
-
-        let transaction = ContractTransactionBuilder {
-            asset_state_id: Some(token.asset_state_id),
-            status: TransactionStatus::PreCommit,
-            ..Default::default()
-        }
-        .build(&client)
-        .await
-        .unwrap();
-        Token::store_append_only_state(
-            NewTokenAppendOnly {
-                token_id: token.id,
-                state_data_json: json!({"value": true, "value3": 1}),
-                status: TokenStatus::Retired,
-                transaction_id: transaction.id,
-            },
-            &client,
-        )
-        .await
-        .unwrap();
-        let token = Token::load(token.id, &client).await.unwrap();
-        assert_eq!(token.additional_data_json, state_data_json);
-        assert_eq!(token.status, TokenStatus::Active);
     }
 
     #[actix_rt::test]
@@ -297,8 +301,9 @@ mod test {
         .build(&client)
         .await
         .unwrap();
-        let transaction = ContractTransactionBuilder {
-            asset_state_id: Some(token.asset_state_id),
+        let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
+        let instruction = InstructionBuilder {
+            asset_id: Some(asset.asset_id),
             ..Default::default()
         }
         .build(&client)
@@ -306,7 +311,7 @@ mod test {
         .unwrap();
 
         let update = UpdateToken::default();
-        let token2 = token.clone().update(update, &transaction, &client).await.unwrap();
+        let token2 = token.clone().update(update, &instruction, &client).await.unwrap();
         assert_eq!(token.id, token2.id);
         assert_eq!(token.status, token2.status);
         assert_eq!(token.additional_data_json, token2.additional_data_json);
@@ -316,16 +321,7 @@ mod test {
             append_state_data_json: Some(json!({"append_initial": true})),
             ..UpdateToken::default()
         };
-        let token = token.update(update, &transaction, &client).await.unwrap();
-        assert_eq!(token.additional_data_json, token2.additional_data_json);
-        assert_eq!(token.status, token2.status);
-
-        let commit = UpdateContractTransaction {
-            status: Some(TransactionStatus::Commit),
-            ..Default::default()
-        };
-        let transaction = transaction.update(commit, &client).await.unwrap();
-        let token = Token::load(token.id, &client).await.unwrap();
+        let token = token.update(update, &instruction, &client).await.unwrap();
         assert_eq!(
             token.additional_data_json,
             json!({"value": true, "value2": 4, "append_initial": true})
@@ -336,7 +332,7 @@ mod test {
             append_state_data_json: Some(json!({"append_additional": true})),
             ..UpdateToken::default()
         };
-        let token = token.update(update, &transaction, &client).await.unwrap();
+        let token = token.update(update, &instruction, &client).await.unwrap();
         assert_eq!(
             token.additional_data_json,
             json!({"value": true, "value2": 4, "append_initial": true, "append_additional": true})
@@ -349,7 +345,7 @@ mod test {
         };
         let token2 = token
             .clone()
-            .update(update.clone(), &transaction, &client)
+            .update(update.clone(), &instruction, &client)
             .await
             .unwrap();
         assert_eq!(token2.status, TokenStatus::Retired);

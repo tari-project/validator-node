@@ -1,6 +1,6 @@
 use super::WalletStoreBuilder;
 use crate::{
-    test_utils::{actix_test_pool, build_test_config},
+    test::utils::{actix_test_pool, build_test_config},
     types::{AssetID, TokenID},
 };
 use actix_web::test::TestRequest;

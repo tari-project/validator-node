@@ -10,10 +10,11 @@
 pub mod api;
 pub mod cli;
 pub mod config;
+pub mod consensus;
 pub mod db;
 pub mod errors;
 pub mod template;
 pub mod types;
 pub mod wallet;
 
-pub mod test_utils;
+pub mod test;

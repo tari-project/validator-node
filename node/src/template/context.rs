@@ -4,14 +4,13 @@
 
 use super::errors::TemplateError;
 use crate::{
-    db::{
-        models::{
-            tokens::{NewToken, Token, UpdateToken},
-            transactions::{ContractTransaction, NewContractTransaction, UpdateContractTransaction},
-            AssetState,
-        },
-        utils::errors::DBError,
+    api::errors::{ApiError, ApplicationError},
+    db::models::{
+        consensus::instructions::{Instruction, NewInstruction, UpdateInstruction},
+        tokens::{NewToken, Token, UpdateToken},
+        AssetState,
     },
+    db::utils::errors::DBError,
     processing_err,
     types::{AssetID, Pubkey, TemplateID, TokenID},
     wallet::{NodeWallet, WalletStore},
@@ -38,7 +37,7 @@ pub struct TemplateContext<'a> {
     pub(crate) wallets: Arc<Mutex<WalletStore>>,
     pub(crate) address: Multiaddr,
     pub(crate) db_transaction: Option<Transaction<'a>>,
-    pub(crate) contract_transaction: Option<ContractTransaction>,
+    pub(crate) instruction: Option<Instruction>,
 }
 
 impl<'a> TemplateContext<'a> {
@@ -48,10 +47,10 @@ impl<'a> TemplateContext<'a> {
     }
 
     pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, TemplateError> {
-        if let Some(transaction) = self.contract_transaction.as_ref() {
-            Ok(token.update(data, transaction, &self.client).await?)
+        if let Some(instruction) = self.instruction.as_ref() {
+            Ok(token.update(data, instruction, &self.client).await?)
         } else {
-            return processing_err!("Failed to update token {} without ContractTransaction", token.token_id);
+            return processing_err!("Failed to update token {} without Instruction", token.token_id);
         }
     }
 
@@ -63,21 +62,22 @@ impl<'a> TemplateContext<'a> {
         Ok(AssetState::find_by_asset_id(id, &self.client).await?)
     }
 
-    /// Creates [ContractTransaction]
+    /// Creates [Instruction]
     // TODO: move this somewhere outside of reach of contract code...
-    pub async fn create_transaction(&mut self, data: NewContractTransaction) -> Result<(), TemplateError> {
-        self.contract_transaction = Some(ContractTransaction::insert(data, &self.client).await?);
+    pub async fn create_instruction(&mut self, data: NewInstruction) -> Result<(), TemplateError> {
+        self.instruction = Some(Instruction::insert(data, &self.client).await?);
+        // TODO: broadcast instruction to network
         Ok(())
     }
 
-    /// Updates result and status of [ContractTransaction]
+    /// Updates result and status of [Instruction]
     // TODO: move this somewhere outside of reach of contract code...
-    pub async fn update_transaction(&mut self, data: UpdateContractTransaction) -> Result<(), TemplateError> {
-        if let Some(transaction) = self.contract_transaction.take() {
-            self.contract_transaction = Some(transaction.update(data, &self.client).await?);
+    pub async fn update_instruction(&mut self, data: UpdateInstruction) -> Result<(), TemplateError> {
+        if let Some(instruction) = self.instruction.take() {
+            self.instruction = Some(instruction.update(data, &self.client).await?);
             Ok(())
         } else {
-            return processing_err!("Failed to update ContractTransaction {:?}: transaction not found", data);
+            return processing_err!("Failed to update Instruction {:?}: instruction not found", data);
         }
     }
 
@@ -87,11 +87,11 @@ impl<'a> TemplateContext<'a> {
     }
 
     pub async fn create_temp_wallet(&mut self) -> Result<Pubkey, TemplateError> {
-        if self.contract_transaction.is_none() {
+        if self.instruction.is_none() {
             return processing_err!("Failed to create temporary wallet for Contract: ContractTransaction not found");
         }
         let transaction = self.client.transaction().await.map_err(DBError::from)?;
-        let wallet_name = self.contract_transaction.as_ref().unwrap().id.to_string();
+        let wallet_name = self.instruction.as_ref().unwrap().id.to_string();
         let wallet = NodeWallet::new(self.address.clone(), wallet_name)?;
         let wallet = self.wallets.lock().await.add(wallet, &transaction).await?;
         transaction.commit().await.map_err(DBError::from)?;
@@ -99,11 +99,11 @@ impl<'a> TemplateContext<'a> {
     }
 }
 
-/// Extract [ContractTransaction] from TemplateContext
-impl<'a> From<TemplateContext<'a>> for Option<ContractTransaction> {
+/// Extract [Instruction] from TemplateContext
+impl<'a> From<TemplateContext<'a>> for Option<Instruction> {
     #[inline]
-    fn from(ctx: TemplateContext<'a>) -> Option<ContractTransaction> {
-        ctx.contract_transaction
+    fn from(ctx: TemplateContext<'a>) -> Option<Instruction> {
+        ctx.instruction
     }
 }
 
@@ -136,9 +136,9 @@ impl<'a> AssetTemplateContext<'a> {
     }
 }
 
-impl<'a> From<AssetTemplateContext<'a>> for Option<ContractTransaction> {
+impl<'a> From<AssetTemplateContext<'a>> for Option<Instruction> {
     #[inline]
-    fn from(ctx: AssetTemplateContext<'a>) -> Option<ContractTransaction> {
+    fn from(ctx: AssetTemplateContext<'a>) -> Option<Instruction> {
         ctx.context.into()
     }
 }
@@ -174,9 +174,9 @@ impl<'a> TokenTemplateContext<'a> {
     }
 }
 
-impl<'a> From<TokenTemplateContext<'a>> for Option<ContractTransaction> {
+impl<'a> From<TokenTemplateContext<'a>> for Option<Instruction> {
     #[inline]
-    fn from(ctx: TokenTemplateContext<'a>) -> Option<ContractTransaction> {
+    fn from(ctx: TokenTemplateContext<'a>) -> Option<Instruction> {
         ctx.context.into()
     }
 }

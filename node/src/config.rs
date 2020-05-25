@@ -1,4 +1,7 @@
-use crate::api::server::{ActixConfig, CorsConfig};
+use crate::{
+    api::config::{ActixConfig, CorsConfig},
+    consensus::ConsensusConfig,
+};
 use config::{Config, Environment, Source};
 use deadpool_postgres::config::Config as DeadpoolConfig;
 use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
@@ -20,6 +23,8 @@ pub struct NodeConfig {
     pub wallets_keys_path: std::path::PathBuf,
     /// Node's public address. Defaults to [tari.public_address]
     pub public_address: Option<multiaddr::Multiaddr>,
+    /// will load from [validator.consensus], overloaded with CONSENSUS_* env vars
+    pub consensus: ConsensusConfig,
 }
 
 impl NetworkConfigPath for NodeConfig {
@@ -35,9 +40,11 @@ impl NodeConfig {
             let actix = Environment::with_prefix("ACTIX").collect()?;
             let pg = Environment::with_prefix("PG").collect()?;
             let cors = Environment::with_prefix("CORS").collect()?;
+            let consensus = Environment::with_prefix("CONSENSUS").collect()?;
             config.set("validator.actix", actix)?;
             config.set("validator.postgres", pg)?;
             config.set("validator.cors", cors)?;
+            config.set("validator.consensus", consensus)?;
         }
         if config.get_str("validator.public_address").is_err() {
             config.set("validator.public_address", global.public_address.to_string())?;
@@ -57,6 +64,7 @@ fn default_postgres_config<S: Serializer>(_: &DeadpoolConfig, s: S) -> Result<S:
 mod test {
     use super::*;
     use crate::{api::server::*, test_utils::build_test_global_config};
+    use crate::api::config::actix::{DEFAULT_ADDR, DEFAULT_PORT};
     use config::{Config, File, FileFormat::Toml};
 
     lazy_static::lazy_static! {
@@ -81,6 +89,7 @@ mod test {
     actix = { workers = 3, port = 9999 }
     postgres = { host = "localhost", user = "postgres" }
     cors = { allowed_origins = "https://www.tari.com"}
+    consensus = { workers = 10 }
     "#;
 
     #[test]
@@ -99,6 +108,7 @@ mod test {
         assert_eq!(cfg.postgres.user, Some("postgres".into()));
         assert_eq!(cfg.postgres.password, None);
         assert_eq!(cfg.cors.allowed_origins, "https://www.tari.com".to_string());
+        assert_eq!(cfg.consensus.workers, Some(10));
         Ok(())
     }
 

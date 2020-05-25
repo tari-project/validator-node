@@ -8,8 +8,8 @@ use super::{
     TokenTemplateContext,
 };
 use crate::{
-    db::models::{NewToken, Token, TokenStatus, UpdateToken},
-    types::{Pubkey, TemplateID, TokenID},
+    db::models::{InstructionStatus, NewToken, Token, TokenStatus, UpdateToken},
+    types::{InstructionID, NodeID, Pubkey, TemplateID, TokenID},
     validation_err,
 };
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,7 @@ mod expanded_macros {
     use super::*;
     use crate::{
         api::errors::{ApiError, ApplicationError},
-        db::models::transactions::*,
+        db::models::consensus::instructions::*,
     };
     use actix_web::web;
     use log::info;
@@ -139,47 +139,51 @@ mod expanded_macros {
     }
 
     // wrapper will convert from actix types into Rust,
-    // create transactions writing RPC params,
-    // returning transaction
+    // create instructions writing RPC params,
+    // returning instruction
     async fn issue_tokens_actix<'a>(
         params: web::Path<AssetCallParams>,
         data: web::Json<IssueTokensPayload>,
         mut context: TemplateContext<'a>,
-    ) -> Result<web::Json<Option<ContractTransaction>>, ApiError>
+    ) -> Result<web::Json<Option<Instruction>>, ApiError>
     {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
-        let asset = match context.load_asset(asset_id).await? {
+        let asset = match context.load_asset(&asset_id).await? {
             None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
             Some(asset) => asset,
         };
         let params = data.into_inner();
-        // start transaction
-        let transaction = NewContractTransaction {
-            asset_state_id: asset.id,
+        // start instruction
+        let instruction = NewInstruction {
+            asset_id,
             template_id: context.template_id.clone(),
             params: serde_json::to_value(&params)
                 .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
             contract_name: "issue_tokens".to_string(),
-            ..NewContractTransaction::default()
+            ..NewInstruction::default()
         };
-        context.create_transaction(transaction).await?;
+        context.create_instruction(instruction).await?;
         // create asset context
         let mut context = AssetTemplateContext::new(context, asset.clone());
 
         // TODO: move following outside of actix request lifecycle
-        // run contract
-        let result = issue_tokens(&context, params.token_ids).await?;
-        // update transaction after contract executed
+        // TODO: instruction needs to be able to run in an encapsulated way and return NewTokenStateAppendOnly and
+        // NewAssetStateAppendOnly vecs       as the consensus workers need to be able to run an instruction set
+        // and confirm the resulting state matches run contract
+        let result = issue_tokens(&context, params.user_pubkey, params.token_ids).await?;
+        // update instruction after contract executed
         let result = serde_json::to_value(result).map_err(|err| {
             ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
         })?;
-        let data = UpdateContractTransaction {
-            result: Some(result),
-            status: Some(TransactionStatus::Commit),
+        let data = UpdateInstruction {
+            // TODO: Instruction should not be run at this point in consensus
+            // result: Some(result),
+            status: Some(InstructionStatus::Commit),
+            ..UpdateInstruction::default()
         };
-        context.update_transaction(data).await?;
-        // There must be transaction - otherwise we would fail on previous call
+        context.update_instruction(data).await?;
+        // There must be instruction - otherwise we would fail on previous call
         Ok(web::Json(context.into()))
     }
     /////// end of impl #[contract]

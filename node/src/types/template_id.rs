@@ -17,7 +17,7 @@ const CONFIDENTIAL_MASK: u16 = 2;
 /// Tari uses templates to define the behaviour for its smart contracts.
 /// TemplateID identifies the type of digital asset being created and smart contracts available.
 /// [RFC-0311](https://rfc.tari.com/RFC-0311_AssetTemplates.html#template-id) entity
-#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, Eq)]
 #[serde(from = "u64", into = "u64")]
 pub struct TemplateID {
     template_type: u32,
@@ -175,7 +175,7 @@ impl<'a> ToSql for TemplateID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::{load_env, test_db_client};
+    use crate::test::utils::{load_env, test_db_client};
 
     const BETA_MASK_TEST: u64 = 1 << 48;
     const CONFIDENTIAL_MASK_TEST: u64 = 1 << 49;

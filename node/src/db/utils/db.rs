@@ -61,7 +61,7 @@ pub async fn reset_database(config: NodeConfig) -> Result<(), DBError> {
 #[cfg(test)]
 mod test {
     use super::reset_database;
-    use crate::test_utils::{build_test_config, load_env, test_pool};
+    use crate::test::utils::{build_test_config, load_env, test_pool};
 
     #[actix_rt::test]
     async fn test_reset_database() -> anyhow::Result<()> {

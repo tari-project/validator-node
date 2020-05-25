@@ -123,7 +123,7 @@ impl<'a> FromRequest for TemplateContext<'a> {
                     wallets,
                     address,
                     db_transaction: None,
-                    contract_transaction: None,
+                    instruction: None,
                 }),
                 Err(err) => Err(DBError::from(err).into()),
             }
@@ -137,23 +137,23 @@ mod test {
     use super::*;
     use crate::{
         db::models::tokens::*,
-        test_utils::{actix::TestAPIServer, builders::*, test_db_client},
+        test::utils::{actix::TestAPIServer, builders::*, test_db_client},
+        types::NodeID,
     };
     use actix_web::{http::StatusCode, web, HttpResponse, Result};
-
-    const NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
 
     #[actix_rt::test]
     async fn requests() {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
-        let tokens = (0..3)
-            .map(|_| TokenID::new(&asset.asset_id, NODE_ID).unwrap())
+        let tokens: Vec<NewToken> = (0..3)
+            .map(|_| TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap())
             .map(|token_id| NewToken {
                 asset_state_id: asset.id,
                 token_id,
                 ..NewToken::default()
-            });
+            })
+            .collect();
 
         let request = HttpRequestBuilder::default()
             .asset_call(&asset.asset_id, "test_contract")
