@@ -55,11 +55,11 @@ impl<'a> TemplateContext<'a> {
     }
 
     pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, TemplateError> {
-        Ok(Token::find_by_token_id(id, &self.client).await?)
+        Ok(Token::find_by_token_id(&id, &self.client).await?)
     }
 
     pub async fn load_asset(&self, id: AssetID) -> Result<Option<AssetState>, TemplateError> {
-        Ok(AssetState::find_by_asset_id(id, &self.client).await?)
+        Ok(AssetState::find_by_asset_id(&id, &self.client).await?)
     }
 
     /// Creates [Instruction]

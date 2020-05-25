@@ -81,7 +81,7 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
             use super::*;
             use #tari_validator_node::{
                 api::errors::{ApiError, ApplicationError},
-                db::models::transactions::*,
+                db::models::consensus::instructions::*,
                 template::actix::*,
             };
             use log::info;
@@ -172,16 +172,16 @@ fn generate_token_contract_body(fn_name: &syn::Ident, fn_args: &[Box<Pat>]) -> p
         };
         let params = data.into_inner();
         // create transaction
-        let transaction = NewContractTransaction {
-            asset_state_id: asset.id,
+        let instruction = NewInstruction {
+            asset_id: asset.asset_id,
             token_id: Some(token.id),
             template_id: context.template_id.clone(),
             params: serde_json::to_value(&params)
                 .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
             contract_name: "transfer_token".to_string(),
-            ..NewContractTransaction::default()
+            ..NewInstruction::default()
         };
-        context.create_transaction(transaction).await?;
+        context.create_instruction(transaction).await?;
         // create context
         let mut context = TokenTemplateContext::new(context, asset.clone(), token.clone());
 
@@ -196,7 +196,7 @@ fn generate_token_contract_body(fn_name: &syn::Ident, fn_args: &[Box<Pat>]) -> p
             result: Some(result),
             status: Some(TransactionStatus::Commit),
         };
-        context.update_transaction(data).await?;
+        context.update_instruction(data).await?;
         // There must be transaction - otherwise we would fail on previous call
         return Ok(web::Json(context.into()));
     }

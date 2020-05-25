@@ -149,7 +149,7 @@ mod expanded_macros {
     {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
-        let asset = match context.load_asset(&asset_id).await? {
+        let asset = match context.load_asset(asset_id.clone()).await? {
             None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
             Some(asset) => asset,
         };
@@ -171,7 +171,7 @@ mod expanded_macros {
         // TODO: instruction needs to be able to run in an encapsulated way and return NewTokenStateAppendOnly and
         // NewAssetStateAppendOnly vecs       as the consensus workers need to be able to run an instruction set
         // and confirm the resulting state matches run contract
-        let result = issue_tokens(&context, params.user_pubkey, params.token_ids).await?;
+        let result = issue_tokens(&context, params.token_ids).await?;
         // update instruction after contract executed
         let result = serde_json::to_value(result).map_err(|err| {
             ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
@@ -217,8 +217,8 @@ mod expanded_macros {
 mod test {
     use super::*;
     use crate::{
-        db::models::transactions::*,
-        test_utils::{actix::TestAPIServer, builders::*, test_db_client},
+        db::models::consensus::instructions::*,
+        test::utils::{actix::TestAPIServer, builders::*, test_db_client},
         types::AssetID,
     };
     use serde_json::json;
@@ -282,9 +282,9 @@ mod test {
             .unwrap();
 
         assert!(resp.status().is_success());
-        let trans: Option<ContractTransaction> = resp.json().await.unwrap();
+        let trans: Option<Instruction> = resp.json().await.unwrap();
         let trans = trans.unwrap();
-        assert_eq!(trans.status, TransactionStatus::Commit);
+        assert_eq!(trans.status, InstructionStatus::Commit);
         assert_eq!(trans.result.as_array().unwrap().len(), 10);
     }
 }

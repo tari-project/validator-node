@@ -1,5 +1,11 @@
 use super::*;
-use crate::{db::models::*, template::*, types::*, wallet::WalletStore};
+use crate::{
+    db::models::*,
+    db::models::consensus::instructions::*,
+    template::*,
+    types::*,
+    wallet::WalletStore
+};
 use deadpool_postgres::Client;
 use multiaddr::Multiaddr;
 use serde_json::{json, Value};
@@ -48,17 +54,17 @@ impl AssetContextBuilder {
             template_id: asset.asset_id.template_id(),
             wallets: self.wallets,
             address: self.address,
-            contract_transaction: None,
+            instruction: None,
             db_transaction: None,
         };
-        let transaction = NewContractTransaction {
-            asset_state_id: asset.id,
+        let instruction = NewInstruction {
+            asset_id: asset.asset_id.clone(),
             template_id: context.template_id.clone(),
             params: self.params,
             contract_name: self.contract_name,
-            ..NewContractTransaction::default()
+            ..NewInstruction::default()
         };
-        context.create_transaction(transaction).await?;
+        context.create_instruction(instruction).await?;
 
         Ok(AssetTemplateContext::new(context, asset))
     }
@@ -108,17 +114,17 @@ impl TokenContextBuilder {
             template_id: asset.asset_id.template_id(),
             wallets: self.wallets,
             address: self.address,
-            contract_transaction: None,
+            instruction: None,
             db_transaction: None,
         };
-        let transaction = NewContractTransaction {
-            asset_state_id: token.asset_state_id,
+        let instruction = NewInstruction {
+            asset_id: token.token_id.asset_id(),
             template_id: context.template_id.clone(),
             params: self.params,
             contract_name: self.contract_name,
-            ..NewContractTransaction::default()
+            ..NewInstruction::default()
         };
-        context.create_transaction(transaction).await?;
+        context.create_instruction(instruction).await?;
 
         Ok(TokenTemplateContext::new(context, asset, token))
     }

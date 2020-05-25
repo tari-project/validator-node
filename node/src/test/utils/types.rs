@@ -9,9 +9,9 @@ impl AssetID {
 }
 
 impl TokenID {
-    const TEST_NODE_ID: [u8; 6] = [0, 1, 2, 3, 4, 5];
+    const TEST_NODE_ID: crate::types::NodeID = crate::types::NodeID([0, 1, 2, 3, 4, 5]);
 
     pub fn test_from_asset(asset_id: &AssetID) -> Self {
-        TokenID::new(asset_id, Self::TEST_NODE_ID).unwrap()
+        TokenID::new(asset_id, &Self::TEST_NODE_ID).unwrap()
     }
 }
