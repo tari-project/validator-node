@@ -103,7 +103,7 @@ impl WalletStore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::test_db_client;
+    use crate::test::utils::test_db_client;
     use multiaddr::Multiaddr;
     use tari_core::tari_utilities::hex::Hex;
     use tari_test_utils::random::string;

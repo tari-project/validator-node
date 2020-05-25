@@ -7,7 +7,8 @@
 
 // TODO: think - should we store our IDs as base58 perhaps in database rather than our string?
 
-use super::{errors::TypeError, AssetID};
+use super::{errors::TypeError, AssetID, NodeID};
+use crate::types::identity::generate_uuid_v1;
 use bytes::BytesMut;
 use postgres_protocol::types::text_from_sql;
 use serde::{Deserialize, Serialize};
@@ -54,16 +55,6 @@ impl TryFrom<String> for TokenID {
     }
 }
 
-use chrono::Local;
-use uuid::{
-    v1::{Context, Timestamp},
-    Uuid,
-};
-
-lazy_static::lazy_static! {
-    pub static ref CONTEXT: Context = Context::new(1);
-}
-
 impl TokenID {
     /// TokenID stored as BPCHAR, it might change in the future
     pub const SQL_TYPE: Type = Type::BPCHAR;
@@ -71,13 +62,10 @@ impl TokenID {
     /// Generate TokenID for AssetID on a node
     ///
     /// Cross-node uniqueness guaranteed if node_id uniquelly identifies process
-    pub fn new(asset_id: &AssetID, node_id: [u8; 6]) -> Result<Self, TypeError> {
-        let time = Local::now();
-        let ts = Timestamp::from_unix(&*CONTEXT, time.timestamp() as u64, time.timestamp_subsec_nanos());
-        let uid = Uuid::new_v1(ts, &node_id)?;
+    pub fn new(asset_id: &AssetID, node_id: &NodeID) -> Result<Self, TypeError> {
         Ok(Self {
             asset_id: asset_id.clone(),
-            uid,
+            uid: generate_uuid_v1(node_id)?,
         })
     }
 
@@ -114,7 +102,7 @@ impl<'a> ToSql for TokenID {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::test_db_client;
+    use crate::test::utils::test_db_client;
 
     #[test]
     fn token_default() {
@@ -155,7 +143,7 @@ mod test {
     fn new_tokens_unique() {
         let mut tokens = vec![];
         for _ in 0..100 {
-            let token = TokenID::new(&AssetID::default(), [0, 1, 2, 3, 4, 5]).unwrap();
+            let token = TokenID::new(&AssetID::default(), &NodeID([0, 1, 2, 3, 4, 5])).unwrap();
             for past in tokens.iter() {
                 assert_ne!(token, *past);
             }

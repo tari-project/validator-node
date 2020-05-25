@@ -77,7 +77,7 @@ impl Wallet {
 #[cfg(test)]
 mod test {
     use super::{NewWallet, SelectWallet, Wallet};
-    use crate::test_utils::{load_env, test_db_client};
+    use crate::test::utils::{load_env, test_db_client};
 
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
