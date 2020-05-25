@@ -1,15 +1,15 @@
 use super::{
     actix::*,
     errors::TemplateError,
-    AssetTemplateContext,
+    AssetInstructionContext,
     Contracts,
     Template,
     TemplateContext,
-    TokenTemplateContext,
+    TokenInstructionContext,
 };
 use crate::{
-    db::models::{InstructionStatus, NewToken, Token, TokenStatus, UpdateToken},
-    types::{InstructionID, NodeID, Pubkey, TemplateID, TokenID},
+    db::models::{NewToken, Token, TokenStatus, UpdateToken},
+    types::{Pubkey, TemplateID, TokenID},
     validation_err,
 };
 use serde::{Deserialize, Serialize};
@@ -29,8 +29,8 @@ pub enum AssetContracts {
 }
 
 //#[contract(asset)]
-async fn issue_tokens<'a>(
-    context: &AssetTemplateContext<'a>,
+async fn issue_tokens(
+    context: &AssetInstructionContext,
     token_ids: Vec<TokenID>,
 ) -> Result<Vec<Token>, TemplateError>
 {
@@ -75,8 +75,8 @@ pub enum TokenContracts {
 ///
 /// # Returns:
 /// - Temporary wallet pubkey, where user need to transfer price amount of tari's
-async fn sell_token<'a>(
-    context: &mut TokenTemplateContext<'a>,
+async fn sell_token(
+    context: &mut TokenInstructionContext,
     price: u64,
     user_pubkey: Pubkey,
 ) -> Result<Pubkey, TemplateError>
@@ -90,9 +90,9 @@ async fn sell_token<'a>(
 }
 
 #[tari_template_macro::contract(token, local_use)]
-// With token contract TokenTemplateContext is always passed as first argument
-async fn transfer_token<'a>(
-    context: &mut TokenTemplateContext<'a>,
+// With token contract TokenInstructionContext is always passed as first argument
+async fn transfer_token(
+    context: &mut TokenInstructionContext,
     user_pubkey: Pubkey,
 ) -> Result<Token, TemplateError>
 {
@@ -141,50 +141,28 @@ mod expanded_macros {
     // wrapper will convert from actix types into Rust,
     // create instructions writing RPC params,
     // returning instruction
-    async fn issue_tokens_actix<'a>(
+    async fn issue_tokens_actix(
         params: web::Path<AssetCallParams>,
         data: web::Json<IssueTokensPayload>,
-        mut context: TemplateContext<'a>,
-    ) -> Result<web::Json<Option<Instruction>>, ApiError>
+        context: TemplateContext,
+    ) -> Result<web::Json<Instruction>, ApiError>
     {
         // extract and transform parameters
-        let asset_id = params.asset_id(&context.template_id)?;
-        let asset = match context.load_asset(asset_id.clone()).await? {
-            None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
-            Some(asset) => asset,
-        };
-        let params = data.into_inner();
+        let asset_id = params.asset_id(context.template_id())?;
+        let data = data.into_inner();
         // start instruction
         let instruction = NewInstruction {
             asset_id,
-            template_id: context.template_id.clone(),
-            params: serde_json::to_value(&params)
+            template_id: context.template_id(),
+            params: serde_json::to_value(&data)
                 .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
             contract_name: "issue_tokens".to_string(),
+            status: InstructionStatus::Scheduled,
             ..NewInstruction::default()
         };
-        context.create_instruction(instruction).await?;
-        // create asset context
-        let mut context = AssetTemplateContext::new(context, asset.clone());
-
-        // TODO: move following outside of actix request lifecycle
-        // TODO: instruction needs to be able to run in an encapsulated way and return NewTokenStateAppendOnly and
-        // NewAssetStateAppendOnly vecs       as the consensus workers need to be able to run an instruction set
-        // and confirm the resulting state matches run contract
-        let result = issue_tokens(&context, params.token_ids).await?;
-        // update instruction after contract executed
-        let result = serde_json::to_value(result).map_err(|err| {
-            ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
-        })?;
-        let data = UpdateInstruction {
-            // TODO: Instruction should not be run at this point in consensus
-            // result: Some(result),
-            status: Some(InstructionStatus::Commit),
-            ..UpdateInstruction::default()
-        };
-        context.update_instruction(data).await?;
+        let instruction = context.create_instruction(instruction).await?;
         // There must be instruction - otherwise we would fail on previous call
-        Ok(web::Json(context.into()))
+        Ok(web::Json(instruction))
     }
     /////// end of impl #[contract]
 
@@ -218,20 +196,19 @@ mod test {
     use super::*;
     use crate::{
         db::models::consensus::instructions::*,
-        test::utils::{actix::TestAPIServer, builders::*, test_db_client},
+        test::utils::{actix::TestAPIServer, builders::*, actix_test_pool, test_db_client},
         types::AssetID,
     };
     use serde_json::json;
 
     #[actix_rt::test]
     async fn issue_tokens_positive() {
-        let (client, _lock) = test_db_client().await;
         let template_id = SingleUseTokenTemplate::id();
         let context = AssetContextBuilder {
             template_id,
             ..Default::default()
         }
-        .build(client)
+        .build(actix_test_pool())
         .await
         .unwrap();
         let asset_id = context.asset.asset_id.clone();
@@ -245,13 +222,12 @@ mod test {
 
     #[actix_rt::test]
     async fn issue_tokens_negative() {
-        let (client, _lock) = test_db_client().await;
         let template_id = SingleUseTokenTemplate::id();
         let context = AssetContextBuilder {
             template_id,
             ..Default::default()
         }
-        .build(client)
+        .build(actix_test_pool())
         .await
         .unwrap();
         let asset_id = AssetID::default();
@@ -282,8 +258,7 @@ mod test {
             .unwrap();
 
         assert!(resp.status().is_success());
-        let trans: Option<Instruction> = resp.json().await.unwrap();
-        let trans = trans.unwrap();
-        assert_eq!(trans.status, InstructionStatus::Commit);
+        let trans: Instruction = resp.json().await.unwrap();
+        assert_eq!(trans.status, InstructionStatus::Scheduled);
     }
 }

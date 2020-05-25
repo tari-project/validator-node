@@ -48,7 +48,7 @@ impl InstructionBuilder {
 
         let id = match self.id {
             Some(id) => id,
-            None => InstructionID::new(self.initiating_node_id).await?,
+            None => InstructionID::new(self.initiating_node_id)?,
         };
 
         let params = NewInstruction {

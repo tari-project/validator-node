@@ -1,0 +1,8 @@
+stateDiagram-v2
+    [*] --> Scheduled: RPC call
+    Scheduled --> Processing: TemplateRunner
+    Processing --> Pending: TemplateRunner
+    Pending --> Failed: ConsensusWorker
+    Pending --> Commit: ConsensusWorker
+    Failed --> [*]
+    Commit --> [*]

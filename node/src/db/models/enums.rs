@@ -75,7 +75,7 @@ string_enum! { TokenStatus [Active, Retired]}
 #[doc(hide)]
 string_enum! { ProposalStatus [Pending, Signed, Invalid, Declined, Finalized]}
 #[doc(hide)]
-string_enum! { InstructionStatus [Pending, Invalid, Commit]}
+string_enum! { InstructionStatus [Scheduled, Processing, Pending, Invalid, Commit]}
 #[doc(hide)]
 string_enum! { SignedProposalStatus [Pending, Invalid, Validated]}
 #[doc(hide)]

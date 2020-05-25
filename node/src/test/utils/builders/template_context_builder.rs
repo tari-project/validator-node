@@ -5,7 +5,7 @@ use crate::{
     types::*,
     wallet::WalletStore,
 };
-use deadpool_postgres::Client;
+use deadpool_postgres::Pool;
 use multiaddr::Multiaddr;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -34,11 +34,12 @@ impl Default for AssetContextBuilder {
 }
 
 impl AssetContextBuilder {
-    pub async fn build<'a>(self, client: Client) -> anyhow::Result<AssetTemplateContext<'a>> {
+    pub async fn build<'a>(self, pool: Arc<Pool>) -> anyhow::Result<AssetInstructionContext> {
         let asset = match self.asset {
             Some(asset) => asset,
             None => {
                 let asset_id = AssetID::test_from_template(self.template_id);
+                let client = pool.get().await?;
                 AssetStateBuilder {
                     asset_id,
                     ..Default::default()
@@ -48,24 +49,24 @@ impl AssetContextBuilder {
             },
         };
 
-        let mut context = TemplateContext {
-            client,
+        let context = TemplateContext {
+            pool,
             template_id: asset.asset_id.template_id(),
             wallets: self.wallets,
             address: self.address,
-            instruction: None,
-            db_transaction: None,
         };
         let instruction = NewInstruction {
             asset_id: asset.asset_id.clone(),
             template_id: context.template_id.clone(),
             params: self.params,
             contract_name: self.contract_name,
+            status: InstructionStatus::Scheduled,
             ..NewInstruction::default()
         };
-        context.create_instruction(instruction).await?;
+        let instruction = context.create_instruction(instruction).await?;
+        let context = context.instruction_context(instruction.id).await?;
 
-        Ok(AssetTemplateContext::new(context, asset))
+        Ok(AssetInstructionContext::new(context, asset))
     }
 }
 
@@ -92,7 +93,8 @@ impl Default for TokenContextBuilder {
 }
 
 impl TokenContextBuilder {
-    pub async fn build<'a>(self, client: Client) -> anyhow::Result<TokenTemplateContext<'a>> {
+    pub async fn build<'a>(self, pool: Arc<Pool>) -> anyhow::Result<TokenInstructionContext> {
+        let client = pool.get().await?;
         let token = match self.token {
             Some(token) => token,
             None => {
@@ -108,23 +110,23 @@ impl TokenContextBuilder {
         };
         let asset = AssetState::load(token.asset_state_id, &client).await?;
 
-        let mut context = TemplateContext {
-            client,
+        let context = TemplateContext {
+            pool,
             template_id: asset.asset_id.template_id(),
             wallets: self.wallets,
             address: self.address,
-            instruction: None,
-            db_transaction: None,
         };
         let instruction = NewInstruction {
             asset_id: token.token_id.asset_id(),
             template_id: context.template_id.clone(),
             params: self.params,
             contract_name: self.contract_name,
+            status: InstructionStatus::Scheduled,
             ..NewInstruction::default()
         };
-        context.create_instruction(instruction).await?;
+        let instruction = context.create_instruction(instruction).await?;
+        let context = context.instruction_context(instruction.id).await?;
 
-        Ok(TokenTemplateContext::new(context, asset, token))
+        Ok(TokenInstructionContext::new(context, asset, token))
     }
 }

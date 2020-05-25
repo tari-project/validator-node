@@ -1,23 +1,23 @@
-//! TemplateContext provides access to contextual request data
+//! InstructionContext provides access to contextual request data
 //!
-//! TemplateContext is always supplied as first parameter to Smart Contract implementation
+//! InstructionContext is always supplied as first parameter to Smart Contract implementation
 
 use super::errors::TemplateError;
 use crate::{
     api::errors::{ApiError, ApplicationError},
     db::{
         models::{
-            consensus::instructions::{Instruction, NewInstruction, UpdateInstruction},
+            consensus::instructions::*,
             tokens::{NewToken, Token, UpdateToken},
             AssetState,
         },
         utils::errors::DBError,
     },
     processing_err,
-    types::{AssetID, Pubkey, TemplateID, TokenID},
+    types::*,
     wallet::{NodeWallet, WalletStore},
 };
-use deadpool_postgres::{Client, Transaction};
+use deadpool_postgres::{Pool, Client};
 use multiaddr::Multiaddr;
 use std::{
     ops::{Deref, DerefMut},
@@ -25,35 +25,70 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-/// Smart contract request context
+/// [Template] context, is factory for [Instuction] and [InstructionContext]
 ///
 /// Fields:
 /// - TemplateID
 /// - (private) DB connection
-pub struct TemplateContext<'a> {
-    pub template_id: TemplateID,
+#[derive(Clone)]
+pub struct TemplateContext {
+    pub(crate) template_id: TemplateID,
     // TODO: this is not secure, we provide access to context to template,
     // To make it safe our templates should be completely sandboxed,
     // having only access to the context methods...
-    pub(crate) client: Client,
+    pub(crate) pool: Arc<Pool>,
     pub(crate) wallets: Arc<Mutex<WalletStore>>,
     pub(crate) address: Multiaddr,
-    pub(crate) db_transaction: Option<Transaction<'a>>,
-    pub(crate) instruction: Option<Instruction>,
 }
 
-impl<'a> TemplateContext<'a> {
+impl TemplateContext {
+    /// [TemplateID] of current TemplateContext
+    #[inline]
+    pub fn template_id(&self) -> TemplateID {
+        self.template_id
+    }
+
+    /// Creates [Instruction]
+    pub async fn create_instruction(&self, data: NewInstruction) -> Result<Instruction, TemplateError> {
+        if data.status != InstructionStatus::Scheduled {
+            return processing_err!("Failed to create Instruction in status {}, initial status should be Scheduled", data.status);
+        }
+        let client = self.pool.get().await.map_err(DBError::from)?;
+        Ok(Instruction::insert(data, &client).await?)
+    }
+
+    /// Creates [InstructionContext] which can be used by [InstructionRunner] to process [Instruction]
+    pub async fn instruction_context(&self, id: InstructionID) -> Result<InstructionContext, TemplateError> {
+        let client = self.pool.get().await.map_err(DBError::from)?;
+        let instruction = Instruction::load(id, &client).await?;
+        Ok(InstructionContext {
+            client,
+            instruction,
+            template_context: self.clone(),
+        })
+    }
+
+}
+
+pub struct InstructionContext {
+    template_context: TemplateContext,
+    client: Client,
+    instruction: Instruction,
+}
+
+impl InstructionContext {
+    #[inline]
+    pub fn template_id(&self) -> TemplateID {
+        self.template_context.template_id
+    }
+
     pub async fn create_token(&self, data: NewToken) -> Result<Token, TemplateError> {
         let id = Token::insert(data, &self.client).await?;
         Ok(Token::load(id, &self.client).await?)
     }
 
     pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, TemplateError> {
-        if let Some(instruction) = self.instruction.as_ref() {
-            Ok(token.update(data, instruction, &self.client).await?)
-        } else {
-            return processing_err!("Failed to update token {} without Instruction", token.token_id);
-        }
+        Ok(token.update(data, &self.instruction, &self.client).await?)
     }
 
     pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, TemplateError> {
@@ -64,47 +99,32 @@ impl<'a> TemplateContext<'a> {
         Ok(AssetState::find_by_asset_id(&id, &self.client).await?)
     }
 
-    /// Creates [Instruction]
-    // TODO: move this somewhere outside of reach of contract code...
-    pub async fn create_instruction(&mut self, data: NewInstruction) -> Result<(), TemplateError> {
-        self.instruction = Some(Instruction::insert(data, &self.client).await?);
-        // TODO: broadcast instruction to network
-        Ok(())
-    }
-
     /// Updates result and status of [Instruction]
-    // TODO: move this somewhere outside of reach of contract code...
-    pub async fn update_instruction(&mut self, data: UpdateInstruction) -> Result<(), TemplateError> {
-        if let Some(instruction) = self.instruction.take() {
-            self.instruction = Some(instruction.update(data, &self.client).await?);
-            Ok(())
+    pub async fn update_instruction_status(&mut self, status: InstructionStatus) -> Result<(), TemplateError> {
+        if status == InstructionStatus::Scheduled || status == InstructionStatus::Processing || status == InstructionStatus::Invalid {
+            Instruction::update_instructions_status(&[self.instruction.id], None, status, &self.client).await?;
+            self.instruction.status = status;
         } else {
-            return processing_err!("Failed to update Instruction {:?}: instruction not found", data);
+            return processing_err!("Failed to update Instruction status to {} from within InstructionContext", status);
         }
-    }
-
-    pub async fn commit(&self) -> Result<(), DBError> {
-        // TODO: implement database transactino through the whole Context
         Ok(())
     }
 
     pub async fn create_temp_wallet(&mut self) -> Result<Pubkey, TemplateError> {
-        if self.instruction.is_none() {
-            return processing_err!("Failed to create temporary wallet for Contract: ContractTransaction not found");
-        }
         let transaction = self.client.transaction().await.map_err(DBError::from)?;
-        let wallet_name = self.instruction.as_ref().unwrap().id.to_string();
-        let wallet = NodeWallet::new(self.address.clone(), wallet_name)?;
-        let wallet = self.wallets.lock().await.add(wallet, &transaction).await?;
+        let wallet_name = self.instruction.id.to_string();
+        let wallet = NodeWallet::new(self.template_context.address.clone(), wallet_name)?;
+        let wallet = self.template_context.wallets.lock().await.add(wallet, &transaction).await?;
         transaction.commit().await.map_err(DBError::from)?;
         Ok(wallet.public_key_hex())
     }
 }
 
-/// Extract [Instruction] from TemplateContext
-impl<'a> From<TemplateContext<'a>> for Option<Instruction> {
+
+/// Extract [Instruction] from InstructionContext
+impl From<InstructionContext> for Instruction {
     #[inline]
-    fn from(ctx: TemplateContext<'a>) -> Option<Instruction> {
+    fn from(ctx: InstructionContext) -> Instruction {
         ctx.instruction
     }
 }
@@ -112,35 +132,35 @@ impl<'a> From<TemplateContext<'a>> for Option<Instruction> {
 /// Smart contract request context for asset contracts
 ///
 /// Fields:
-/// - TemplateContext
+/// - InstructionContext
 /// - AssetState
-pub struct AssetTemplateContext<'a> {
-    context: TemplateContext<'a>,
+pub struct AssetInstructionContext {
+    context: InstructionContext,
     pub asset: AssetState,
 }
 
-impl<'a> Deref for AssetTemplateContext<'a> {
-    type Target = TemplateContext<'a>;
+impl Deref for AssetInstructionContext {
+    type Target = InstructionContext;
 
     fn deref(&self) -> &Self::Target {
         &self.context
     }
 }
-impl<'a> DerefMut for AssetTemplateContext<'a> {
+impl DerefMut for AssetInstructionContext {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.context
     }
 }
 
-impl<'a> AssetTemplateContext<'a> {
-    pub fn new(context: TemplateContext<'a>, asset: AssetState) -> Self {
+impl AssetInstructionContext {
+    pub fn new(context: InstructionContext, asset: AssetState) -> Self {
         Self { context, asset }
     }
 }
 
-impl<'a> From<AssetTemplateContext<'a>> for Option<Instruction> {
+impl From<AssetInstructionContext> for Instruction {
     #[inline]
-    fn from(ctx: AssetTemplateContext<'a>) -> Option<Instruction> {
+    fn from(ctx: AssetInstructionContext) -> Instruction {
         ctx.context.into()
     }
 }
@@ -148,37 +168,37 @@ impl<'a> From<AssetTemplateContext<'a>> for Option<Instruction> {
 /// Smart contract request context for asset contracts
 ///
 /// Fields:
-/// - TemplateContext
+/// - InstructionContext
 /// - AssetState
 /// - Token
-pub struct TokenTemplateContext<'a> {
-    context: TemplateContext<'a>,
+pub struct TokenInstructionContext {
+    context: InstructionContext,
     pub asset: AssetState,
     pub token: Token,
 }
 
-impl<'a> Deref for TokenTemplateContext<'a> {
-    type Target = TemplateContext<'a>;
+impl Deref for TokenInstructionContext {
+    type Target = InstructionContext;
 
     fn deref(&self) -> &Self::Target {
         &self.context
     }
 }
-impl<'a> DerefMut for TokenTemplateContext<'a> {
+impl DerefMut for TokenInstructionContext {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.context
     }
 }
 
-impl<'a> TokenTemplateContext<'a> {
-    pub fn new(context: TemplateContext<'a>, asset: AssetState, token: Token) -> Self {
+impl TokenInstructionContext {
+    pub fn new(context: InstructionContext, asset: AssetState, token: Token) -> Self {
         Self { context, asset, token }
     }
 }
 
-impl<'a> From<TokenTemplateContext<'a>> for Option<Instruction> {
+impl From<TokenInstructionContext> for Instruction {
     #[inline]
-    fn from(ctx: TokenTemplateContext<'a>) -> Option<Instruction> {
+    fn from(ctx: TokenInstructionContext) -> Instruction {
         ctx.context.into()
     }
 }

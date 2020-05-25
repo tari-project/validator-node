@@ -106,6 +106,14 @@ The `create_asset` instruction is very different than general instructions run f
   - Nodes validate signatures
   - Nodes apply the proposal to their database
 
+### Instruction states
+
+![Instructions states](instructions/states.mmd.svg)
+
+### Pipeline
+
+![Instructions pipeline MVP](instructions/pipeline.mmd.svg)
+
 ### Concerns
 
   - At what point is a new leader selected if the old does not handle these messages promptly? Could we end up in a state where there are never enough nodes in agreement about who the leader is to process instructions?

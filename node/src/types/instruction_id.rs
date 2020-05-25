@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub struct InstructionID(pub(crate) Uuid);
 
 impl InstructionID {
-    pub async fn new(node_id: NodeID) -> Result<Self, TypeError> {
+    pub fn new(node_id: NodeID) -> Result<Self, TypeError> {
         Ok(Self(generate_uuid_v1(&node_id)?))
     }
 }

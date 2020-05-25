@@ -22,10 +22,11 @@ use actix_web::web;
 pub mod errors;
 
 pub mod actix;
+pub mod runner;
 pub mod single_use_tokens;
 
 mod context;
-pub use context::{AssetTemplateContext, TemplateContext, TokenTemplateContext};
+pub use context::{AssetInstructionContext, TemplateContext, InstructionContext, TokenInstructionContext};
 
 const LOG_TARGET: &'static str = "validator_node::template";
 

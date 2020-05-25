@@ -2,13 +2,12 @@ use super::{Contracts, Template, TemplateContext, LOG_TARGET};
 use crate::{
     api::errors::{ApiError, ApplicationError},
     config::NodeConfig,
-    db::utils::errors::DBError,
     types::{AssetID, TemplateID, TokenID},
     wallet::WalletStore,
 };
 use actix_web::{dev::Payload, web, web::Data, FromRequest, HttpRequest};
 use deadpool_postgres::Pool;
-use futures::future::{err, FutureExt, LocalBoxFuture};
+use futures::future::{Ready, ok, err};
 use log::info;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -21,7 +20,7 @@ pub struct AssetCallParams {
     hash: String,
 }
 impl AssetCallParams {
-    pub fn asset_id(&self, tpl: &TemplateID) -> Result<AssetID, ApiError> {
+    pub fn asset_id(&self, tpl: TemplateID) -> Result<AssetID, ApiError> {
         let template_id = tpl.to_hex();
         Ok(format!("{}{}{}.{}", template_id, self.features, self.raid_id, self.hash).parse()?)
     }
@@ -35,11 +34,11 @@ pub struct TokenCallParams {
     uid: String,
 }
 impl TokenCallParams {
-    pub fn token_id(&self, tpl: &TemplateID) -> Result<TokenID, ApiError> {
+    pub fn token_id(&self, tpl: TemplateID) -> Result<TokenID, ApiError> {
         Ok(format!("{}{}", self.asset_id(tpl)?, self.uid).parse()?)
     }
 
-    pub fn asset_id(&self, tpl: &TemplateID) -> Result<AssetID, ApiError> {
+    pub fn asset_id(&self, tpl: TemplateID) -> Result<AssetID, ApiError> {
         AssetCallParams::from(self).asset_id(tpl)
     }
 }
@@ -82,10 +81,10 @@ pub trait ActixTemplate: Template {
 impl<A: Template> ActixTemplate for A {}
 
 /// TemplateContext can be retrieved from actix web requests at given path
-impl<'a> FromRequest for TemplateContext<'a> {
+impl FromRequest for TemplateContext {
     type Config = ();
     type Error = ApiError;
-    type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
+    type Future = Ready<Result<Self, Self::Error>>;
 
     #[inline]
     fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
@@ -96,7 +95,6 @@ impl<'a> FromRequest for TemplateContext<'a> {
         let pool = req
             .app_data::<Arc<Pool>>()
             .expect("Failed to retrieve DB pool")
-            .as_ref()
             .clone();
         let wallets = req
             .app_data::<Arc<Mutex<WalletStore>>>()
@@ -110,25 +108,16 @@ impl<'a> FromRequest for TemplateContext<'a> {
         let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
             Some(id) => id.get_ref().clone(),
             None => {
-                return err(ApplicationError::bad_request("Template data not found by this path").into()).boxed_local()
+                return err(ApplicationError::bad_request("Template data not found by this path").into())
             },
         };
 
-        let pool = pool.clone();
-        async move {
-            match pool.get().await {
-                Ok(client) => Ok(TemplateContext {
-                    client,
-                    template_id,
-                    wallets,
-                    address,
-                    db_transaction: None,
-                    instruction: None,
-                }),
-                Err(err) => Err(DBError::from(err).into()),
-            }
-        }
-        .boxed_local()
+        ok(TemplateContext {
+            pool,
+            template_id,
+            wallets,
+            address,
+        })
     }
 }
 
@@ -136,9 +125,9 @@ impl<'a> FromRequest for TemplateContext<'a> {
 mod test {
     use super::*;
     use crate::{
-        db::models::tokens::*,
+        db::models::consensus::instructions::*,
         test::utils::{actix::TestAPIServer, builders::*, test_db_client},
-        types::NodeID,
+        types::{NodeID, InstructionID},
     };
     use actix_web::{http::StatusCode, web, HttpResponse, Result};
 
@@ -146,14 +135,6 @@ mod test {
     async fn requests() {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
-        let tokens: Vec<NewToken> = (0..3)
-            .map(|_| TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap())
-            .map(|token_id| NewToken {
-                asset_state_id: asset.id,
-                token_id,
-                ..NewToken::default()
-            })
-            .collect();
 
         let request = HttpRequestBuilder::default()
             .asset_call(&asset.asset_id, "test_contract")
@@ -162,18 +143,20 @@ mod test {
         let context = TemplateContext::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
-        assert_eq!(context.template_id, asset.asset_id.template_id());
-        for token in tokens {
-            let created = context.create_token(token.clone()).await.unwrap();
-            assert_eq!(token.token_id, created.token_id);
-        }
+        assert_eq!(context.template_id(), asset.asset_id.template_id());
+        let instruction = context.create_instruction(NewInstruction {
+            id: InstructionID::new(NodeID::stub()).unwrap(),
+            asset_id: asset.asset_id,
+            status: InstructionStatus::Scheduled,
+            ..Default::default()
+        }).await.unwrap();
     }
 
     // *** Test template implementation - low level API testins *****
 
     // Asset contracts
     async fn asset_handler(path: web::Path<AssetCallParams>, tpl: web::Data<TemplateID>) -> Result<HttpResponse> {
-        Ok(HttpResponse::Ok().body(path.asset_id(&tpl)?.to_string()))
+        Ok(HttpResponse::Ok().body(path.asset_id(**tpl)?.to_string()))
     }
     enum AssetConracts {}
     impl Contracts for AssetConracts {
@@ -184,7 +167,7 @@ mod test {
     }
     // Token contracts
     async fn token_handler(path: web::Path<TokenCallParams>, tpl: web::Data<TemplateID>) -> Result<HttpResponse> {
-        Ok(HttpResponse::Ok().body(path.token_id(&tpl)?.to_string()))
+        Ok(HttpResponse::Ok().body(path.token_id(**tpl)?.to_string()))
     }
     enum TokenConracts {}
     impl Contracts for TokenConracts {
@@ -306,9 +289,8 @@ mod test {
     // *** Test TemplateContext *****
 
     // Asset contracts
-    async fn asset_handler_context(path: web::Path<AssetCallParams>, ctx: TemplateContext<'_>) -> Result<HttpResponse> {
-        let tpl = ctx.template_id;
-        Ok(HttpResponse::Ok().body(path.asset_id(&tpl)?.to_string()))
+    async fn asset_handler_context(path: web::Path<AssetCallParams>, ctx: TemplateContext) -> Result<HttpResponse> {
+        Ok(HttpResponse::Ok().body(path.asset_id(ctx.template_id())?.to_string()))
     }
     enum AssetConractsContext {}
     impl Contracts for AssetConractsContext {

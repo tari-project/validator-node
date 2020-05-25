@@ -1,11 +1,13 @@
 ## Pipeline
 
-![sell token sequence MVP](pipeline.mmd.svg)
+Template engine is responsible for reactive processing of instructions inline with pipeline:
+![Instructions pipeline MVP](../instructions/pipeline.mmd.svg)
 
 ## Objects
 
 - Template - Tari uses templates to define the behaviour for its smart contracts. Template is a super trait, which represents set of traits defining smart contracts as well as hashable identifier, so that it can be located.
-- TemplateContext - is execution context for the template, it holds queue of incoming instructions for templates, responsible for building execution context for instruction, either AssetTemplateContext or TokenTemplateContext depending on instruction type
+- TemplateRunner - executor of template instructions, it crawls through queue of incoming instructions for templates
+- TemplateContext - is execution context for the template
 - AssetTemplateContext is execution context for asset, able to execute instruction on asset
 - TokenTemplateContext is execution context for token, able to execute instruction on token
 

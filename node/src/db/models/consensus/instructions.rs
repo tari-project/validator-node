@@ -1,6 +1,6 @@
 use crate::{
     db::{
-        models::{InstructionStatus, NewAssetStateAppendOnly, NewTokenStateAppendOnly},
+        models::{NewAssetStateAppendOnly, NewTokenStateAppendOnly},
         utils::errors::DBError,
     },
     types::{AssetID, InstructionID, NodeID, ProposalID, TemplateID, TokenID},
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::Type;
+pub use crate::db::models::InstructionStatus;
 
 #[derive(Clone, Deserialize, Serialize, PostgresMapper, PartialEq, Debug)]
 #[pg_mapper(table = "instructions")]
