@@ -7,9 +7,8 @@ use crate::{
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer, Scope};
 use serde_json::json;
-use std::net::ToSocketAddrs;
+use std::{net::ToSocketAddrs, sync::Arc};
 use tokio::sync::Mutex;
-use std::sync::Arc;
 
 // Must be valid JSON
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;

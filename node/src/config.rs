@@ -63,8 +63,13 @@ fn default_postgres_config<S: Serializer>(_: &DeadpoolConfig, s: S) -> Result<S:
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{api::server::*, test::utils::build_test_global_config};
-    use crate::api::config::actix::{DEFAULT_ADDR, DEFAULT_PORT};
+    use crate::{
+        api::{
+            config::actix::{DEFAULT_ADDR, DEFAULT_PORT},
+            server::*,
+        },
+        test::utils::build_test_global_config,
+    };
     use config::{Config, File, FileFormat::Toml};
 
     lazy_static::lazy_static! {

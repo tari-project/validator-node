@@ -17,10 +17,7 @@ impl Default for HttpRequestBuilder {
         let pool = actix_test_pool();
         let wallets = WalletStoreBuilder::default().build().unwrap();
         let config = build_test_config().unwrap();
-        let test_request = TestRequest::default()
-            .app_data(pool)
-            .app_data(config)
-            .app_data(wallets);
+        let test_request = TestRequest::default().app_data(pool).app_data(config).app_data(wallets);
         Self {
             test_request,
             __non_exhaustive: (),

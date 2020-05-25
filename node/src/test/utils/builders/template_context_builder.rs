@@ -1,10 +1,9 @@
 use super::*;
 use crate::{
-    db::models::*,
-    db::models::consensus::instructions::*,
+    db::models::{consensus::instructions::*, *},
     template::*,
     types::*,
-    wallet::WalletStore
+    wallet::WalletStore,
 };
 use deadpool_postgres::Client;
 use multiaddr::Multiaddr;

@@ -54,7 +54,7 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
 
     let (params_type, params_def) = generate_type_params_struct(&arg_idents[1..], &arg_types[1..], &fn_name);
 
-    let body = generate_token_contract_body(&fn_name, &arg_idents[1..]);
+    let body = generate_token_contract_body();
 
     let handler_fn_name = format_ident!("{}_actix", fn_name);
 
@@ -63,7 +63,7 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
             params: web::Path<TokenCallParams>,
             data: web::Json<#params_type>,
             mut context: TemplateContext<'a>,
-        ) -> Result<web::Json<Option<ContractTransaction>>, ApiError> {
+        ) -> Result<web::Json<Option<Instruction>>, ApiError> {
             #body
         }
     };
@@ -130,34 +130,21 @@ fn extract_type(a: FnArg) -> Box<Type> {
 // };
 // let params = data.into_inner();
 // // create transaction
-// let transaction = NewContractTransaction {
-//     asset_state_id: asset.id,
-//     token_id: Some(token.id),
+// let transaction = NewInstruction {
+//     asset_id: asset.id,
+//     token_id: Some(token.token_id),
 //     template_id: context.template_id.clone(),
 //     params: serde_json::to_value(&params)
 //         .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
 //     contract_name: "transfer_token".to_string(),
-//     ..NewContractTransaction::default()
+//     ..NewInstruction::default()
 // };
 // context.create_transaction(transaction).await?;
 // // create context
 // let mut context = TokenTemplateContext::new(context, asset.clone(), token.clone());
-
-// // TODO: move following outside of actix request lifecycle
-// // run contract
-// let result = transfer_token(&context, params.owner_pubkey).await?;
-// // update transaction
-// let result = serde_json::to_value(result).map_err(|err| {
-//     ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
-// })?;
-// let data = UpdateContractTransaction {
-//     result: Some(result),
-//     status: Some(TransactionStatus::Commit),
-// };
-// context.update_transaction(data).await?;
 // // There must be transaction - otherwise we would fail on previous call
 // return Ok(web::Json(context.into()))
-fn generate_token_contract_body(fn_name: &syn::Ident, fn_args: &[Box<Pat>]) -> proc_macro2::TokenStream {
+fn generate_token_contract_body() -> proc_macro2::TokenStream {
     quote! {
         // extract and transform parameters
         let asset_id = params.asset_id(&context.template_id)?;
@@ -174,29 +161,14 @@ fn generate_token_contract_body(fn_name: &syn::Ident, fn_args: &[Box<Pat>]) -> p
         // create transaction
         let instruction = NewInstruction {
             asset_id: asset.asset_id,
-            token_id: Some(token.id),
+            token_id: Some(token.token_id),
             template_id: context.template_id.clone(),
             params: serde_json::to_value(&params)
                 .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
             contract_name: "transfer_token".to_string(),
             ..NewInstruction::default()
         };
-        context.create_instruction(transaction).await?;
-        // create context
-        let mut context = TokenTemplateContext::new(context, asset.clone(), token.clone());
-
-        // TODO: move following outside of actix request lifecycle
-        // run contract
-        let result = #fn_name (&mut context, #( params.#fn_args ),*).await?;
-        // update transaction
-        let result = serde_json::to_value(result).map_err(|err| {
-            ApplicationError::bad_request(format!("Failed to serialize contract result: {}", err).as_str())
-        })?;
-        let data = UpdateContractTransaction {
-            result: Some(result),
-            status: Some(TransactionStatus::Commit),
-        };
-        context.update_instruction(data).await?;
+        context.create_instruction(instruction).await?;
         // There must be transaction - otherwise we would fail on previous call
         return Ok(web::Json(context.into()));
     }
@@ -204,7 +176,7 @@ fn generate_token_contract_body(fn_name: &syn::Ident, fn_args: &[Box<Pat>]) -> p
 
 // Output:
 // #[derive(Serialize, Deserialize)]
-// pub struct TransferTokenPayload {
+// pub struct __Params_transfer_token {
 //     owner_pubkey: Pubkey,
 // }
 fn generate_type_params_struct(
@@ -220,7 +192,7 @@ fn generate_type_params_struct(
             #i: #t
         });
     }
-    let name: Type = syn::parse_str(format!("Params_{}", fn_name).as_str()).unwrap();
+    let name = type_params_struct_super_name(fn_name);
     let definition = quote! {
         use serde::{Serialize, Deserialize};
 
@@ -231,4 +203,8 @@ fn generate_type_params_struct(
     };
 
     (name, definition)
+}
+
+fn type_params_struct_super_name(fn_name: &syn::Ident) -> Type {
+    syn::parse_str(format!("__Params_{}", fn_name).as_str()).unwrap()
 }

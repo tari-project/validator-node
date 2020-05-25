@@ -1,4 +1,4 @@
-use super::{actix_test_pool, build_test_config, load_env, builders::*};
+use super::{actix_test_pool, build_test_config, builders::*, load_env};
 use crate::types::{AssetID, TokenID};
 use actix_web::{client::ClientRequest, middleware::Logger, test, App, Scope};
 use std::ops::Deref;
@@ -19,18 +19,15 @@ impl TestAPIServer {
         let wallets = WalletStoreBuilder::default().build().unwrap();
         let config = build_test_config().unwrap();
         let server = test::start(move || {
-            let app = App::new()
-                .app_data(actix_test_pool())
-                .wrap(Logger::default());
-            scopes.clone()()
-                .into_iter()
-                .fold(app, |app, scope|
-                    app.service(scope
+            let app = App::new().app_data(actix_test_pool()).wrap(Logger::default());
+            scopes.clone()().into_iter().fold(app, |app, scope| {
+                app.service(
+                    scope
                         .app_data(actix_test_pool())
                         .app_data(wallets.clone())
-                        .app_data(config.clone())
-                    )
+                        .app_data(config.clone()),
                 )
+            })
         });
         Self { server }
     }

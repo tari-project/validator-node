@@ -1,7 +1,7 @@
 use tari_template_macro::contract;
 use tari_validator_node::{
     template::{errors::TemplateError, *},
-    test_utils::{builders::*, test_db_client},
+    test::utils::{builders::*, test_db_client},
 };
 
 #[contract(token)]

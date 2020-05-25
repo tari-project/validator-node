@@ -5,12 +5,14 @@
 use super::errors::TemplateError;
 use crate::{
     api::errors::{ApiError, ApplicationError},
-    db::models::{
-        consensus::instructions::{Instruction, NewInstruction, UpdateInstruction},
-        tokens::{NewToken, Token, UpdateToken},
-        AssetState,
+    db::{
+        models::{
+            consensus::instructions::{Instruction, NewInstruction, UpdateInstruction},
+            tokens::{NewToken, Token, UpdateToken},
+            AssetState,
+        },
+        utils::errors::DBError,
     },
-    db::utils::errors::DBError,
     processing_err,
     types::{AssetID, Pubkey, TemplateID, TokenID},
     wallet::{NodeWallet, WalletStore},

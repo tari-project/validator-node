@@ -1,7 +1,7 @@
 use crate::wallet::WalletStore;
+use std::sync::Arc;
 use tari_test_utils::random::string;
 use tempdir::TempDir;
-use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub struct WalletStoreBuilder {

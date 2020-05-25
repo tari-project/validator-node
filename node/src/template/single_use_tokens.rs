@@ -285,6 +285,5 @@ mod test {
         let trans: Option<Instruction> = resp.json().await.unwrap();
         let trans = trans.unwrap();
         assert_eq!(trans.status, InstructionStatus::Commit);
-        assert_eq!(trans.result.as_array().unwrap().len(), 10);
     }
 }
