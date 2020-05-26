@@ -15,20 +15,21 @@ Single use tokens are analogue of tickets, which can be issued, sold, transferre
 
 1. Asset issuer or authorized signers (later `issuer`) calling `issue_tokens`
 2. VN ensures signatures, data integrity and other criteria (TBD) are valid
-3. Tokens created in `Active`(`Available`) token state
+3. Creates Instruction `issue_tokens`
+4. Tokens created in `Active` token state
 
 ### Sell token
 
 Is a multi-stage transaction involding locking token record until given conditions met.
 
 1. Issuer is calling `sell_token`(`TokenID`, `price`, `new owner`)
-2. Initiating VN validates token data integrity and starts `contract-transaction` in `Open` state to acquire `timed-lock`
+2. Initiating VN validates token data integrity and creates `Instruction` in `Processing` state `sell-token`
+3. Initiating VN validates creates sub-`Instruction` `sell-token-lock`
   1. Creates temporary wallet (`tempWallet`) to accept payment
-  2. Submits instruction for a `timed-lock` bound to `tempWallet` and `contract-transaction` to the committee
-  3. Upon receipt of consensus from committee it will release `tempWallet` with signed consensus to client for payment
-3. Initiating VN keeps monitoring `tempWallet`, once `price` amount appears:
-  1. Initiating VN will create BL transactions to distribute tari's according to Asset settings
-  2. Initiating VN will submit `contract-transaction` in `Commit` state moving token to `Active` state with `new owner`
+  2. Upon receipt of consensus from committee `tempWallet` is available to client in `sell-token` `Instruction` result
+  3. Initiating VN keeps monitoring `tempWallet`, and once `price` amount appears:
+  4. Initiating VN will create BL transactions to distribute tari's according to Asset settings
+  5. Initiating VN will submit `sell-token` to `Commit` state, moving token to `Active` state with `new owner`
 4. VN committee will validate all conditions met and provide consensus resolution `contract-transaction` as `Commit`
 5. If any of above stages fail all the tari transfers should be cancelled or reverted
 
@@ -40,7 +41,7 @@ Is a multi-stage transaction involding locking token record until given conditio
 The flow is similar to [Selling tokens] except that it might be triggered by token owner:
 
 1. Owner is calling `transfer_token`(`TokenID`, `price`, `new owner`)
-2. Leader VN validates token data integrity and ownership and starts new `contract-transaction`:
+2. Leader VN validates token data integrity and ownership and starts new `Instruction`:
 ... other steps same as [Sell token](Sell token)
 
 ### Redeem token and Unredeem token
