@@ -11,6 +11,7 @@ struct ContractMacroArgs {
     asset: bool,
     #[darling(default)]
     local_use: bool,
+    template: String,
 }
 
 #[proc_macro_attribute]
@@ -35,6 +36,7 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
     let fn_name = sig.ident; // function name/identifier
     let fn_args = sig.inputs; // comma separated args
     let fn_return_type = sig.output; // return type
+    let template = format_ident!("{}", args.template);
 
     let return_str = format!("{}", quote! { #fn_return_type });
     if return_str.find("Result").is_none() {
@@ -48,7 +50,8 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
     let arg_types = extract_arg_types(fn_args.clone());
     let first_type = arg_types.first().unwrap();
 
-    if **first_type != syn::parse_str::<Type>("&mut TokenInstructionContext").unwrap() {
+    let first_arg_required_type = format!("&mut TokenInstructionContext<{}>", template);
+    if **first_type != syn::parse_str::<Type>(first_arg_required_type.as_str()).unwrap() {
         panic!("first argument to token contract should be of type &mut TokenInstructionContext");
     }
 
@@ -62,7 +65,7 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
         pub async fn #handler_fn_name (
             params: web::Path<TokenCallParams>,
             data: web::Json<#params_type>,
-            context: TemplateContext,
+            context: TemplateContext<#template>,
         ) -> Result<web::Json<Instruction>, ApiError> {
             #body
         }

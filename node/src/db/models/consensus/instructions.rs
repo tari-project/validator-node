@@ -25,6 +25,7 @@ pub struct Instruction {
     pub contract_name: String,
     pub status: InstructionStatus,
     pub params: Value,
+    pub result: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub proposal_id: Option<ProposalID>,
@@ -47,6 +48,7 @@ pub struct NewInstruction {
 /// Query parameters for optionally updating instruction fields
 #[derive(Default, Clone, Debug)]
 pub struct UpdateInstruction {
+    pub result: Option<Value>,
     pub status: Option<InstructionStatus>,
     pub proposal_id: Option<ProposalID>,
 }
@@ -160,12 +162,13 @@ impl Instruction {
             UPDATE instructions SET
                 status = COALESCE($1, status),
                 proposal_id = $2::\"ProposalID\",
+                result = $3,
                 updated_at = NOW()
             WHERE id = $3::\"InstructionID\"
             RETURNING *";
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let row = client
-            .query_one(&stmt, &[&data.status, &data.proposal_id, &self.id])
+            .query_one(&stmt, &[&data.status, &data.proposal_id, &data.result, &self.id])
             .await?;
         Ok(Self::from_row(row)?)
     }

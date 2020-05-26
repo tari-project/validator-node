@@ -4,8 +4,18 @@ use tari_validator_node::{
     test::utils::{actix_test_pool, builders::*, load_env},
 };
 
-#[contract(token)]
-async fn simple_contract(_: &mut TokenInstructionContext, input: u32) -> Result<u32, TemplateError> {
+struct Test;
+impl Template for Test {
+    type AssetContracts = ();
+    type TokenContracts = ();
+
+    fn id() -> TemplateID {
+        1.into()
+    }
+}
+
+#[contract(token,template="Test")]
+async fn simple_contract(_: &mut TokenInstructionContext<Test>, input: u32) -> Result<u32, TemplateError> {
     Ok(input)
 }
 

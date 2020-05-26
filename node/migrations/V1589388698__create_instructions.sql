@@ -10,6 +10,7 @@ CREATE TABLE instructions (
                        contract_name TEXT NOT NULL,
                        status TEXT NOT NULL DEFAULT 'Pending',
                        params JSONB NOT NULL DEFAULT '{}',
+                       result JSONB NOT NULL DEFAULT '{}',
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

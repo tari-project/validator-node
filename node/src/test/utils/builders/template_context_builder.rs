@@ -64,7 +64,7 @@ impl AssetContextBuilder {
             ..NewInstruction::default()
         };
         let instruction = context.create_instruction(instruction).await?;
-        let context = context.instruction_context(instruction.id).await?;
+        let context = context.instruction_context(instruction).await?;
 
         Ok(AssetInstructionContext::new(context, asset))
     }
@@ -125,7 +125,7 @@ impl TokenContextBuilder {
             ..NewInstruction::default()
         };
         let instruction = context.create_instruction(instruction).await?;
-        let context = context.instruction_context(instruction.id).await?;
+        let context = context.instruction_context(instruction).await?;
 
         Ok(TokenInstructionContext::new(context, asset, token))
     }

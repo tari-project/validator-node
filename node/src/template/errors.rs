@@ -20,6 +20,13 @@ pub enum TemplateError {
     Processing(String),
     #[error("Contract parameters validation failed: {0}")]
     Validation(#[from] anyhow::Error),
+    #[error("Failed to send message {message} to actor {name}: {source}")]
+    ActorSend {
+        params: String,
+        name: String,
+        #[source]
+        source: anyhow::Error
+    },
 }
 
 #[macro_export]

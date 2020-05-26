@@ -15,6 +15,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+const LOG_TARGET: &'static str = "template::single_use_tokens";
+
 #[derive(Serialize, Deserialize)]
 struct TokenData {
     pub owner_pubkey: Pubkey,
@@ -29,7 +31,7 @@ pub enum AssetContracts {
 }
 
 //#[contract(asset)]
-async fn issue_tokens(context: &AssetInstructionContext, token_ids: Vec<TokenID>) -> Result<Vec<Token>, TemplateError> {
+async fn issue_tokens(context: &AssetInstructionContext<SingleUseTokenTemplate>, token_ids: Vec<TokenID>) -> Result<Vec<Token>, TemplateError> {
     let mut tokens = Vec::with_capacity(token_ids.len());
     let asset = &context.asset;
     let data = TokenData {
@@ -62,7 +64,7 @@ pub enum TokenContracts {
     TransferToken,
 }
 
-#[tari_template_macro::contract(token, local_use)]
+#[tari_template_macro::contract(token, local_use, template="SingleUseTokenTemplate")]
 /// Initiate sell token instruction
 ///
 /// ### Input Parameters:
@@ -72,7 +74,7 @@ pub enum TokenContracts {
 /// # Returns:
 /// - Temporary wallet pubkey, where user need to transfer price amount of tari's
 async fn sell_token(
-    context: &mut TokenInstructionContext,
+    context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
     price: u64,
     user_pubkey: Pubkey,
 ) -> Result<Pubkey, TemplateError>
@@ -85,9 +87,9 @@ async fn sell_token(
     Ok(wallet)
 }
 
-#[tari_template_macro::contract(token, local_use)]
+#[tari_template_macro::contract(token, local_use, template="SingleUseTokenTemplate")]
 // With token contract TokenInstructionContext is always passed as first argument
-async fn transfer_token(context: &mut TokenInstructionContext, user_pubkey: Pubkey) -> Result<Token, TemplateError> {
+async fn transfer_token(context: &mut TokenInstructionContext<SingleUseTokenTemplate>, user_pubkey: Pubkey) -> Result<Token, TemplateError> {
     let token = context.token.clone();
     if token.status == TokenStatus::Retired {
         return validation_err!("Tried to transfer already used token");
@@ -102,7 +104,7 @@ async fn transfer_token(context: &mut TokenInstructionContext, user_pubkey: Pubk
 }
 
 /// **************** TEMPLATE ************
-
+#[derive(Clone)]
 pub struct SingleUseTokenTemplate;
 impl Template for SingleUseTokenTemplate {
     type AssetContracts = AssetContracts;
@@ -118,25 +120,94 @@ mod expanded_macros {
     use crate::{
         api::errors::{ApiError, ApplicationError},
         db::models::consensus::instructions::*,
+        template::{context::*, runner::*},
+        types::AssetID,
     };
     use actix_web::web;
+    use actix::prelude::*;
     use log::info;
     use serde::{Deserialize, Serialize};
+    use futures::future::TryFutureExt;
 
     ////// impl #[contract(asset)] for issue_tokens()
 
+    type ThisActor = TemplateRunnerContext<SingleUseTokenTemplate>;
+
+    /// Input parameters via RPC
     #[derive(Serialize, Deserialize)]
-    pub struct IssueTokensPayload {
+    pub struct ParamsIssueTokens {
         token_ids: Vec<TokenID>,
     }
 
-    // wrapper will convert from actix types into Rust,
+    /// Actor's message is input parameters combined with Instruction
+    #[derive(Message)]
+    #[rtype(result = "Result<(),TemplateError>")]
+    pub struct MessageIssueTokens {
+        asset_id: AssetID,
+        token_ids: Vec<TokenID>,
+        instruction: Instruction,
+    }
+
+    /// Actor is accepting Scheduled / Processing Instruction and tries to perform activity
+    impl Handler<MessageIssueTokens> for ThisActor {
+        type Result = ResponseActFuture<Self, Result<(),TemplateError>>;
+
+        fn handle(&mut self, msg: MessageIssueTokens, _ctx: &mut Context<Self>) -> Self::Result {
+            let context = self.context();
+            let context_err = self.context();
+            let instruction_err = msg.instruction.clone();
+            let fut = actix::fut::wrap_future::<_, Self>(
+                async move {
+                    let context = context.instruction_context(msg.instruction).await
+                        .expect("Failed to build InstructionContext, unrecoverable failure in Actor");
+                    // create asset context
+                    let asset = match context.load_asset(msg.asset_id.clone()).await? {
+                        None => return validation_err!("Asset ID not found"),
+                        Some(asset) => asset,
+                    };
+                    let mut context = AssetInstructionContext::new(context, asset);
+
+                    context.transition(ContextEvent::StartProcessing).await?;
+                    // TODO: instruction needs to be able to run in an encapsulated way and return NewTokenStateAppendOnly and
+                    // NewAssetStateAppendOnly vecs       as the consensus workers need to be able to run an instruction set
+                    // and confirm the resulting state matches run contract
+                    let result = issue_tokens(&context, msg.token_ids).await?;
+                    // update instruction after contract executed
+                    let result = serde_json::to_value(result).map_err(|err|
+                        TemplateError::Processing(err.to_string())
+                    )?;
+                    context.transition(ContextEvent::ProcessingResult { result }).await?;
+                    Ok(())
+                }.or_else(|err| {
+                    log::error!(
+                        target: LOG_TARGET,
+                        "template={}, instruction={}, Instruction processing failed {}",
+                        instruction_err.template_id,
+                        instruction_err.id,
+                        err
+                    );
+                    async move {
+                        let mut context = context_err.instruction_context(instruction_err).await
+                            .expect("Failed to build InstructionContext, unrecoverable failure in Actor");
+                        context.transition(ContextEvent::ProcessingFailed {
+                            result: json!({"error": err.to_string()})
+                        }).await
+                    }
+                })
+            );
+            Box::pin(fut)
+        }
+    }
+
+    // Wrapper will convert from actix types into Rust,
     // create instructions writing RPC params,
     // returning instruction
+    // Instruction is created here to return it immediately to the client
+    // so client can keep polling for result.
     async fn issue_tokens_actix(
         params: web::Path<AssetCallParams>,
-        data: web::Json<IssueTokensPayload>,
-        context: TemplateContext,
+        data: web::Json<ParamsIssueTokens>,
+        context: TemplateContext<SingleUseTokenTemplate>,
     ) -> Result<web::Json<Instruction>, ApiError>
     {
         // extract and transform parameters
@@ -144,15 +215,28 @@ mod expanded_macros {
         let data = data.into_inner();
         // start instruction
         let instruction = NewInstruction {
-            asset_id,
+            asset_id: asset_id.clone(),
             template_id: context.template_id(),
-            params: serde_json::to_value(&data)
-                .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
+            // TODO: proper handling of unlikely error
+            params: serde_json::to_value(&data).unwrap(),
             contract_name: "issue_tokens".to_string(),
             status: InstructionStatus::Scheduled,
             ..NewInstruction::default()
         };
         let instruction = context.create_instruction(instruction).await?;
+        let message = MessageIssueTokens {
+            asset_id,
+            instruction: instruction.clone(),
+            token_ids: data.token_ids.clone()
+        };
+        context.addr().try_send(message).map_err(|err|
+            TemplateError::ActorSend {
+                source: err.into(),
+                // TODO: proper handling of unlikely error
+                params: serde_json::to_string(&data).unwrap(),
+                name: "issue_tokens".into()
+            }
+        )?;
         // There must be instruction - otherwise we would fail on previous call
         Ok(web::Json(instruction))
     }
