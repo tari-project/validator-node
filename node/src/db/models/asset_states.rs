@@ -94,9 +94,9 @@ impl AssetState {
     /// Releases lock on asset state
     pub async fn release_lock(&self, client: &Client) -> Result<(), DBError> {
         const QUERY: &'static str =
-            "UPDATE asset_states SET blocked_until = now(), updated_at = now() WHERE id = $1 AND blocked_until = $2";
+            "UPDATE asset_states SET blocked_until = $3, updated_at = now() WHERE id = $1 AND blocked_until = $2";
         let stmt = client.prepare(QUERY).await?;
-        client.execute(&stmt, &[&self.id, &self.blocked_until]).await?;
+        client.execute(&stmt, &[&self.id, &self.blocked_until, &Utc::now()]).await?;
 
         Ok(())
     }
@@ -117,8 +117,9 @@ impl AssetState {
                 initial_permission_bitflag,
                 initial_data_json,
                 asset_id,
-                digital_asset_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id";
+                digital_asset_id,
+                blocked_until
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
@@ -133,6 +134,7 @@ impl AssetState {
                 &params.initial_data_json,
                 &params.asset_id,
                 &params.digital_asset_id,
+                &Utc::now()
             ])
             .await?;
 

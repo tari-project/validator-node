@@ -162,9 +162,9 @@ impl Instruction {
             UPDATE instructions SET
                 status = COALESCE($1, status),
                 proposal_id = $2::\"ProposalID\",
-                result = $3,
+                result =  COALESCE($3, result),
                 updated_at = NOW()
-            WHERE id = $3::\"InstructionID\"
+            WHERE id = $4::\"InstructionID\"
             RETURNING *";
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let row = client

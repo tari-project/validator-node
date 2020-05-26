@@ -309,7 +309,7 @@ mod test {
 
     #[actix_rt::test]
     async fn issue_tokens_full_stack() {
-        let srv = TestAPIServer::new(SingleUseTokenTemplate::actix_scopes);
+        let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
         let (client, _lock) = test_db_client().await;
 
         let tpl = SingleUseTokenTemplate::id();

@@ -126,7 +126,7 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
 
-        let request = HttpRequestBuilder::default()
+        let request = HttpRequestBuilder::<TestTemplate>::default()
             .asset_call(&asset.asset_id, "test_contract")
             .build()
             .to_http_request();
@@ -182,7 +182,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_actix_template_routes() {
-        let srv = TestAPIServer::new(TestTemplate::actix_scopes);
+        let srv = TestAPIServer::<TestTemplate>::new();
 
         use actix_web::http::Method;
         let tpl = TestTemplate::id();
@@ -255,13 +255,13 @@ mod test {
                 .send()
                 .await
                 .unwrap();
-            assert_eq!(resp.status(), *code, "{} {}", method, uri);
+            assert_eq!(resp.status(), *code, "{} {}: {:?}", method, uri, resp);
         }
     }
 
     #[actix_rt::test]
     async fn full_stack_server() {
-        let srv = TestAPIServer::new(TestTemplate::actix_scopes);
+        let srv = TestAPIServer::<TestTemplate>::new();
 
         let tpl = TestTemplate::id();
         let asset: AssetID = format!("{}{:04X}{:015X}.{:032X}", tpl.to_hex(), 1, 2, 3)
@@ -272,11 +272,11 @@ mod test {
             .unwrap();
 
         let mut resp = srv.asset_call(&asset, "test").send().await.unwrap();
-        assert!(resp.status().is_success());
+        assert!(resp.status().is_success(), "{:?}", resp);
         assert_eq!(resp.body().await.unwrap(), asset.to_string());
 
         let mut resp = srv.token_call(&token, "test").send().await.unwrap();
-        assert!(resp.status().is_success());
+        assert!(resp.status().is_success(), "{:?}", resp);
         assert_eq!(resp.body().await.unwrap(), token.to_string());
     }
 
@@ -307,13 +307,13 @@ mod test {
 
     #[actix_rt::test]
     async fn template_context_full_stack() {
-        let srv = TestAPIServer::new(TestTemplateContext::actix_scopes);
+        let srv = TestAPIServer::<TestTemplateContext>::new();
 
         let tpl = TestTemplateContext::id();
         let asset_id = Test::<AssetID>::from_template(tpl);
 
         let mut resp = srv.asset_call(&asset_id, "test").send().await.unwrap();
-        assert!(resp.status().is_success());
+        assert!(resp.status().is_success(), "{:?}", resp);
         assert_eq!(resp.body().await.unwrap(), asset_id.to_string());
     }
 }

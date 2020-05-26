@@ -1,32 +1,35 @@
-use super::WalletStoreBuilder;
 use crate::{
-    test::utils::{actix_test_pool, build_test_config},
     types::{AssetID, TokenID},
+    template::{TemplateRunner, Template},
 };
+use crate::test::utils::{actix_test_pool, build_test_config};
 use actix_web::test::TestRequest;
 
 #[allow(dead_code)]
-pub struct HttpRequestBuilder {
+pub struct HttpRequestBuilder<T: Template> {
     test_request: TestRequest,
+    phantom: std::marker::PhantomData<T>,
     #[doc(hidden)]
     pub __non_exhaustive: (),
 }
 
-impl Default for HttpRequestBuilder {
+impl<T: Template + 'static> Default for HttpRequestBuilder<T> {
     fn default() -> Self {
         let pool = actix_test_pool();
-        let wallets = WalletStoreBuilder::default().build().unwrap();
         let config = build_test_config().unwrap();
-        let test_request = TestRequest::default().app_data(pool).app_data(config).app_data(wallets);
+        let runner = TemplateRunner::<T>::create(pool, config);
+        let context = runner.start();
+        let test_request = TestRequest::default().data(context).data(T::id());
         Self {
             test_request,
+            phantom: std::marker::PhantomData,
             __non_exhaustive: (),
         }
     }
 }
 
 #[allow(dead_code)]
-impl HttpRequestBuilder {
+impl<T: Template> HttpRequestBuilder<T> {
     pub fn asset_call(mut self, id: &AssetID, contract: &str) -> Self {
         let uri = format!(
             "/asset_call/{}/{:04X}/{}/{}/{}",
