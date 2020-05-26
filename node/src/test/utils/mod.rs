@@ -10,6 +10,7 @@ use tokio_postgres::NoTls;
 pub mod actix;
 pub mod builders;
 mod types;
+pub use types::Test;
 
 lazy_static::lazy_static! {
     static ref LOCK_DB_POOL: Mutex<Pool> = {

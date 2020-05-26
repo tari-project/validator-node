@@ -1,5 +1,6 @@
 use super::DigitalAssetBuilder;
 use crate::{db::models::*, types::AssetID};
+use crate::test::utils::Test;
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
 use rand::prelude::*;
@@ -38,7 +39,7 @@ impl Default for AssetStateBuilder {
             initial_permission_bitflag: 0,
             initial_data_json: serde_json::from_str("{}").unwrap(),
             digital_asset_id: None,
-            asset_id: AssetID::test_from_template(65536.into()), // TODO: Use a real asset ID here for consistency
+            asset_id: Test::<AssetID>::from_template(65536.into()), // TODO: Use a real asset ID here for consistency
             __non_exhaustive: (),
         }
     }

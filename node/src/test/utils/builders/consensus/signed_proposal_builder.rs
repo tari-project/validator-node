@@ -1,8 +1,8 @@
 use crate::{
     db::models::{consensus::*, ProposalStatus},
-    test::utils::builders::consensus::ProposalBuilder,
     types::{NodeID, ProposalID},
 };
+use crate::test::utils::{Test, builders::consensus::ProposalBuilder};
 use deadpool_postgres::Client;
 
 #[allow(dead_code)]
@@ -17,7 +17,7 @@ pub struct SignedProposalBuilder {
 impl Default for SignedProposalBuilder {
     fn default() -> Self {
         Self {
-            node_id: NodeID::stub(),
+            node_id: Test::<NodeID>::new(),
             signature: "stub-signature".to_string(),
             proposal_id: None,
             __non_exhaustive: (),

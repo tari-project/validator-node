@@ -4,7 +4,7 @@ use crate::{
     template::*,
     types::*,
     wallet::WalletStore,
-    test::utils::{build_test_config, actix_test_pool},
+    test::utils::*,
 };
 use multiaddr::Multiaddr;
 use serde_json::{json, Value};
@@ -39,7 +39,7 @@ impl AssetContextBuilder {
         let asset = match self.asset {
             Some(asset) => asset,
             None => {
-                let asset_id = AssetID::test_from_template(self.template_id);
+                let asset_id = Test::<AssetID>::from_template(self.template_id);
                 let client = pool.get().await?;
                 AssetStateBuilder {
                     asset_id,
@@ -97,8 +97,8 @@ impl TokenContextBuilder {
         let token = match self.token {
             Some(token) => token,
             None => {
-                let asset_id = AssetID::test_from_template(self.template_id);
-                let token_id = TokenID::test_from_asset(&asset_id);
+                let asset_id = Test::<AssetID>::from_template(self.template_id);
+                let token_id = Test::<TokenID>::from_asset(&asset_id);
                 TokenBuilder {
                     token_id,
                     ..Default::default()
@@ -113,6 +113,7 @@ impl TokenContextBuilder {
         let runner = TemplateRunner::create(pool, config);
         let context = runner.start();
         let instruction = NewInstruction {
+            id: Test::<InstructionID>::new(),
             asset_id: token.token_id.asset_id(),
             token_id: Some(token.token_id.clone()),
             template_id: context.template_id(),

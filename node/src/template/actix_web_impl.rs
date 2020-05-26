@@ -115,10 +115,10 @@ mod test {
     use super::*;
     use crate::{
         db::models::consensus::instructions::*,
-        test::utils::{actix::TestAPIServer, builders::*, test_db_client},
         types::{InstructionID, NodeID},
         template::*
     };
+    use crate::test::utils::{Test, actix::TestAPIServer, builders::*, test_db_client};
     use actix_web::{http::StatusCode, web, HttpResponse, FromRequest, Result, dev::Payload};
 
     #[actix_rt::test]
@@ -310,7 +310,7 @@ mod test {
         let srv = TestAPIServer::new(TestTemplateContext::actix_scopes);
 
         let tpl = TestTemplateContext::id();
-        let asset_id = AssetID::test_from_template(tpl);
+        let asset_id = Test::<AssetID>::from_template(tpl);
 
         let mut resp = srv.asset_call(&asset_id, "test").send().await.unwrap();
         assert!(resp.status().is_success());

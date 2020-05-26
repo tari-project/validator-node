@@ -272,9 +272,9 @@ mod test {
     use super::*;
     use crate::{
         db::models::consensus::instructions::*,
-        test::utils::{actix::TestAPIServer, builders::*, test_db_client},
         types::AssetID,
     };
+    use crate::test::utils::{Test, actix::TestAPIServer, builders::*, test_db_client};
     use serde_json::json;
 
     #[actix_rt::test]
@@ -289,7 +289,7 @@ mod test {
         .await
         .unwrap();
         let asset_id = context.asset.asset_id.clone();
-        let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
+        let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
 
         let tokens = issue_tokens(&context, token_ids.clone()).await.unwrap();
         for (token, token_id) in tokens.iter().zip(token_ids.iter()) {
@@ -303,7 +303,7 @@ mod test {
         let template_id = SingleUseTokenTemplate::id();
         let context = AssetContextBuilder { template_id, ..Default::default() }.build().await.unwrap();
         let asset_id = AssetID::default();
-        let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
+        let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
         assert!(issue_tokens(&context, token_ids).await.is_err());
     }
 
@@ -313,8 +313,8 @@ mod test {
         let (client, _lock) = test_db_client().await;
 
         let tpl = SingleUseTokenTemplate::id();
-        let asset_id = AssetID::test_from_template(tpl);
-        let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
+        let asset_id = Test::<AssetID>::from_template(tpl);
+        let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
         AssetStateBuilder {
             asset_id: asset_id.clone(),
             ..Default::default()

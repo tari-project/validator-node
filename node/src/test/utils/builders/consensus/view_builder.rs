@@ -1,8 +1,8 @@
 use crate::{
     db::models::{consensus::*, NewAssetStateAppendOnly, NewTokenStateAppendOnly, ViewStatus},
-    test::utils::builders::AssetStateBuilder,
     types::{consensus::AppendOnlyState, AssetID, NodeID, ProposalID},
 };
+use crate::test::utils::{Test, builders::AssetStateBuilder};
 use deadpool_postgres::Client;
 use uuid::Uuid;
 
@@ -25,7 +25,7 @@ impl Default for ViewBuilder {
     fn default() -> Self {
         Self {
             asset_id: None,
-            initiating_node_id: NodeID::stub(),
+            initiating_node_id: Test::<NodeID>::new(),
             signature: "stub-signature".to_string(),
             instruction_set: Vec::new(),
             invalid_instruction_set: Vec::new(),

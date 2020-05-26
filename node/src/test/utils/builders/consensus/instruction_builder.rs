@@ -1,8 +1,8 @@
 use crate::{
     db::models::{consensus::*, InstructionStatus},
-    test::utils::builders::AssetStateBuilder,
     types::{AssetID, InstructionID, NodeID, TemplateID, TokenID},
 };
+use crate::test::utils::{Test, builders::AssetStateBuilder};
 use deadpool_postgres::Client;
 use serde_json::{json, Value};
 
@@ -25,7 +25,7 @@ impl Default for InstructionBuilder {
     fn default() -> Self {
         Self {
             id: None,
-            initiating_node_id: NodeID::stub(),
+            initiating_node_id: Test::<NodeID>::new(),
             signature: "stub-signature".to_string(),
             asset_id: None,
             token_id: None,
