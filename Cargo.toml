@@ -7,4 +7,3 @@ members = [
 
 [patch.crates-io]
 tari_common = { version = "0.1.0", git = "https://github.com/tari-project/tari", branch = "development" }
-tokio-pg-mapper = { version = "0.1.8", git = "https://github.com/dunnock/tokio-postgres-mapper" }
