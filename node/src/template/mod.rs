@@ -21,8 +21,9 @@ use actix_web::web;
 
 pub mod errors;
 
-pub mod actix;
+pub mod actix_web_impl;
 pub mod runner;
+pub use runner::TemplateRunner;
 pub mod single_use_tokens;
 
 mod context;
@@ -37,8 +38,7 @@ impl Contracts for () {
     fn setup_actix_routes(_: TemplateID, _: &mut web::ServiceConfig) {}
 }
 
-#[async_trait::async_trait]
-pub trait Template {
+pub trait Template: Clone {
     type AssetContracts: Contracts;
     type TokenContracts: Contracts;
 

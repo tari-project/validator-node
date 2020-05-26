@@ -4,8 +4,8 @@ use crate::{
     template::*,
     types::*,
     wallet::WalletStore,
+    test::utils::{build_test_config, actix_test_pool},
 };
-use deadpool_postgres::Pool;
 use multiaddr::Multiaddr;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -34,7 +34,8 @@ impl Default for AssetContextBuilder {
 }
 
 impl AssetContextBuilder {
-    pub async fn build<'a>(self, pool: Arc<Pool>) -> anyhow::Result<AssetInstructionContext> {
+    pub async fn build<T: Template + Clone + 'static>(self) -> anyhow::Result<AssetInstructionContext<T>> {
+        let pool = actix_test_pool();
         let asset = match self.asset {
             Some(asset) => asset,
             None => {
@@ -49,15 +50,12 @@ impl AssetContextBuilder {
             },
         };
 
-        let context = TemplateContext {
-            pool,
-            template_id: asset.asset_id.template_id(),
-            wallets: self.wallets,
-            address: self.address,
-        };
+        let config = build_test_config()?;
+        let runner = TemplateRunner::create(pool, config);
+        let context = runner.start();
         let instruction = NewInstruction {
             asset_id: asset.asset_id.clone(),
-            template_id: context.template_id.clone(),
+            template_id: context.template_id(),
             params: self.params,
             contract_name: self.contract_name,
             status: InstructionStatus::Scheduled,
@@ -93,7 +91,8 @@ impl Default for TokenContextBuilder {
 }
 
 impl TokenContextBuilder {
-    pub async fn build<'a>(self, pool: Arc<Pool>) -> anyhow::Result<TokenInstructionContext> {
+    pub async fn build<T: Template + Clone + 'static>(self) -> anyhow::Result<TokenInstructionContext<T>> {
+        let pool = actix_test_pool();
         let client = pool.get().await?;
         let token = match self.token {
             Some(token) => token,
@@ -110,15 +109,13 @@ impl TokenContextBuilder {
         };
         let asset = AssetState::load(token.asset_state_id, &client).await?;
 
-        let context = TemplateContext {
-            pool,
-            template_id: asset.asset_id.template_id(),
-            wallets: self.wallets,
-            address: self.address,
-        };
+        let config = build_test_config()?;
+        let runner = TemplateRunner::create(pool, config);
+        let context = runner.start();
         let instruction = NewInstruction {
             asset_id: token.token_id.asset_id(),
-            template_id: context.template_id.clone(),
+            token_id: Some(token.token_id.clone()),
+            template_id: context.template_id(),
             params: self.params,
             contract_name: self.contract_name,
             status: InstructionStatus::Scheduled,

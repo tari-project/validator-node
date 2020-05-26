@@ -2,7 +2,7 @@
 //!
 //! InstructionContext is always supplied as first parameter to Smart Contract implementation
 
-use super::{errors::TemplateError, runner::TemplateRunnerContext, Template};
+use super::{errors::TemplateError, runner::TemplateRunner, Template};
 use crate::{
     db::{
         models::{
@@ -25,25 +25,25 @@ use std::{
 use tokio::sync::Mutex;
 
 /// TemplateContext, is factory for [Instruction] and [InstructionContext]
-/// It also holding address of TemplateRunnerContext actor, which executes
+/// It also holding address of [TemplateRunner] actor, which executes
 /// [Template] Instructions
 ///
 /// ## Instruction processing:
 /// [`TemplateContext::addr()`] allows to send [`actix::Message`] to [TemplateContextRunner],
 /// which implements [`actix::Actor`]
-/// actix::Message is implemented 
+/// [actix::Message]  should is implemented
 #[derive(Clone)]
 pub struct TemplateContext<T: Template + Clone + 'static> {
     // TODO: this is not secure, we provide access to context to template,
     // To make it safe our templates should be completely sandboxed,
     // having only access to the context methods...
-    pub(crate) pool: Arc<Pool>,
-    pub(crate) wallets: Arc<Mutex<WalletStore>>,
-    pub(crate) address: Multiaddr,
-    pub(crate) actor_addr: actix::Addr<TemplateRunnerContext<T>>,
+    pub(super) pool: Arc<Pool>,
+    pub(super) wallets: Arc<Mutex<WalletStore>>,
+    pub(super) node_address: Multiaddr,
+    pub(super) actor_address: Option<actix::Addr<TemplateRunner<T>>>,
 }
 
-impl<T: Template + 'static> TemplateContext<T> {
+impl<T: Template + Clone + 'static> TemplateContext<T> {
     /// [TemplateID] of current TemplateContext
     #[inline]
     pub fn template_id(&self) -> TemplateID {
@@ -63,7 +63,7 @@ impl<T: Template + 'static> TemplateContext<T> {
     }
 
     /// Creates [InstructionContext] which can be used by [InstructionRunner] to process [Instruction]
-    pub async fn instruction_context(&self, instruction: Instruction) -> Result<InstructionContext, TemplateError> {
+    pub async fn instruction_context(&self, instruction: Instruction) -> Result<InstructionContext<T>, TemplateError> {
         let client = self.pool.get().await.map_err(DBError::from)?;
         Ok(InstructionContext {
             client,
@@ -72,16 +72,17 @@ impl<T: Template + 'static> TemplateContext<T> {
         })
     }
 
-    /// [TemplateRunnerContext] Actor's address, which is responsible for processing [Instruction]s
+    /// [TemplateRunner] Actor's address, which is responsible for processing [Instruction]s
     #[inline]
-    pub fn addr(&self) -> &actix::Addr<TemplateRunnerContext<T>> {
-        &self.actor_addr
+    pub fn addr(&self) -> &actix::Addr<TemplateRunner<T>> {
+        self.actor_address.as_ref()
+            .expect("TemplateRunner")
     }
 }
 
 
 /// Provides environment and methods for Instruction's code to execute
-pub struct InstructionContext<T: Template + 'static> {
+pub struct InstructionContext<T: Template + Clone + 'static> {
     template_context: TemplateContext<T>,
     client: Client,
     instruction: Instruction,
@@ -98,7 +99,7 @@ pub enum ContextEvent {
     Commit,
 }
 
-impl<T: Template> InstructionContext<T> {
+impl<T: Template + Clone> InstructionContext<T> {
     #[inline]
     pub fn template_id(&self) -> TemplateID {
         T::id()
@@ -157,27 +158,10 @@ impl<T: Template> InstructionContext<T> {
         Ok(())
     }
 
-    /// Updates result and status of [Instruction]
-    async fn update_instruction_status(&mut self, status: InstructionStatus) -> Result<(), TemplateError> {
-        if status == InstructionStatus::Scheduled ||
-            status == InstructionStatus::Processing ||
-            status == InstructionStatus::Invalid
-        {
-            Instruction::update_instructions_status(&[self.instruction.id], None, status, &self.client).await?;
-            self.instruction.status = status;
-        } else {
-            return processing_err!(
-                "Failed to update Instruction status to {} from within InstructionContext",
-                status
-            );
-        }
-        Ok(())
-    }
-
     pub async fn create_temp_wallet(&mut self) -> Result<Pubkey, TemplateError> {
         let transaction = self.client.transaction().await.map_err(DBError::from)?;
         let wallet_name = self.instruction.id.to_string();
-        let wallet = NodeWallet::new(self.template_context.address.clone(), wallet_name)?;
+        let wallet = NodeWallet::new(self.template_context.node_address.clone(), wallet_name)?;
         let wallet = self
             .template_context
             .wallets
@@ -191,51 +175,51 @@ impl<T: Template> InstructionContext<T> {
 }
 
 /// Provides environment and methods for Instruction's code on asset to execute
-pub struct AssetInstructionContext<T: Template + 'static>  {
+pub struct AssetInstructionContext<T: Template + Clone + 'static>  {
     context: InstructionContext<T>,
     pub asset: AssetState,
 }
 
-impl<T: Template + 'static>  Deref for AssetInstructionContext<T> {
+impl<T: Template + Clone + 'static>  Deref for AssetInstructionContext<T> {
     type Target = InstructionContext<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.context
     }
 }
-impl<T: Template + 'static> DerefMut for AssetInstructionContext<T> {
+impl<T: Template + Clone + 'static> DerefMut for AssetInstructionContext<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.context
     }
 }
 
-impl<T: Template> AssetInstructionContext<T> {
+impl<T: Template + Clone> AssetInstructionContext<T> {
     pub fn new(context: InstructionContext<T>, asset: AssetState) -> Self {
         Self { context, asset }
     }
 }
 
 /// Provides environment and methods for Instruction's code on token to execute
-pub struct TokenInstructionContext<T: Template + 'static>  {
+pub struct TokenInstructionContext<T: Template + Clone + 'static>  {
     context: InstructionContext<T>,
     pub asset: AssetState,
     pub token: Token,
 }
 
-impl<T: Template + 'static> Deref for TokenInstructionContext<T> {
+impl<T: Template + Clone + 'static> Deref for TokenInstructionContext<T> {
     type Target = InstructionContext<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.context
     }
 }
-impl<T: Template + 'static> DerefMut for TokenInstructionContext<T> {
+impl<T: Template + Clone + 'static> DerefMut for TokenInstructionContext<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.context
     }
 }
 
-impl<T: Template> TokenInstructionContext<T> {
+impl<T: Template + Clone> TokenInstructionContext<T> {
     pub fn new(context: InstructionContext<T>, asset: AssetState, token: Token) -> Self {
         Self { context, asset, token }
     }

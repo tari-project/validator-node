@@ -20,13 +20,25 @@ pub enum TemplateError {
     Processing(String),
     #[error("Contract parameters validation failed: {0}")]
     Validation(#[from] anyhow::Error),
-    #[error("Failed to send message {message} to actor {name}: {source}")]
+    #[error("Failed to send message {params} to actor {name}: {source}")]
     ActorSend {
         params: String,
         name: String,
         #[source]
         source: anyhow::Error
     },
+    #[error("Internal Template error: {0}")]
+    Internal(#[source] anyhow::Error)
+}
+
+#[macro_export]
+macro_rules! internal_err {
+    ($msg:literal $(,)?) => {
+        Err(TemplateError::Internal(anyhow::anyhow!($msg)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err(TemplateError::Internal(anyhow::anyhow!($fmt, $($arg)*)))
+    };
 }
 
 #[macro_export]

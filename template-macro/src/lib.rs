@@ -65,7 +65,7 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
         pub async fn #handler_fn_name (
             params: web::Path<TokenCallParams>,
             data: web::Json<#params_type>,
-            context: TemplateContext<#template>,
+            context: web::Data<TemplateContext<#template>>,
         ) -> Result<web::Json<Instruction>, ApiError> {
             #body
         }
@@ -85,7 +85,7 @@ fn generate_token_contract(parsed: ItemFn, args: ContractMacroArgs) -> proc_macr
             use #tari_validator_node::{
                 api::errors::{ApiError, ApplicationError},
                 db::models::consensus::instructions::*,
-                template::actix::*,
+                template::actix_web_impl::*,
             };
             use log::info;
             use actix_web::web;

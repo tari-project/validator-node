@@ -9,7 +9,7 @@ use tari_validator_node::{
 };
 
 fn template_scopes() -> Vec<actix_web::Scope> {
-    use tari_validator_node::template::{actix::ActixTemplate, single_use_tokens};
+    use tari_validator_node::template::{actix_web_impl::ActixTemplate, single_use_tokens};
     single_use_tokens::SingleUseTokenTemplate::actix_scopes()
 }
 

@@ -66,7 +66,6 @@ mod test {
     use crate::{
         api::{
             config::actix::{DEFAULT_ADDR, DEFAULT_PORT},
-            server::*,
         },
         test::utils::build_test_global_config,
     };

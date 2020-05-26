@@ -29,8 +29,6 @@ where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
     let mut server = HttpServer::new(move || {
         let app = App::new()
             .app_data(pool.clone())
-            .app_data(config_arc.clone())
-            .app_data(wallets.clone())
             .wrap({
                 let mut cors = Cors::new();
                 cors = match cors_config.allowed_origins.as_str() {

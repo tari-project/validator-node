@@ -1,5 +1,5 @@
 use super::{
-    actix::*,
+    actix_web_impl::*,
     errors::TemplateError,
     AssetInstructionContext,
     Contracts,
@@ -118,7 +118,7 @@ impl Template for SingleUseTokenTemplate {
 mod expanded_macros {
     use super::*;
     use crate::{
-        api::errors::{ApiError, ApplicationError},
+        api::errors::ApiError,
         db::models::consensus::instructions::*,
         template::{context::*, runner::*},
         types::AssetID,
@@ -131,7 +131,7 @@ mod expanded_macros {
 
     ////// impl #[contract(asset)] for issue_tokens()
 
-    type ThisActor = TemplateRunnerContext<SingleUseTokenTemplate>;
+    type ThisActor = TemplateRunner<SingleUseTokenTemplate>;
 
     /// Input parameters via RPC
     #[derive(Serialize, Deserialize)]
@@ -207,7 +207,7 @@ mod expanded_macros {
     async fn issue_tokens_actix(
         params: web::Path<AssetCallParams>,
         data: web::Json<ParamsIssueTokens>,
-        context: TemplateContext<SingleUseTokenTemplate>,
+        context: web::Data<TemplateContext<SingleUseTokenTemplate>>,
     ) -> Result<web::Json<Instruction>, ApiError>
     {
         // extract and transform parameters
@@ -272,7 +272,7 @@ mod test {
     use super::*;
     use crate::{
         db::models::consensus::instructions::*,
-        test::utils::{actix::TestAPIServer, actix_test_pool, builders::*, test_db_client},
+        test::utils::{actix::TestAPIServer, builders::*, test_db_client},
         types::AssetID,
     };
     use serde_json::json;
@@ -285,7 +285,7 @@ mod test {
             template_id,
             ..Default::default()
         }
-        .build(actix_test_pool())
+        .build()
         .await
         .unwrap();
         let asset_id = context.asset.asset_id.clone();
@@ -301,13 +301,7 @@ mod test {
     async fn issue_tokens_negative() {
         let (_client, _lock) = test_db_client().await;
         let template_id = SingleUseTokenTemplate::id();
-        let context = AssetContextBuilder {
-            template_id,
-            ..Default::default()
-        }
-        .build(actix_test_pool())
-        .await
-        .unwrap();
+        let context = AssetContextBuilder { template_id, ..Default::default() }.build().await.unwrap();
         let asset_id = AssetID::default();
         let token_ids: Vec<_> = (0..10).map(|_| TokenID::test_from_asset(&asset_id)).collect();
         assert!(issue_tokens(&context, token_ids).await.is_err());

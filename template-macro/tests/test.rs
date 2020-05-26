@@ -1,10 +1,12 @@
 use tari_template_macro::contract;
 use tari_validator_node::{
+    types::TemplateID,
     template::{errors::TemplateError, *},
-    test::utils::{actix_test_pool, builders::*, load_env},
+    test::utils::{builders::*, load_env},
 };
 
-struct Test;
+#[derive(Clone)]
+pub struct Test;
 impl Template for Test {
     type AssetContracts = ();
     type TokenContracts = ();
@@ -23,7 +25,7 @@ async fn simple_contract(_: &mut TokenInstructionContext<Test>, input: u32) -> R
 #[actix_rt::test]
 async fn test_contract() {
     load_env();
-    let mut context = TokenContextBuilder::default().build(actix_test_pool()).await.unwrap();
+    let mut context = TokenContextBuilder::default().build().await.unwrap();
     let res = simple_contract(&mut context, 1).await.unwrap();
     assert_eq!(res, 1);
 }

@@ -1,17 +1,11 @@
-use super::{Contracts, Template, TemplateContext, LOG_TARGET};
+use super::{Contracts, Template, LOG_TARGET};
 use crate::{
-    api::errors::{ApiError, ApplicationError},
-    config::NodeConfig,
+    api::errors::{ApiError},
     types::{AssetID, TemplateID, TokenID},
-    wallet::WalletStore,
 };
-use actix_web::{dev::Payload, web, web::Data, FromRequest, HttpRequest};
-use deadpool_postgres::Pool;
-use futures::future::{err, ok, Ready};
+use actix_web::web;
 use log::info;
 use serde::Deserialize;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[derive(Deserialize)]
 pub struct AssetCallParams {
@@ -81,40 +75,40 @@ pub trait ActixTemplate: Template {
 impl<A: Template> ActixTemplate for A {}
 
 /// TemplateContext can be retrieved from actix web requests at given path
-impl FromRequest for TemplateContext {
-    type Config = ();
-    type Error = ApiError;
-    type Future = Ready<Result<Self, Self::Error>>;
+// impl FromRequest for TemplateContext {
+//     type Config = ();
+//     type Error = ApiError;
+//     type Future = Ready<Result<Self, Self::Error>>;
 
-    #[inline]
-    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
-        // initialize whole context in this module - would make moduel quite complex but easier to debug
-        // middleware might pass parameters via .extensions() or .app_data()
-        // TODO: this is not secure as we allow routes configuration via Contracts trait
-        // potentially template might configure a route to get access to the Pool and WalletStore
-        let pool = req.app_data::<Arc<Pool>>().expect("Failed to retrieve DB pool").clone();
-        let wallets = req
-            .app_data::<Arc<Mutex<WalletStore>>>()
-            .expect("Failed to retrieve WalletStore")
-            .clone();
-        let config = req.app_data::<NodeConfig>().expect("Failed to retrieve NodeConfig");
-        let address = config
-            .public_address
-            .clone()
-            .expect("Public address is not configured for Node");
-        let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
-            Some(id) => id.get_ref().clone(),
-            None => return err(ApplicationError::bad_request("Template data not found by this path").into()),
-        };
+//     #[inline]
+//     fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
+//         // initialize whole context in this module - would make moduel quite complex but easier to debug
+//         // middleware might pass parameters via .extensions() or .app_data()
+//         // TODO: this is not secure as we allow routes configuration via Contracts trait
+//         // potentially template might configure a route to get access to the Pool and WalletStore
+//         let pool = req.app_data::<Arc<Pool>>().expect("Failed to retrieve DB pool").clone();
+//         let wallets = req
+//             .app_data::<Arc<Mutex<WalletStore>>>()
+//             .expect("Failed to retrieve WalletStore")
+//             .clone();
+//         let config = req.app_data::<NodeConfig>().expect("Failed to retrieve NodeConfig");
+//         let address = config
+//             .public_address
+//             .clone()
+//             .expect("Public address is not configured for Node");
+//         let template_id: TemplateID = match req.app_data::<Data<TemplateID>>() {
+//             Some(id) => id.get_ref().clone(),
+//             None => return err(ApplicationError::bad_request("Template data not found by this path").into()),
+//         };
 
-        ok(TemplateContext {
-            pool,
-            template_id,
-            wallets,
-            address,
-        })
-    }
-}
+//         ok(TemplateContext {
+//             pool,
+//             template_id,
+//             wallets,
+//             address,
+//         })
+//     }
+// }
 
 #[cfg(test)]
 mod test {
@@ -123,8 +117,9 @@ mod test {
         db::models::consensus::instructions::*,
         test::utils::{actix::TestAPIServer, builders::*, test_db_client},
         types::{InstructionID, NodeID},
+        template::*
     };
-    use actix_web::{http::StatusCode, web, HttpResponse, Result};
+    use actix_web::{http::StatusCode, web, HttpResponse, FromRequest, Result, dev::Payload};
 
     #[actix_rt::test]
     async fn requests() {
@@ -135,7 +130,7 @@ mod test {
             .asset_call(&asset.asset_id, "test_contract")
             .build()
             .to_http_request();
-        let context = TemplateContext::from_request(&request, &mut Payload::None)
+        let context = web::Data::<TemplateContext<TestTemplate>>::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
         assert_eq!(context.template_id(), asset.asset_id.template_id());
@@ -173,6 +168,7 @@ mod test {
             scope.service(web::resource("test").route(web::post().to(token_handler)));
         }
     }
+    #[derive(Clone)]
     struct TestTemplate;
     impl Template for TestTemplate {
         type AssetContracts = AssetConracts;
@@ -287,7 +283,7 @@ mod test {
     // *** Test TemplateContext *****
 
     // Asset contracts
-    async fn asset_handler_context(path: web::Path<AssetCallParams>, ctx: TemplateContext) -> Result<HttpResponse> {
+    async fn asset_handler_context(path: web::Path<AssetCallParams>, ctx: web::Data<TemplateContext<TestTemplateContext>>) -> Result<HttpResponse> {
         Ok(HttpResponse::Ok().body(path.asset_id(ctx.template_id())?.to_string()))
     }
     enum AssetConractsContext {}
@@ -297,6 +293,7 @@ mod test {
             scope.service(web::resource("test").route(web::post().to(asset_handler_context)));
         }
     }
+    #[derive(Clone)]
     struct TestTemplateContext;
     impl Template for TestTemplateContext {
         type AssetContracts = AssetConractsContext;
