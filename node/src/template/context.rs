@@ -2,7 +2,7 @@
 //!
 //! InstructionContext is always supplied as first parameter to Smart Contract implementation
 
-use super::{errors::TemplateError, runner::TemplateRunner, Template};
+use super::{errors::TemplateError, runner::TemplateRunner, Template, LOG_TARGET};
 use crate::{
     db::{
         models::{
@@ -121,6 +121,7 @@ impl<T: Template + Clone> InstructionContext<T> {
     }
 
     pub async fn transition(&mut self, event: ContextEvent) -> Result<(), TemplateError> {
+        log::trace!(target: LOG_TARGET, "template={}, instruction={}, transition event {:?}", T::id(), self.instruction.id, event);
         let update = match (self.instruction.status, event) {
             (InstructionStatus::Scheduled, ContextEvent::StartProcessing) => UpdateInstruction {
                 status: Some(InstructionStatus::Processing),

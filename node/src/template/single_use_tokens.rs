@@ -15,7 +15,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-const LOG_TARGET: &'static str = "template::single_use_tokens";
+const LOG_TARGET: &'static str = "validator_node::template::single_use_tokens";
 
 #[derive(Serialize, Deserialize)]
 struct TokenData {
@@ -164,6 +164,7 @@ mod expanded_macros {
             let context = self.context();
             let context_err = self.context();
             let instruction_err = msg.instruction.clone();
+            log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction", Self::template_id(), msg.instruction.id);
             let fut = actix::fut::wrap_future::<_, Self>(
                 async move {
                     let context = context
@@ -352,7 +353,20 @@ mod test {
             .unwrap();
 
         assert!(resp.status().is_success());
-        let trans: Instruction = resp.json().await.unwrap();
-        assert_eq!(trans.status, InstructionStatus::Scheduled);
+        let instruction: Instruction = resp.json().await.unwrap();
+        assert_eq!(instruction.status, InstructionStatus::Scheduled);
+        assert!(srv.context().addr().connected());
+        let id = instruction.id;
+        // TODO: need better solution for async Actor tests, some Test wrapper for actor
+        for i in 0..10 {
+            tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
+            let instruction = Instruction::load(id, &client).await.unwrap();
+            assert_ne!(instruction.status, InstructionStatus::Invalid);
+            if instruction.status == InstructionStatus::Pending {
+                return;
+            }
+        }
+        let instruction = Instruction::load(id, &client).await.unwrap();
+        panic!("Waiting for Actor to process Instruction longer than 1s {:?}", instruction);
     }
 }

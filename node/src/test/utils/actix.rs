@@ -1,18 +1,18 @@
 use super::{actix_test_pool, build_test_config, load_env};
 use crate::{
-    template::{actix_web_impl::ActixTemplate, Template, TemplateRunner},
+    template::{actix_web_impl::ActixTemplate, Template, TemplateRunner, TemplateContext},
     types::{AssetID, TokenID},
 };
-use actix_web::{client::ClientRequest, middleware::Logger, test, App, Scope};
+use actix_web::{client::ClientRequest, middleware::Logger, test, App};
 use std::ops::Deref;
 
 /// Full stack API server for templates testing purposes
 ///
 /// Supports methods for posting assets and tokens instructions
 /// Also impls Deref into actix [test::TestServer]
-pub struct TestAPIServer<T: Template> {
+pub struct TestAPIServer<T: Template + 'static> {
     server: test::TestServer,
-    phantom: std::marker::PhantomData<T>,
+    context: TemplateContext<T>
 }
 
 impl<T: Template + 'static> TestAPIServer<T> {
@@ -23,15 +23,16 @@ impl<T: Template + 'static> TestAPIServer<T> {
         let config = build_test_config().unwrap();
         let runner = TemplateRunner::<T>::create(pool, config);
         let context = runner.start();
+        let srv_context = context.clone();
         let server = test::start(move || {
             let app = App::new().wrap(Logger::default());
             T::actix_scopes()
                 .into_iter()
-                .fold(app, |app, scope| app.service(scope.data(context.clone())))
+                .fold(app, |app, scope| app.service(scope.data(srv_context.clone())))
         });
         Self {
-            server,
-            phantom: std::marker::PhantomData,
+            context,
+            server
         }
     }
 
@@ -59,6 +60,10 @@ impl<T: Template + 'static> TestAPIServer<T> {
             instruction
         );
         self.server.post(uri)
+    }
+
+    pub fn context(&self) -> &TemplateContext<T> {
+        &self.context
     }
 }
 

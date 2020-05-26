@@ -2,6 +2,7 @@ use crate::{
     config::NodeConfig,
     template::{Template, TemplateContext},
     wallet::WalletStore,
+    types::TemplateID,
 };
 use actix::prelude::*;
 use deadpool_postgres::Pool;
@@ -15,6 +16,10 @@ pub struct TemplateRunner<T: Template + Clone + 'static> {
 }
 
 impl<T: Template + Clone> TemplateRunner<T> {
+    pub fn template_id() -> TemplateID {
+        T::id()
+    }
+
     /// Validates if [TemplateContext] is connected to this [actix::Actor]
     pub fn connected(&self) -> bool {
         match self.context.actor_address.as_ref() {
