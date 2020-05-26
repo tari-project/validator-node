@@ -2,22 +2,22 @@ use tari_template_macro::contract;
 use tari_validator_node::{
     types::TemplateID,
     template::{errors::TemplateError, *},
-    test::utils::{builders::*, load_env},
+    test::utils::{Test, builders::*, load_env},
 };
 
 #[derive(Clone)]
-pub struct Test;
-impl Template for Test {
+pub struct MyContract;
+impl Template for MyContract {
     type AssetContracts = ();
     type TokenContracts = ();
 
     fn id() -> TemplateID {
-        1.into()
+        Test::<TemplateID>::new()
     }
 }
 
-#[contract(token,template="Test")]
-async fn simple_contract(_: &mut TokenInstructionContext<Test>, input: u32) -> Result<u32, TemplateError> {
+#[contract(token,template="MyContract")]
+async fn simple_contract(_: &mut TokenInstructionContext<MyContract>, input: u32) -> Result<u32, TemplateError> {
     Ok(input)
 }
 
