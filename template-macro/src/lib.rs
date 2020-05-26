@@ -124,56 +124,55 @@ fn extract_type(a: FnArg) -> Box<Type> {
     }
 }
 
-/*Output:
-pub async fn web_handler (
-    params: web::Path<TokenCallParams>,
-    data: web::Json<Params>,
-    context: web::Data<TemplateContext<#template>>,
-) -> Result<web::Json<Instruction>, ApiError> {
-    // extract and transform parameters
-    let asset_id = params.asset_id(&context.template_id)?;
-    let token_id = params.token_id(&context.template_id)?;
-    let asset = match context.load_asset(asset_id).await? {
-        None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
-        Some(asset) => asset,
-    };
-    let token = match context.load_token(token_id).await? {
-        None => return Err(ApplicationError::bad_request("Token ID not found").into()),
-        Some(token) => token,
-    };
-    let params = data.into_inner();
-    // create transaction
-    let transaction = NewInstruction {
-        asset_id: asset.id,
-        token_id: Some(token.token_id),
-        template_id: context.template_id.clone(),
-        params: serde_json::to_value(&params)
-            .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
-        contract_name: "transfer_token".to_string(),
-        ..NewInstruction::default()
-    };
-    context.create_transaction(transaction).await?;
-    // create context
-    let mut context = TokenInstructionContext::new(context, asset.clone(), token.clone());
-    let message = Msg {
-        asset_id,
-        token_id,
-        instruction: instruction.clone(),
-        params: data.clone(),
-    };
-    context
-        .addr()
-        .try_send(message)
-        .map_err(|err| TemplateError::ActorSend {
-            source: err.into(),
-            // TODO: proper handling of unlikely error
-            params: serde_json::to_string(&data).unwrap(),
-            name: "transfer_token".into(),
-        })?;
-    // There must be transaction - otherwise we would fail on previous call
-    return Ok(web::Json(context.into()))
- }
-*/
+// Output:
+// pub async fn web_handler (
+// params: web::Path<TokenCallParams>,
+// data: web::Json<Params>,
+// context: web::Data<TemplateContext<#template>>,
+// ) -> Result<web::Json<Instruction>, ApiError> {
+// extract and transform parameters
+// let asset_id = params.asset_id(&context.template_id)?;
+// let token_id = params.token_id(&context.template_id)?;
+// let asset = match context.load_asset(asset_id).await? {
+// None => return Err(ApplicationError::bad_request("Asset ID not found").into()),
+// Some(asset) => asset,
+// };
+// let token = match context.load_token(token_id).await? {
+// None => return Err(ApplicationError::bad_request("Token ID not found").into()),
+// Some(token) => token,
+// };
+// let params = data.into_inner();
+// create transaction
+// let transaction = NewInstruction {
+// asset_id: asset.id,
+// token_id: Some(token.token_id),
+// template_id: context.template_id.clone(),
+// params: serde_json::to_value(&params)
+// .map_err(|err| ApplicationError::bad_request(format!("Contract params error: {}", err).as_str()))?,
+// contract_name: "transfer_token".to_string(),
+// ..NewInstruction::default()
+// };
+// context.create_transaction(transaction).await?;
+// create context
+// let mut context = TokenInstructionContext::new(context, asset.clone(), token.clone());
+// let message = Msg {
+// asset_id,
+// token_id,
+// instruction: instruction.clone(),
+// params: data.clone(),
+// };
+// context
+// .addr()
+// .try_send(message)
+// .map_err(|err| TemplateError::ActorSend {
+// source: err.into(),
+// TODO: proper handling of unlikely error
+// params: serde_json::to_string(&data).unwrap(),
+// name: "transfer_token".into(),
+// })?;
+// There must be transaction - otherwise we would fail on previous call
+// return Ok(web::Json(context.into()))
+// }
 fn generate_token_web_body(fn_name: &syn::Ident, template: &syn::Ident) -> proc_macro2::TokenStream {
     let fn_name_string = format!("{}", fn_name);
     quote! {
@@ -224,11 +223,7 @@ fn generate_token_web_body(fn_name: &syn::Ident, template: &syn::Ident) -> proc_
 // pub struct Params {
 //     owner_pubkey: Pubkey,
 // }
-fn generate_type_params_struct(
-    fn_arg_idents: &[Box<Pat>],
-    fn_arg_types: &[Box<Type>],
-) -> proc_macro2::TokenStream
-{
+fn generate_type_params_struct(fn_arg_idents: &[Box<Pat>], fn_arg_types: &[Box<Type>]) -> proc_macro2::TokenStream {
     let mut types = vec![];
 
     for (i, t) in fn_arg_idents.into_iter().zip(fn_arg_types.into_iter()) {
@@ -247,7 +242,6 @@ fn generate_type_params_struct(
     }
 }
 
-
 // Output:
 // /// Actor's message is input parameters combined with Instruction
 // #[derive(Message)]
@@ -258,8 +252,7 @@ fn generate_type_params_struct(
 //     pub(super) params: Params,
 //     pub(super) instruction: Instruction,
 // }
-fn generate_message_struct() -> proc_macro2::TokenStream
-{
+fn generate_message_struct() -> proc_macro2::TokenStream {
     quote! {
         use actix::Message;
 
@@ -274,7 +267,6 @@ fn generate_message_struct() -> proc_macro2::TokenStream
     }
 }
 
-
 // impl Handler<sell_token_actix::Msg> for ThisActor {
 //     type Result = ResponseActFuture<Self, Result<(), TemplateError>>;
 
@@ -283,7 +275,8 @@ fn generate_message_struct() -> proc_macro2::TokenStream
 //         let instruction = msg.instruction.clone();
 //         let token_context_fut =
 //             TokenInstructionContext::init(self.context(), msg.instruction.clone(), msg.token_id.clone());
-//         log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction", Self::template_id(), msg.instruction.id);
+//         log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction",
+// Self::template_id(), msg.instruction.id);
 
 //         let fut = actix::fut::wrap_future::<_, Self>(
 //             async move {
@@ -311,7 +304,8 @@ fn generate_token_actor_body(
     fn_arg_idents: &[Box<Pat>],
     fn_name: &syn::Ident,
     log_target: &String,
-) -> proc_macro2::TokenStream {
+) -> proc_macro2::TokenStream
+{
     let fn_name_string = format!("{}", fn_name);
     quote! {
         impl Handler<Msg> for ThisActor {

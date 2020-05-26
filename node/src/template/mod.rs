@@ -27,7 +27,13 @@ pub use runner::TemplateRunner;
 pub mod single_use_tokens;
 
 mod context;
-pub use context::{AssetInstructionContext, InstructionContext, TemplateContext, TokenInstructionContext, ContextEvent};
+pub use context::{
+    AssetInstructionContext,
+    ContextEvent,
+    InstructionContext,
+    TemplateContext,
+    TokenInstructionContext,
+};
 
 const LOG_TARGET: &'static str = "validator_node::template";
 

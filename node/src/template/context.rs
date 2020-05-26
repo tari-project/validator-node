@@ -12,8 +12,9 @@ use crate::{
         },
         utils::errors::DBError,
     },
-    {processing_err, validation_err},
+    processing_err,
     types::*,
+    validation_err,
     wallet::{NodeWallet, WalletStore},
 };
 use deadpool_postgres::{Client, Pool};
@@ -84,7 +85,9 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
         let context = self.instruction_context(instruction.clone()).await;
         let err = match context {
             Ok(mut context) => context
-                .transition(ContextEvent::ProcessingFailed { result: serde_json::json!({"error": err.to_string()}) })
+                .transition(ContextEvent::ProcessingFailed {
+                    result: serde_json::json!({"error": err.to_string()}),
+                })
                 .await
                 .err(),
             Err(err) => Some(err),
@@ -151,7 +154,13 @@ impl<T: Template + Clone> InstructionContext<T> {
     }
 
     pub async fn transition(&mut self, event: ContextEvent) -> Result<(), TemplateError> {
-        log::trace!(target: LOG_TARGET, "template={}, instruction={}, transition event {:?}", T::id(), self.instruction.id, event);
+        log::trace!(
+            target: LOG_TARGET,
+            "template={}, instruction={}, transition event {:?}",
+            T::id(),
+            self.instruction.id,
+            event
+        );
         let update = match (self.instruction.status, event) {
             (InstructionStatus::Scheduled, ContextEvent::StartProcessing) => UpdateInstruction {
                 status: Some(InstructionStatus::Processing),
@@ -223,11 +232,15 @@ impl<T: Template + Clone> AssetInstructionContext<T> {
     pub fn new(context: InstructionContext<T>, asset: AssetState) -> Self {
         Self { context, asset }
     }
+
     /// Initialize from TemplateContext, instruction and asset_id
-    pub async fn init(ctx: TemplateContext<T>, instruction: Instruction, asset_id: AssetID) -> Result<Self, TemplateError> {
-        let context = ctx
-            .instruction_context(instruction)
-            .await?;
+    pub async fn init(
+        ctx: TemplateContext<T>,
+        instruction: Instruction,
+        asset_id: AssetID,
+    ) -> Result<Self, TemplateError>
+    {
+        let context = ctx.instruction_context(instruction).await?;
         // create asset context
         let asset = match context.load_asset(asset_id).await? {
             None => return validation_err!("Asset ID not found"),
@@ -261,11 +274,15 @@ impl<T: Template + Clone> TokenInstructionContext<T> {
     pub fn new(context: InstructionContext<T>, asset: AssetState, token: Token) -> Self {
         Self { context, asset, token }
     }
+
     /// Initialize from TemplateContext, instruction and token_id
-    pub async fn init(ctx: TemplateContext<T>, instruction: Instruction, token_id: TokenID) -> Result<Self, TemplateError> {
-        let context = ctx
-            .instruction_context(instruction)
-            .await?;
+    pub async fn init(
+        ctx: TemplateContext<T>,
+        instruction: Instruction,
+        token_id: TokenID,
+    ) -> Result<Self, TemplateError>
+    {
+        let context = ctx.instruction_context(instruction).await?;
         // create asset context
         let asset = match context.load_asset(token_id.asset_id()).await? {
             None => return validation_err!("Asset ID not found"),

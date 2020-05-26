@@ -1,8 +1,8 @@
 use tari_template_macro::contract;
 use tari_validator_node::{
-    types::TemplateID,
     template::{errors::TemplateError, *},
-    test::utils::{Test, builders::*, load_env},
+    test::utils::{builders::*, load_env, Test},
+    types::TemplateID,
 };
 
 #[derive(Clone)]
@@ -16,7 +16,7 @@ impl Template for MyContract {
     }
 }
 
-#[contract(token,template="MyContract")]
+#[contract(token, template = "MyContract")]
 async fn simple_contract(_: &mut TokenInstructionContext<MyContract>, input: u32) -> Result<u32, TemplateError> {
     Ok(input)
 }

@@ -1,8 +1,8 @@
 use crate::{
     config::NodeConfig,
     template::{Template, TemplateContext},
-    wallet::WalletStore,
     types::TemplateID,
+    wallet::WalletStore,
 };
 use actix::prelude::*;
 use deadpool_postgres::Pool;

@@ -165,7 +165,12 @@ mod expanded_macros {
             let instruction = msg.instruction.clone();
             let asset_context_fut =
                 AssetInstructionContext::init(self.context(), msg.instruction.clone(), msg.asset_id.clone());
-            log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction", Self::template_id(), msg.instruction.id);
+            log::trace!(
+                target: LOG_TARGET,
+                "template={}, instruction={}, Actor received issue_tokens instruction",
+                Self::template_id(),
+                msg.instruction.id
+            );
 
             let fut = actix::fut::wrap_future::<_, Self>(
                 async move {
@@ -182,9 +187,7 @@ mod expanded_macros {
                     context.transition(ContextEvent::ProcessingResult { result }).await?;
                     Ok(())
                 }
-                .or_else(move |err: TemplateError| {
-                    context.instruction_failed(instruction, err)
-                }),
+                .or_else(move |err: TemplateError| context.instruction_failed(instruction, err)),
             );
             Box::pin(fut)
         }
@@ -244,8 +247,6 @@ mod expanded_macros {
     }
     ////// end of #[derive(Contracts)]
 
-
-
     // impl Handler<sell_token_actix::Msg> for ThisActor {
     //     type Result = ResponseActFuture<Self, Result<(), TemplateError>>;
 
@@ -254,7 +255,8 @@ mod expanded_macros {
     //         let instruction = msg.instruction.clone();
     //         let token_context_fut =
     //             TokenInstructionContext::init(self.context(), msg.instruction.clone(), msg.token_id.clone());
-    //         log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction", Self::template_id(), msg.instruction.id);
+    //         log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction",
+    // Self::template_id(), msg.instruction.id);
 
     //         let fut = actix::fut::wrap_future::<_, Self>(
     //             async move {
@@ -279,16 +281,12 @@ mod expanded_macros {
     //     }
     // }
 
-
-
     ////// impl #[derive(Contracts)] for TokenContracts
 
     impl Contracts for TokenContracts {
         fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
             info!("template={}, installing token API transfer_token", tpl);
-            scope.service(
-                web::resource("/transfer_token").route(web::post().to(transfer_token_actix::web_handler)),
-            );
+            scope.service(web::resource("/transfer_token").route(web::post().to(transfer_token_actix::web_handler)));
             scope.service(web::resource("/sell_token").route(web::post().to(sell_token_actix::web_handler)));
         }
     }
@@ -379,6 +377,9 @@ mod test {
             }
         }
         let instruction = Instruction::load(id, &client).await.unwrap();
-        panic!("Waiting for Actor to process Instruction longer than 1s {:?}", instruction);
+        panic!(
+            "Waiting for Actor to process Instruction longer than 1s {:?}",
+            instruction
+        );
     }
 }

@@ -1,6 +1,6 @@
 use super::{actix_test_pool, build_test_config, load_env};
 use crate::{
-    template::{actix_web_impl::ActixTemplate, Template, TemplateRunner, TemplateContext},
+    template::{actix_web_impl::ActixTemplate, Template, TemplateContext, TemplateRunner},
     types::{AssetID, TokenID},
 };
 use actix_web::{client::ClientRequest, middleware::Logger, test, App};
@@ -12,7 +12,7 @@ use std::ops::Deref;
 /// Also impls Deref into actix [test::TestServer]
 pub struct TestAPIServer<T: Template + 'static> {
     server: test::TestServer,
-    context: TemplateContext<T>
+    context: TemplateContext<T>,
 }
 
 impl<T: Template + 'static> TestAPIServer<T> {
@@ -30,10 +30,7 @@ impl<T: Template + 'static> TestAPIServer<T> {
                 .into_iter()
                 .fold(app, |app, scope| app.service(scope.data(srv_context.clone())))
         });
-        Self {
-            context,
-            server
-        }
+        Self { context, server }
     }
 
     pub fn asset_call(&self, id: &AssetID, instruction: &str) -> ClientRequest {
