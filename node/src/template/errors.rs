@@ -25,10 +25,10 @@ pub enum TemplateError {
         params: String,
         name: String,
         #[source]
-        source: anyhow::Error
+        source: anyhow::Error,
     },
     #[error("Internal Template error: {0}")]
-    Internal(#[source] anyhow::Error)
+    Internal(#[source] anyhow::Error),
 }
 
 #[macro_export]

@@ -1,9 +1,9 @@
 use super::ProposalBuilder;
 use crate::{
     db::models::{consensus::*, AggregateSignatureMessageStatus, ProposalStatus},
+    test::utils::Test,
     types::{consensus::SignatureData, NodeID, ProposalID},
 };
-use crate::test::utils::Test;
 use deadpool_postgres::Client;
 use serde_json::json;
 

@@ -1,7 +1,9 @@
-use crate::template::{Template, TemplateContext};
-use crate::wallet::WalletStore;
+use crate::{
+    config::NodeConfig,
+    template::{Template, TemplateContext},
+    wallet::WalletStore,
+};
 use actix::prelude::*;
-use crate::config::NodeConfig;
 use deadpool_postgres::Pool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -17,7 +19,7 @@ impl<T: Template + Clone> TemplateRunner<T> {
     pub fn connected(&self) -> bool {
         match self.context.actor_address.as_ref() {
             Some(addr) => addr.connected(),
-            None => false
+            None => false,
         }
     }
 
@@ -31,8 +33,14 @@ impl<T: Template + Clone> TemplateRunner<T> {
         let wallets = WalletStore::init(path)
             .expect(format!("Failed to create TemplateRunner {}: WalletStore:", T::id()).as_str());
         let wallets = Arc::new(Mutex::new(wallets));
-        let node_address = config.public_address.clone()
-            .expect(format!("Failed to create TemplateRunner {}, missing public_address config: {:?}", T::id(), config).as_str());
+        let node_address = config.public_address.clone().expect(
+            format!(
+                "Failed to create TemplateRunner {}, missing public_address config: {:?}",
+                T::id(),
+                config
+            )
+            .as_str(),
+        );
         let context = TemplateContext {
             pool,
             wallets,
@@ -67,7 +75,6 @@ impl<T: Template + Clone + 'static> Unpin for TemplateRunner<T> {}
 impl<T: Template + Clone + 'static> Actor for TemplateRunner<T> {
     type Context = Context<Self>;
 }
-
 
 // // create context
 // let mut context = TokenInstructionContext::new(context, asset.clone(), token.clone());

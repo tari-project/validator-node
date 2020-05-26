@@ -75,11 +75,9 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
     /// [TemplateRunner] Actor's address, which is responsible for processing [Instruction]s
     #[inline]
     pub fn addr(&self) -> &actix::Addr<TemplateRunner<T>> {
-        self.actor_address.as_ref()
-            .expect("TemplateRunner")
+        self.actor_address.as_ref().expect("TemplateRunner")
     }
 }
-
 
 /// Provides environment and methods for Instruction's code to execute
 pub struct InstructionContext<T: Template + Clone + 'static> {
@@ -124,35 +122,32 @@ impl<T: Template + Clone> InstructionContext<T> {
 
     pub async fn transition(&mut self, event: ContextEvent) -> Result<(), TemplateError> {
         let update = match (self.instruction.status, event) {
-            (InstructionStatus::Scheduled, ContextEvent::StartProcessing) => {
-                UpdateInstruction {
-                    status: Some(InstructionStatus::Processing),
-                    ..UpdateInstruction::default()
-                }
+            (InstructionStatus::Scheduled, ContextEvent::StartProcessing) => UpdateInstruction {
+                status: Some(InstructionStatus::Processing),
+                ..UpdateInstruction::default()
             },
-            (InstructionStatus::Processing, ContextEvent::ProcessingResult { result }) => {
-                UpdateInstruction {
-                    result: Some(result),
-                    status: Some(InstructionStatus::Pending),
-                    ..UpdateInstruction::default()
-                }
+            (InstructionStatus::Processing, ContextEvent::ProcessingResult { result }) => UpdateInstruction {
+                result: Some(result),
+                status: Some(InstructionStatus::Pending),
+                ..UpdateInstruction::default()
             },
-            (InstructionStatus::Processing, ContextEvent::ProcessingFailed { result }) => {
-                UpdateInstruction {
-                    result: Some(result),
-                    status: Some(InstructionStatus::Invalid),
-                    ..UpdateInstruction::default()
-                }
+            (InstructionStatus::Processing, ContextEvent::ProcessingFailed { result }) => UpdateInstruction {
+                result: Some(result),
+                status: Some(InstructionStatus::Invalid),
+                ..UpdateInstruction::default()
             },
-            (InstructionStatus::Pending, ContextEvent::Commit) => {
-                UpdateInstruction {
-                    status: Some(InstructionStatus::Commit),
-                    ..UpdateInstruction::default()
-                }
+            (InstructionStatus::Pending, ContextEvent::Commit) => UpdateInstruction {
+                status: Some(InstructionStatus::Commit),
+                ..UpdateInstruction::default()
             },
             (a, b) => {
-                return processing_err!("Invalid Instruction {} status {} transition {:?}", self.instruction.id, a, b);
-            }
+                return processing_err!(
+                    "Invalid Instruction {} status {} transition {:?}",
+                    self.instruction.id,
+                    a,
+                    b
+                );
+            },
         };
         self.instruction = self.instruction.clone().update(update, &self.client).await?;
         Ok(())
@@ -175,12 +170,12 @@ impl<T: Template + Clone> InstructionContext<T> {
 }
 
 /// Provides environment and methods for Instruction's code on asset to execute
-pub struct AssetInstructionContext<T: Template + Clone + 'static>  {
+pub struct AssetInstructionContext<T: Template + Clone + 'static> {
     context: InstructionContext<T>,
     pub asset: AssetState,
 }
 
-impl<T: Template + Clone + 'static>  Deref for AssetInstructionContext<T> {
+impl<T: Template + Clone + 'static> Deref for AssetInstructionContext<T> {
     type Target = InstructionContext<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -200,7 +195,7 @@ impl<T: Template + Clone> AssetInstructionContext<T> {
 }
 
 /// Provides environment and methods for Instruction's code on token to execute
-pub struct TokenInstructionContext<T: Template + Clone + 'static>  {
+pub struct TokenInstructionContext<T: Template + Clone + 'static> {
     context: InstructionContext<T>,
     pub asset: AssetState,
     pub token: Token,

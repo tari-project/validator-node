@@ -1,6 +1,8 @@
 use super::{actix_test_pool, build_test_config, load_env};
-use crate::types::{AssetID, TokenID};
-use crate::template::{TemplateRunner, Template, actix_web_impl::ActixTemplate};
+use crate::{
+    template::{actix_web_impl::ActixTemplate, Template, TemplateRunner},
+    types::{AssetID, TokenID},
+};
 use actix_web::{client::ClientRequest, middleware::Logger, test, App, Scope};
 use std::ops::Deref;
 
@@ -10,7 +12,7 @@ use std::ops::Deref;
 /// Also impls Deref into actix [test::TestServer]
 pub struct TestAPIServer<T: Template> {
     server: test::TestServer,
-    phantom: std::marker::PhantomData<T>
+    phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: Template + 'static> TestAPIServer<T> {
@@ -23,11 +25,14 @@ impl<T: Template + 'static> TestAPIServer<T> {
         let context = runner.start();
         let server = test::start(move || {
             let app = App::new().wrap(Logger::default());
-            T::actix_scopes().into_iter().fold(app, |app, scope| {
-                app.service(scope.data(context.clone()))
-            })
+            T::actix_scopes()
+                .into_iter()
+                .fold(app, |app, scope| app.service(scope.data(context.clone())))
         });
-        Self { server, phantom: std::marker::PhantomData }
+        Self {
+            server,
+            phantom: std::marker::PhantomData,
+        }
     }
 
     pub fn asset_call(&self, id: &AssetID, instruction: &str) -> ClientRequest {

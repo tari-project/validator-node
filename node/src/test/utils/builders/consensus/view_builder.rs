@@ -1,8 +1,8 @@
 use crate::{
     db::models::{consensus::*, NewAssetStateAppendOnly, NewTokenStateAppendOnly, ViewStatus},
+    test::utils::{builders::AssetStateBuilder, Test},
     types::{consensus::AppendOnlyState, AssetID, NodeID, ProposalID},
 };
-use crate::test::utils::{Test, builders::AssetStateBuilder};
 use deadpool_postgres::Client;
 use uuid::Uuid;
 

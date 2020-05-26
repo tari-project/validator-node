@@ -31,7 +31,11 @@ pub enum AssetContracts {
 }
 
 //#[contract(asset)]
-async fn issue_tokens(context: &AssetInstructionContext<SingleUseTokenTemplate>, token_ids: Vec<TokenID>) -> Result<Vec<Token>, TemplateError> {
+async fn issue_tokens(
+    context: &AssetInstructionContext<SingleUseTokenTemplate>,
+    token_ids: Vec<TokenID>,
+) -> Result<Vec<Token>, TemplateError>
+{
     let mut tokens = Vec::with_capacity(token_ids.len());
     let asset = &context.asset;
     let data = TokenData {
@@ -64,7 +68,7 @@ pub enum TokenContracts {
     TransferToken,
 }
 
-#[tari_template_macro::contract(token, local_use, template="SingleUseTokenTemplate")]
+#[tari_template_macro::contract(token, local_use, template = "SingleUseTokenTemplate")]
 /// Initiate sell token instruction
 ///
 /// ### Input Parameters:
@@ -87,9 +91,13 @@ async fn sell_token(
     Ok(wallet)
 }
 
-#[tari_template_macro::contract(token, local_use, template="SingleUseTokenTemplate")]
+#[tari_template_macro::contract(token, local_use, template = "SingleUseTokenTemplate")]
 // With token contract TokenInstructionContext is always passed as first argument
-async fn transfer_token(context: &mut TokenInstructionContext<SingleUseTokenTemplate>, user_pubkey: Pubkey) -> Result<Token, TemplateError> {
+async fn transfer_token(
+    context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
+    user_pubkey: Pubkey,
+) -> Result<Token, TemplateError>
+{
     let token = context.token.clone();
     if token.status == TokenStatus::Retired {
         return validation_err!("Tried to transfer already used token");
@@ -123,11 +131,11 @@ mod expanded_macros {
         template::{context::*, runner::*},
         types::AssetID,
     };
-    use actix_web::web;
     use actix::prelude::*;
+    use actix_web::web;
+    use futures::future::TryFutureExt;
     use log::info;
     use serde::{Deserialize, Serialize};
-    use futures::future::TryFutureExt;
 
     ////// impl #[contract(asset)] for issue_tokens()
 
@@ -150,7 +158,7 @@ mod expanded_macros {
 
     /// Actor is accepting Scheduled / Processing Instruction and tries to perform activity
     impl Handler<MessageIssueTokens> for ThisActor {
-        type Result = ResponseActFuture<Self, Result<(),TemplateError>>;
+        type Result = ResponseActFuture<Self, Result<(), TemplateError>>;
 
         fn handle(&mut self, msg: MessageIssueTokens, _ctx: &mut Context<Self>) -> Self::Result {
             let context = self.context();
@@ -158,7 +166,9 @@ mod expanded_macros {
             let instruction_err = msg.instruction.clone();
             let fut = actix::fut::wrap_future::<_, Self>(
                 async move {
-                    let context = context.instruction_context(msg.instruction).await
+                    let context = context
+                        .instruction_context(msg.instruction)
+                        .await
                         .expect("Failed to build InstructionContext, unrecoverable failure in Actor");
                     // create asset context
                     let asset = match context.load_asset(msg.asset_id.clone()).await? {
@@ -168,17 +178,18 @@ mod expanded_macros {
                     let mut context = AssetInstructionContext::new(context, asset);
 
                     context.transition(ContextEvent::StartProcessing).await?;
-                    // TODO: instruction needs to be able to run in an encapsulated way and return NewTokenStateAppendOnly and
-                    // NewAssetStateAppendOnly vecs       as the consensus workers need to be able to run an instruction set
-                    // and confirm the resulting state matches run contract
+                    // TODO: instruction needs to be able to run in an encapsulated way and return
+                    // NewTokenStateAppendOnly and NewAssetStateAppendOnly vecs       as the
+                    // consensus workers need to be able to run an instruction set and confirm the
+                    // resulting state matches run contract
                     let result = issue_tokens(&context, msg.token_ids).await?;
                     // update instruction after contract executed
-                    let result = serde_json::to_value(result).map_err(|err|
-                        TemplateError::Processing(err.to_string())
-                    )?;
+                    let result =
+                        serde_json::to_value(result).map_err(|err| TemplateError::Processing(err.to_string()))?;
                     context.transition(ContextEvent::ProcessingResult { result }).await?;
                     Ok(())
-                }.or_else(|err| {
+                }
+                .or_else(|err| {
                     log::error!(
                         target: LOG_TARGET,
                         "template={}, instruction={}, Instruction processing failed {}",
@@ -187,13 +198,17 @@ mod expanded_macros {
                         err
                     );
                     async move {
-                        let mut context = context_err.instruction_context(instruction_err).await
+                        let mut context = context_err
+                            .instruction_context(instruction_err)
+                            .await
                             .expect("Failed to build InstructionContext, unrecoverable failure in Actor");
-                        context.transition(ContextEvent::ProcessingFailed {
-                            result: json!({"error": err.to_string()})
-                        }).await
+                        context
+                            .transition(ContextEvent::ProcessingFailed {
+                                result: json!({"error": err.to_string()}),
+                            })
+                            .await
                     }
-                })
+                }),
             );
             Box::pin(fut)
         }
@@ -227,16 +242,17 @@ mod expanded_macros {
         let message = MessageIssueTokens {
             asset_id,
             instruction: instruction.clone(),
-            token_ids: data.token_ids.clone()
+            token_ids: data.token_ids.clone(),
         };
-        context.addr().try_send(message).map_err(|err|
-            TemplateError::ActorSend {
+        context
+            .addr()
+            .try_send(message)
+            .map_err(|err| TemplateError::ActorSend {
                 source: err.into(),
                 // TODO: proper handling of unlikely error
                 params: serde_json::to_string(&data).unwrap(),
-                name: "issue_tokens".into()
-            }
-        )?;
+                name: "issue_tokens".into(),
+            })?;
         // There must be instruction - otherwise we would fail on previous call
         Ok(web::Json(instruction))
     }
@@ -272,9 +288,9 @@ mod test {
     use super::*;
     use crate::{
         db::models::consensus::instructions::*,
+        test::utils::{actix::TestAPIServer, builders::*, test_db_client, Test},
         types::AssetID,
     };
-    use crate::test::utils::{Test, actix::TestAPIServer, builders::*, test_db_client};
     use serde_json::json;
 
     #[actix_rt::test]
@@ -301,7 +317,13 @@ mod test {
     async fn issue_tokens_negative() {
         let (_client, _lock) = test_db_client().await;
         let template_id = SingleUseTokenTemplate::id();
-        let context = AssetContextBuilder { template_id, ..Default::default() }.build().await.unwrap();
+        let context = AssetContextBuilder {
+            template_id,
+            ..Default::default()
+        }
+        .build()
+        .await
+        .unwrap();
         let asset_id = AssetID::default();
         let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
         assert!(issue_tokens(&context, token_ids).await.is_err());

@@ -1,6 +1,5 @@
 use super::DigitalAssetBuilder;
-use crate::{db::models::*, types::AssetID};
-use crate::test::utils::Test;
+use crate::{db::models::*, test::utils::Test, types::AssetID};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
 use rand::prelude::*;

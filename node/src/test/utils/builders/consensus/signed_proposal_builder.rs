@@ -1,8 +1,8 @@
 use crate::{
     db::models::{consensus::*, ProposalStatus},
+    test::utils::{builders::consensus::ProposalBuilder, Test},
     types::{NodeID, ProposalID},
 };
-use crate::test::utils::{Test, builders::consensus::ProposalBuilder};
 use deadpool_postgres::Client;
 
 #[allow(dead_code)]

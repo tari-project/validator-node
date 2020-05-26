@@ -1,9 +1,8 @@
 use crate::types::{errors::TypeError, identity::generate_uuid_v1, NodeID};
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
+use std::{fmt, ops::Deref};
 use tokio_postgres::types::{FromSql, ToSql};
 use uuid::Uuid;
-use std::fmt;
 
 #[derive(Default, Copy, Clone, PartialEq, Debug, ToSql, FromSql, Deserialize, Serialize)]
 pub struct InstructionID(pub(crate) Uuid);

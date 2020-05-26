@@ -2,9 +2,9 @@ use super::*;
 use crate::{
     db::models::{consensus::instructions::*, *},
     template::*,
+    test::utils::*,
     types::*,
     wallet::WalletStore,
-    test::utils::*,
 };
 use multiaddr::Multiaddr;
 use serde_json::{json, Value};

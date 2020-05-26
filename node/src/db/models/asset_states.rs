@@ -96,7 +96,9 @@ impl AssetState {
         const QUERY: &'static str =
             "UPDATE asset_states SET blocked_until = $3, updated_at = now() WHERE id = $1 AND blocked_until = $2";
         let stmt = client.prepare(QUERY).await?;
-        client.execute(&stmt, &[&self.id, &self.blocked_until, &Utc::now()]).await?;
+        client
+            .execute(&stmt, &[&self.id, &self.blocked_until, &Utc::now()])
+            .await?;
 
         Ok(())
     }
@@ -134,7 +136,7 @@ impl AssetState {
                 &params.initial_data_json,
                 &params.asset_id,
                 &params.digital_asset_id,
-                &Utc::now()
+                &Utc::now(),
             ])
             .await?;
 

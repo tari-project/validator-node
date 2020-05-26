@@ -15,6 +15,7 @@ impl Test<AssetID> {
     pub fn new() -> AssetID {
         Self::from_template(Test::<TemplateID>::new())
     }
+
     /// Generate random test [AssetID] on provided TemplateID
     pub fn from_template(template_id: TemplateID) -> AssetID {
         let hash = format!("{:032X}", random::<u32>());
@@ -27,6 +28,7 @@ impl Test<TokenID> {
     pub fn new() -> TokenID {
         Self::from_asset(&Test::<AssetID>::new())
     }
+
     pub fn from_asset(asset_id: &AssetID) -> TokenID {
         TokenID::new(asset_id, &Test::<NodeID>::new()).unwrap()
     }

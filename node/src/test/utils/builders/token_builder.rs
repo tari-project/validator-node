@@ -1,6 +1,5 @@
 use super::AssetStateBuilder;
-use crate::{db::models::*, types::*};
-use crate::test::utils::Test;
+use crate::{db::models::*, test::utils::Test, types::*};
 use deadpool_postgres::Client;
 use serde_json::Value;
 use uuid::Uuid;

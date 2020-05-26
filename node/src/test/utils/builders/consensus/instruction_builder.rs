@@ -1,8 +1,8 @@
 use crate::{
     db::models::{consensus::*, InstructionStatus},
+    test::utils::{builders::AssetStateBuilder, Test},
     types::{AssetID, InstructionID, NodeID, TemplateID, TokenID},
 };
-use crate::test::utils::{Test, builders::AssetStateBuilder};
 use deadpool_postgres::Client;
 use serde_json::{json, Value};
 

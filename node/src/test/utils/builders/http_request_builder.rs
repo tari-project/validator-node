@@ -1,8 +1,8 @@
 use crate::{
+    template::{Template, TemplateRunner},
+    test::utils::{actix_test_pool, build_test_config},
     types::{AssetID, TokenID},
-    template::{TemplateRunner, Template},
 };
-use crate::test::utils::{actix_test_pool, build_test_config};
 use actix_web::test::TestRequest;
 
 #[allow(dead_code)]

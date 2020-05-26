@@ -1,6 +1,6 @@
 use super::{Contracts, Template, LOG_TARGET};
 use crate::{
-    api::errors::{ApiError},
+    api::errors::ApiError,
     types::{AssetID, TemplateID, TokenID},
 };
 use actix_web::web;
@@ -115,11 +115,11 @@ mod test {
     use super::*;
     use crate::{
         db::models::consensus::instructions::*,
+        template::*,
+        test::utils::{actix::TestAPIServer, builders::*, test_db_client, Test},
         types::{InstructionID, NodeID},
-        template::*
     };
-    use crate::test::utils::{Test, actix::TestAPIServer, builders::*, test_db_client};
-    use actix_web::{http::StatusCode, web, HttpResponse, FromRequest, Result, dev::Payload};
+    use actix_web::{dev::Payload, http::StatusCode, web, FromRequest, HttpResponse, Result};
 
     #[actix_rt::test]
     async fn requests() {
@@ -283,7 +283,11 @@ mod test {
     // *** Test TemplateContext *****
 
     // Asset contracts
-    async fn asset_handler_context(path: web::Path<AssetCallParams>, ctx: web::Data<TemplateContext<TestTemplateContext>>) -> Result<HttpResponse> {
+    async fn asset_handler_context(
+        path: web::Path<AssetCallParams>,
+        ctx: web::Data<TemplateContext<TestTemplateContext>>,
+    ) -> Result<HttpResponse>
+    {
         Ok(HttpResponse::Ok().body(path.asset_id(ctx.template_id())?.to_string()))
     }
     enum AssetConractsContext {}
