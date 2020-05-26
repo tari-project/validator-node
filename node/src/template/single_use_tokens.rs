@@ -68,7 +68,7 @@ pub enum TokenContracts {
     TransferToken,
 }
 
-#[tari_template_macro::contract(token, local_use, template = "SingleUseTokenTemplate")]
+#[tari_template_macro::contract(token, template = "SingleUseTokenTemplate", internal)]
 /// Initiate sell token instruction
 ///
 /// ### Input Parameters:
@@ -91,7 +91,7 @@ async fn sell_token(
     Ok(wallet)
 }
 
-#[tari_template_macro::contract(token, local_use, template = "SingleUseTokenTemplate")]
+#[tari_template_macro::contract(token, template = "SingleUseTokenTemplate", internal)]
 // With token contract TokenInstructionContext is always passed as first argument
 async fn transfer_token(
     context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
@@ -142,8 +142,8 @@ mod expanded_macros {
     type ThisActor = TemplateRunner<SingleUseTokenTemplate>;
 
     /// Input parameters via RPC
-    #[derive(Serialize, Deserialize)]
-    pub struct ParamsIssueTokens {
+    #[derive(Serialize, Deserialize, Clone)]
+    pub struct Params {
         token_ids: Vec<TokenID>,
     }
 
@@ -152,7 +152,7 @@ mod expanded_macros {
     #[rtype(result = "Result<(),TemplateError>")]
     pub struct MessageIssueTokens {
         asset_id: AssetID,
-        token_ids: Vec<TokenID>,
+        params: Params,
         instruction: Instruction,
     }
 
@@ -162,53 +162,28 @@ mod expanded_macros {
 
         fn handle(&mut self, msg: MessageIssueTokens, _ctx: &mut Context<Self>) -> Self::Result {
             let context = self.context();
-            let context_err = self.context();
-            let instruction_err = msg.instruction.clone();
+            let instruction = msg.instruction.clone();
+            let asset_context_fut =
+                AssetInstructionContext::init(self.context(), msg.instruction.clone(), msg.asset_id.clone());
             log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction", Self::template_id(), msg.instruction.id);
+
             let fut = actix::fut::wrap_future::<_, Self>(
                 async move {
-                    let context = context
-                        .instruction_context(msg.instruction)
-                        .await
-                        .expect("Failed to build InstructionContext, unrecoverable failure in Actor");
-                    // create asset context
-                    let asset = match context.load_asset(msg.asset_id.clone()).await? {
-                        None => return validation_err!("Asset ID not found"),
-                        Some(asset) => asset,
-                    };
-                    let mut context = AssetInstructionContext::new(context, asset);
-
+                    let mut context = asset_context_fut.await?;
                     context.transition(ContextEvent::StartProcessing).await?;
                     // TODO: instruction needs to be able to run in an encapsulated way and return
                     // NewTokenStateAppendOnly and NewAssetStateAppendOnly vecs       as the
                     // consensus workers need to be able to run an instruction set and confirm the
                     // resulting state matches run contract
-                    let result = issue_tokens(&context, msg.token_ids).await?;
+                    let result = issue_tokens(&context, msg.params.token_ids).await?;
                     // update instruction after contract executed
                     let result =
                         serde_json::to_value(result).map_err(|err| TemplateError::Processing(err.to_string()))?;
                     context.transition(ContextEvent::ProcessingResult { result }).await?;
                     Ok(())
                 }
-                .or_else(|err| {
-                    log::error!(
-                        target: LOG_TARGET,
-                        "template={}, instruction={}, Instruction processing failed {}",
-                        instruction_err.template_id,
-                        instruction_err.id,
-                        err
-                    );
-                    async move {
-                        let mut context = context_err
-                            .instruction_context(instruction_err)
-                            .await
-                            .expect("Failed to build InstructionContext, unrecoverable failure in Actor");
-                        context
-                            .transition(ContextEvent::ProcessingFailed {
-                                result: json!({"error": err.to_string()}),
-                            })
-                            .await
-                    }
+                .or_else(move |err: TemplateError| {
+                    context.instruction_failed(instruction, err)
                 }),
             );
             Box::pin(fut)
@@ -222,7 +197,7 @@ mod expanded_macros {
     // so client can keep polling for result.
     async fn issue_tokens_actix(
         params: web::Path<AssetCallParams>,
-        data: web::Json<ParamsIssueTokens>,
+        data: web::Json<Params>,
         context: web::Data<TemplateContext<SingleUseTokenTemplate>>,
     ) -> Result<web::Json<Instruction>, ApiError>
     {
@@ -243,7 +218,7 @@ mod expanded_macros {
         let message = MessageIssueTokens {
             asset_id,
             instruction: instruction.clone(),
-            token_ids: data.token_ids.clone(),
+            params: data.clone(),
         };
         context
             .addr()
@@ -269,15 +244,52 @@ mod expanded_macros {
     }
     ////// end of #[derive(Contracts)]
 
+
+
+    // impl Handler<sell_token_actix::Msg> for ThisActor {
+    //     type Result = ResponseActFuture<Self, Result<(), TemplateError>>;
+
+    //     fn handle(&mut self, msg: sell_token_actix::Msg, _ctx: &mut Context<Self>) -> Self::Result {
+    //         let context = self.context();
+    //         let instruction = msg.instruction.clone();
+    //         let token_context_fut =
+    //             TokenInstructionContext::init(self.context(), msg.instruction.clone(), msg.token_id.clone());
+    //         log::trace!(target: LOG_TARGET, "template={}, instruction={}, Actor received issue_tokens instruction", Self::template_id(), msg.instruction.id);
+
+    //         let fut = actix::fut::wrap_future::<_, Self>(
+    //             async move {
+    //                 let mut context = token_context_fut.await?;
+    //                 context.transition(ContextEvent::StartProcessing).await?;
+    //                 // TODO: instruction needs to be able to run in an encapsulated way and return
+    //                 // NewTokenStateAppendOnly and NewAssetStateAppendOnly vecs       as the
+    //                 // consensus workers need to be able to run an instruction set and confirm the
+    //                 // resulting state matches run contract
+    //                 let result = sell_token(&mut context, msg.params.price, msg.params.user_pubkey).await?;
+    //                 // update instruction after contract executed
+    //                 let result =
+    //                     serde_json::to_value(result).map_err(|err| TemplateError::Processing(err.to_string()))?;
+    //                 context.transition(ContextEvent::ProcessingResult { result }).await?;
+    //                 Ok(())
+    //             }
+    //             .or_else(move |err: TemplateError| {
+    //                 context.instruction_failed(instruction, err)
+    //             }),
+    //         );
+    //         Box::pin(fut)
+    //     }
+    // }
+
+
+
     ////// impl #[derive(Contracts)] for TokenContracts
 
     impl Contracts for TokenContracts {
         fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
             info!("template={}, installing token API transfer_token", tpl);
             scope.service(
-                web::resource("/transfer_token").route(web::post().to(transfer_token_actix::transfer_token_actix)),
+                web::resource("/transfer_token").route(web::post().to(transfer_token_actix::web_handler)),
             );
-            scope.service(web::resource("/sell_token").route(web::post().to(sell_token_actix::sell_token_actix)));
+            scope.service(web::resource("/sell_token").route(web::post().to(sell_token_actix::web_handler)));
         }
     }
 
@@ -358,7 +370,7 @@ mod test {
         assert!(srv.context().addr().connected());
         let id = instruction.id;
         // TODO: need better solution for async Actor tests, some Test wrapper for actor
-        for i in 0..10 {
+        for _ in 0..10 {
             tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
             let instruction = Instruction::load(id, &client).await.unwrap();
             assert_ne!(instruction.status, InstructionStatus::Invalid);

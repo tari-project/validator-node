@@ -12,7 +12,7 @@ use crate::{
         },
         utils::errors::DBError,
     },
-    processing_err,
+    {processing_err, validation_err},
     types::*,
     wallet::{NodeWallet, WalletStore},
 };
@@ -70,6 +70,36 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
             instruction,
             template_context: self.clone(),
         })
+    }
+
+    /// Utility handler for actors when Instruction has failed
+    pub async fn instruction_failed(self, instruction: Instruction, err: TemplateError) -> Result<(), TemplateError> {
+        log::error!(
+            target: LOG_TARGET,
+            "template={}, instruction={}, Instruction processing failed {}",
+            instruction.template_id,
+            instruction.id,
+            err
+        );
+        let context = self.instruction_context(instruction.clone()).await;
+        let err = match context {
+            Ok(mut context) => context
+                .transition(ContextEvent::ProcessingFailed { result: serde_json::json!({"error": err.to_string()}) })
+                .await
+                .err(),
+            Err(err) => Some(err),
+        };
+        if let Some(err) = err {
+            log::error!(
+                target: LOG_TARGET,
+                "template={}, instruction={}, Non recoverable processing error {}",
+                instruction.template_id,
+                instruction.id,
+                err
+            );
+            return Err(err);
+        };
+        Ok(())
     }
 
     /// [TemplateRunner] Actor's address, which is responsible for processing [Instruction]s
@@ -193,6 +223,18 @@ impl<T: Template + Clone> AssetInstructionContext<T> {
     pub fn new(context: InstructionContext<T>, asset: AssetState) -> Self {
         Self { context, asset }
     }
+    /// Initialize from TemplateContext, instruction and asset_id
+    pub async fn init(ctx: TemplateContext<T>, instruction: Instruction, asset_id: AssetID) -> Result<Self, TemplateError> {
+        let context = ctx
+            .instruction_context(instruction)
+            .await?;
+        // create asset context
+        let asset = match context.load_asset(asset_id).await? {
+            None => return validation_err!("Asset ID not found"),
+            Some(asset) => asset,
+        };
+        Ok(Self::new(context, asset))
+    }
 }
 
 /// Provides environment and methods for Instruction's code on token to execute
@@ -218,5 +260,21 @@ impl<T: Template + Clone + 'static> DerefMut for TokenInstructionContext<T> {
 impl<T: Template + Clone> TokenInstructionContext<T> {
     pub fn new(context: InstructionContext<T>, asset: AssetState, token: Token) -> Self {
         Self { context, asset, token }
+    }
+    /// Initialize from TemplateContext, instruction and token_id
+    pub async fn init(ctx: TemplateContext<T>, instruction: Instruction, token_id: TokenID) -> Result<Self, TemplateError> {
+        let context = ctx
+            .instruction_context(instruction)
+            .await?;
+        // create asset context
+        let asset = match context.load_asset(token_id.asset_id()).await? {
+            None => return validation_err!("Asset ID not found"),
+            Some(asset) => asset,
+        };
+        let token = match context.load_token(token_id).await? {
+            None => return validation_err!("Token ID not found"),
+            Some(asset) => asset,
+        };
+        Ok(Self::new(context, asset, token))
     }
 }

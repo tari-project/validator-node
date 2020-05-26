@@ -16,6 +16,7 @@ pub struct TemplateRunner<T: Template + Clone + 'static> {
 }
 
 impl<T: Template + Clone> TemplateRunner<T> {
+    #[inline]
     pub fn template_id() -> TemplateID {
         T::id()
     }
