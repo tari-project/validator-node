@@ -7,7 +7,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ApiError {
-    #[error("DB error: {source}: {backtrace:?}")]
+    #[error("DB error: {source:?}: {backtrace:?}")]
     DBError {
         #[from]
         source: DBError,

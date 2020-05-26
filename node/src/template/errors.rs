@@ -4,7 +4,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum TemplateError {
-    #[error("DB error in Template: {source}")]
+    #[error("DB error in Template: {source:?}")]
     DB {
         #[from]
         source: DBError,
