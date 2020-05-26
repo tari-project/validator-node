@@ -56,14 +56,9 @@ pub struct UpdateView {
 impl View {
     pub async fn invalidate(views: Vec<View>, client: &Client) -> Result<(), DBError> {
         let view_ids: Vec<uuid::Uuid> = views.into_iter().map(|s| s.id).collect();
-        const QUERY: &'static str = "
-            UPDATE views SET
-                status = $2,
-                updated_at = NOW()
-            WHERE id in ($1)
-            RETURNING *";
-        let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
-        client.execute(&stmt, &[&view_ids, &ViewStatus::Invalid]).await?;
+
+        View::update_views_status(&view_ids, ViewStatus::Invalid, &client).await?;
+
         Ok(())
     }
 
@@ -191,7 +186,7 @@ impl View {
     }
 
     pub async fn find_by_asset_status(
-        asset_id: AssetID,
+        asset_id: &AssetID,
         status: ViewStatus,
         client: &Client,
     ) -> Result<Vec<View>, DBError>
@@ -247,7 +242,162 @@ impl From<View> for NewView {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::{builders::AssetStateBuilder, test_db_client};
+    use crate::{
+        db::models::AssetState,
+        test::utils::{
+            builders::{
+                consensus::{ProposalBuilder, ViewBuilder},
+                AssetStateBuilder,
+            },
+            test_db_client,
+        },
+    };
+
+    #[actix_rt::test]
+    async fn update_views_status() {
+        let (client, _lock) = test_db_client().await;
+        let view = ViewBuilder::default().build(&client).await.unwrap();
+        let view2 = ViewBuilder::default().build(&client).await.unwrap();
+        let view3 = ViewBuilder::default().build(&client).await.unwrap();
+        assert_eq!(view.status, ViewStatus::Prepare);
+        assert_eq!(view2.status, ViewStatus::Prepare);
+        assert_eq!(view3.status, ViewStatus::Prepare);
+
+        View::update_views_status(&vec![view.id, view3.id], ViewStatus::Commit, &client)
+            .await
+            .unwrap();
+        let view = View::load(view.id, &client).await.unwrap();
+        let view2 = View::load(view2.id, &client).await.unwrap();
+        let view3 = View::load(view3.id, &client).await.unwrap();
+        assert_eq!(view.status, ViewStatus::Commit);
+        assert_eq!(view2.status, ViewStatus::Prepare);
+        assert_eq!(view3.status, ViewStatus::Commit);
+    }
+
+    #[actix_rt::test]
+    async fn load_for_proposal() {
+        let (client, _lock) = test_db_client().await;
+        let proposal = ProposalBuilder::default().build(&client).await.unwrap();
+        let proposal2 = ProposalBuilder::default().build(&client).await.unwrap();
+        let view = ViewBuilder {
+            proposal_id: Some(proposal.id),
+            ..ViewBuilder::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
+        let view2 = ViewBuilder {
+            proposal_id: Some(proposal2.id),
+            ..ViewBuilder::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
+
+        let found_view = View::load_for_proposal(proposal.id, &client).await.unwrap();
+        let found_view2 = View::load_for_proposal(proposal2.id, &client).await.unwrap();
+        assert_eq!(view, found_view);
+        assert_eq!(view2, found_view2);
+    }
+
+    #[actix_rt::test]
+    async fn find_by_asset_status() {
+        let (client, _lock) = test_db_client().await;
+        let view = ViewBuilder::default().build(&client).await.unwrap();
+        let view2 = ViewBuilder::default().build(&client).await.unwrap();
+        let view2 = view2
+            .update(
+                UpdateView {
+                    status: Some(ViewStatus::Commit),
+                    ..UpdateView::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        // Two views with varying statuses beloning to different assets
+        assert_eq!(view.status, ViewStatus::Prepare);
+        assert_eq!(view2.status, ViewStatus::Commit);
+
+        assert_eq!(
+            View::find_by_asset_status(&view.asset_id, ViewStatus::Prepare, &client)
+                .await
+                .unwrap(),
+            vec![view.clone()]
+        );
+        assert_eq!(
+            View::find_by_asset_status(&view.asset_id, ViewStatus::Commit, &client)
+                .await
+                .unwrap(),
+            Vec::new()
+        );
+
+        assert_eq!(
+            View::find_by_asset_status(&view2.asset_id, ViewStatus::Prepare, &client)
+                .await
+                .unwrap(),
+            Vec::new()
+        );
+        assert_eq!(
+            View::find_by_asset_status(&view2.asset_id, ViewStatus::Commit, &client)
+                .await
+                .unwrap(),
+            vec![view2.clone()]
+        );
+    }
+
+    #[actix_rt::test]
+    async fn threshold_met() {
+        let (client, _lock) = test_db_client().await;
+        let view = ViewBuilder::default().build(&client).await.unwrap();
+        let view2 = ViewBuilder::default().build(&client).await.unwrap();
+        let view3 = ViewBuilder::default().build(&client).await.unwrap();
+
+        // view is ignored if an existing block is present
+        let mut asset_state = AssetState::find_by_asset_id(&view.asset_id, &client)
+            .await
+            .unwrap()
+            .unwrap();
+        asset_state.acquire_lock(60 as u64, &client).await.unwrap();
+
+        // view3 is ignored as it is not pending
+        view3
+            .update(
+                UpdateView {
+                    status: Some(ViewStatus::Commit),
+                    ..UpdateView::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        let views = View::threshold_met(&client).await.unwrap();
+        assert_eq!(json!(views), json!({ view2.asset_id.clone(): vec![view2] }));
+    }
+
+    #[actix_rt::test]
+    async fn invalidate() {
+        let (client, _lock) = test_db_client().await;
+        let view = ViewBuilder::default().build(&client).await.unwrap();
+        let view2 = ViewBuilder::default().build(&client).await.unwrap();
+        let view3 = ViewBuilder::default().build(&client).await.unwrap();
+        assert_eq!(view.status, ViewStatus::Prepare);
+        assert_eq!(view2.status, ViewStatus::Prepare);
+        assert_eq!(view3.status, ViewStatus::Prepare);
+
+        View::invalidate(vec![view.clone(), view3.clone()], &client)
+            .await
+            .unwrap();
+
+        let view = View::load(view.id, &client).await.unwrap();
+        let view2 = View::load(view2.id, &client).await.unwrap();
+        let view3 = View::load(view3.id, &client).await.unwrap();
+        assert_eq!(view.status, ViewStatus::Invalid);
+        assert_eq!(view2.status, ViewStatus::Prepare);
+        assert_eq!(view3.status, ViewStatus::Invalid);
+    }
 
     #[actix_rt::test]
     async fn crud() {

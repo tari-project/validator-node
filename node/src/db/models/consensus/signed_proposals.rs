@@ -1,8 +1,5 @@
 use crate::{
-    db::{
-        models::{ProposalStatus, SignedProposalStatus},
-        utils::errors::DBError,
-    },
+    db::{models::SignedProposalStatus, utils::errors::DBError},
     types::{AssetID, NodeID, ProposalID},
 };
 use chrono::{DateTime, Utc};
@@ -45,14 +42,21 @@ impl SignedProposal {
             UPDATE signed_proposals SET
                 status = $2,
                 updated_at = NOW()
-            WHERE id in ($1)
+            WHERE id = ANY ($1)
             RETURNING *";
-        let stmt = client.prepare_typed(QUERY, &[Type::UUID, Type::TEXT]).await?;
+        let stmt = client.prepare_typed(QUERY, &[Type::UUID_ARRAY, Type::TEXT]).await?;
         client
-            .execute(&stmt, &[&signed_proposal_ids, &ProposalStatus::Invalid])
+            .execute(&stmt, &[&signed_proposal_ids, &SignedProposalStatus::Invalid])
             .await?;
 
         Ok(())
+    }
+
+    /// Load signed proposal from database by ID
+    pub async fn load(id: uuid::Uuid, client: &Client) -> Result<Self, DBError> {
+        let stmt = "SELECT * FROM signed_proposals WHERE id = $1";
+        let result = client.query_one(stmt, &[&id]).await?;
+        Ok(Self::from_row(result)?)
     }
 
     /// Update aggregate_signature_message state in the database
@@ -129,7 +133,86 @@ impl SignedProposal {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::{builders::consensus::ProposalBuilder, test_db_client};
+    use crate::{
+        db::models::{consensus::Proposal, *},
+        test::utils::{builders::consensus::*, test_db_client},
+    };
+    use serde_json::json;
+
+    #[actix_rt::test]
+    async fn threshold_met() {
+        let (client, _lock) = test_db_client().await;
+        let signed_proposal = SignedProposalBuilder::default().build(&client).await.unwrap();
+        let signed_proposal2 = SignedProposalBuilder::default().build(&client).await.unwrap();
+        let signed_proposal3 = SignedProposalBuilder::default().build(&client).await.unwrap();
+
+        // signed_proposal is ignored if an existing block is present
+        let proposal = Proposal::load(signed_proposal.proposal_id, &client).await.unwrap();
+        let mut asset_state = AssetState::find_by_asset_id(&proposal.asset_id, &client)
+            .await
+            .unwrap()
+            .unwrap();
+        asset_state.acquire_lock(60 as u64, &client).await.unwrap();
+
+        // signed_proposal3 is ignored as it is not pending
+        signed_proposal3
+            .update(
+                UpdateSignedProposal {
+                    status: Some(SignedProposalStatus::Validated),
+                    ..UpdateSignedProposal::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        let signed_proposals = SignedProposal::threshold_met(&client).await.unwrap();
+        let proposal = Proposal::load(signed_proposal2.proposal_id, &client).await.unwrap();
+        assert_eq!(
+            json!(signed_proposals),
+            json!({ proposal.asset_id.clone(): vec![signed_proposal2] })
+        );
+    }
+
+    #[actix_rt::test]
+    async fn load_by_proposal_id() {
+        let (client, _lock) = test_db_client().await;
+        let proposal = ProposalBuilder::default().build(&client).await.unwrap();
+        let signed_proposal = SignedProposalBuilder {
+            proposal_id: Some(proposal.id),
+            ..SignedProposalBuilder::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
+
+        assert_eq!(
+            SignedProposal::load_by_proposal_id(proposal.id, &client).await.unwrap(),
+            vec![signed_proposal]
+        );
+    }
+
+    #[actix_rt::test]
+    async fn invalidate() {
+        let (client, _lock) = test_db_client().await;
+        let signed_proposal = SignedProposalBuilder::default().build(&client).await.unwrap();
+        let signed_proposal2 = SignedProposalBuilder::default().build(&client).await.unwrap();
+        let signed_proposal3 = SignedProposalBuilder::default().build(&client).await.unwrap();
+        assert_eq!(signed_proposal.status, SignedProposalStatus::Pending);
+        assert_eq!(signed_proposal2.status, SignedProposalStatus::Pending);
+        assert_eq!(signed_proposal3.status, SignedProposalStatus::Pending);
+
+        SignedProposal::invalidate(vec![signed_proposal.clone(), signed_proposal3.clone()], &client)
+            .await
+            .unwrap();
+
+        let signed_proposal = SignedProposal::load(signed_proposal.id, &client).await.unwrap();
+        let signed_proposal2 = SignedProposal::load(signed_proposal2.id, &client).await.unwrap();
+        let signed_proposal3 = SignedProposal::load(signed_proposal3.id, &client).await.unwrap();
+        assert_eq!(signed_proposal.status, SignedProposalStatus::Invalid);
+        assert_eq!(signed_proposal2.status, SignedProposalStatus::Pending);
+        assert_eq!(signed_proposal3.status, SignedProposalStatus::Invalid);
+    }
 
     #[actix_rt::test]
     async fn crud() {
@@ -144,5 +227,19 @@ mod test {
         let signed_proposal = SignedProposal::insert(params, &client).await.unwrap();
         assert_eq!(signed_proposal.proposal_id, proposal.id);
         assert_eq!(signed_proposal.node_id, NodeID::stub());
+
+        signed_proposal
+            .update(
+                UpdateSignedProposal {
+                    status: Some(SignedProposalStatus::Validated),
+                    ..UpdateSignedProposal::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        let signed_proposal = SignedProposal::load(signed_proposal.id, &client).await.unwrap();
+        assert_eq!(signed_proposal.status, SignedProposalStatus::Validated);
     }
 }
