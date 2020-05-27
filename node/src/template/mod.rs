@@ -20,10 +20,12 @@ use crate::types::TemplateID;
 use actix_web::web;
 
 pub mod errors;
+pub use errors::TemplateError;
 
 pub mod actix_web_impl;
-pub mod runner;
-pub use runner::TemplateRunner;
+pub mod actors;
+pub use actors::{ContractCallMsg, TemplateRunner};
+
 pub mod single_use_tokens;
 
 mod context;

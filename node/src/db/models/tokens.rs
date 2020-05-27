@@ -16,7 +16,7 @@ use std::error::Error;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, Json, ToSql, Type};
 
-#[derive(Clone, Serialize, PostgresMapper)]
+#[derive(Clone, Serialize, Deserialize, PostgresMapper)]
 #[pg_mapper(table = "tokens_view")]
 pub struct Token {
     pub id: uuid::Uuid,

@@ -2,7 +2,7 @@
 
 members = [
     "node",
-    "template-macro"
+    "template-derive",
 ]
 
 [patch.crates-io]

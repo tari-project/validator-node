@@ -2,7 +2,7 @@
 //!
 //! InstructionContext is always supplied as first parameter to Smart Contract implementation
 
-use super::{errors::TemplateError, runner::TemplateRunner, Template, LOG_TARGET};
+use super::{Template, TemplateError, TemplateRunner, LOG_TARGET};
 use crate::{
     db::{
         models::{
@@ -30,9 +30,11 @@ use tokio::sync::Mutex;
 /// [Template] Instructions
 ///
 /// ## Instruction processing:
-/// [`TemplateContext::addr()`] allows to send [`actix::Message`] to [TemplateContextRunner],
-/// which implements [`actix::Actor`]
-/// [actix::Message]  should is implemented
+/// [`TemplateContext::addr()`] allows to send [`actix::Message`] to [TemplateContextRunner]
+/// via [actix::Actor] trait
+///
+/// [actix_web::Handler], [actix::Message], [actix::Handler] traits usually implemented by attribute macro
+/// [validator_template_macros::contract]
 #[derive(Clone)]
 pub struct TemplateContext<T: Template + Clone + 'static> {
     // TODO: this is not secure, we provide access to context to template,
@@ -74,35 +76,33 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
     }
 
     /// Utility handler for actors when Instruction has failed
-    pub async fn instruction_failed(self, instruction: Instruction, err: TemplateError) -> Result<(), TemplateError> {
+    pub async fn instruction_failed(self, instruction: Instruction, error: String) {
         log::error!(
             target: LOG_TARGET,
             "template={}, instruction={}, Instruction processing failed {}",
             instruction.template_id,
             instruction.id,
-            err
+            error
         );
         let context = self.instruction_context(instruction.clone()).await;
-        let err = match context {
+        let error = match context {
             Ok(mut context) => context
                 .transition(ContextEvent::ProcessingFailed {
-                    result: serde_json::json!({"error": err.to_string()}),
+                    result: serde_json::json!({ "error": error }),
                 })
                 .await
                 .err(),
             Err(err) => Some(err),
         };
-        if let Some(err) = err {
+        if let Some(error) = error {
             log::error!(
                 target: LOG_TARGET,
                 "template={}, instruction={}, Non recoverable processing error {}",
                 instruction.template_id,
                 instruction.id,
-                err
+                error
             );
-            return Err(err);
         };
-        Ok(())
     }
 
     /// [TemplateRunner] Actor's address, which is responsible for processing [Instruction]s
