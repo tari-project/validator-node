@@ -17,12 +17,12 @@ impl ConsensusWorker {
         Ok(ConsensusWorker { node_config })
     }
 
-    pub fn work(&self, node_id: NodeID) -> Result<(), ConsensusError> {
+    pub async fn work(&self, node_id: NodeID) -> Result<(), ConsensusError> {
         let config = self.node_config.clone();
+        let client = db_client(&config)
+            .await
+            .expect("Validator node unable to load db client");
         actix_rt::spawn(async move {
-            let client = db_client(&config)
-                .await
-                .expect("Validator node unable to load db client");
             if let Err(e) = ConsensusWorker::task(node_id, &client).await {
                 error!("ConsensusWorker work error: {}", e)
             };

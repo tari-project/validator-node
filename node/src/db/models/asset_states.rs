@@ -93,10 +93,13 @@ impl AssetState {
 
     /// Releases lock on asset state
     pub async fn release_lock(&self, client: &Client) -> Result<(), DBError> {
+        let block_until = Utc::now();
         const QUERY: &'static str =
-            "UPDATE asset_states SET blocked_until = now(), updated_at = now() WHERE id = $1 AND blocked_until = $2";
+            "UPDATE asset_states SET blocked_until = $3, updated_at = now() WHERE id = $1 AND blocked_until = $2";
         let stmt = client.prepare(QUERY).await?;
-        client.execute(&stmt, &[&self.id, &self.blocked_until]).await?;
+        client
+            .execute(&stmt, &[&self.id, &self.blocked_until, &block_until])
+            .await?;
 
         Ok(())
     }

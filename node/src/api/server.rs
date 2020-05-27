@@ -22,9 +22,10 @@ where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
     );
 
     let mut consensus_processor = ConsensusProcessor::new(config.clone());
-    let (consensus_sender, consensus_receiver) = mpsc::channel::<()>();
+    let (kill_sender, kill_receiver) = mpsc::channel::<()>();
+    // TODO: spawn consensus processors in separate Runtime
     actix_rt::spawn(async move {
-        consensus_processor.start(consensus_receiver).await;
+        consensus_processor.start(kill_receiver).await;
     });
 
     let cors_config = config.cors.clone();
@@ -70,7 +71,7 @@ where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
     };
 
     server.run().await?;
-    consensus_sender.send(())?;
+    kill_sender.send(())?;
 
     Ok(())
 }
