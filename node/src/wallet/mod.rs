@@ -8,7 +8,7 @@ use std::{collections::HashMap, path::PathBuf};
 mod hot_wallet;
 pub use hot_wallet::{HotWallet, NodeWallet};
 
-const LOG_TARGET: &'static str = "wallet";
+const LOG_TARGET: &'static str = "tari_validator_node::wallet";
 
 // TODO: convert to interior mutability?
 /// Handles wallet storage operations, keeping FS and DB in sync

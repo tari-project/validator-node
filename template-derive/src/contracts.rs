@@ -91,7 +91,7 @@ fn generate_actor_msg(opts: &ContractsOpt) -> proc_macro2::TokenStream {
     let instruction_context = instruction_context(opts);
     quote! {
         /// Actor's message is input parameters combined with Instruction
-        #[derive(Message, Clone)]
+        #[derive(Message, Clone, Debug)]
         #[rtype(result = "Result<(),TemplateError>")]
         pub struct Msg {
             id: #id_type,
@@ -108,6 +108,9 @@ fn generate_actor_msg(opts: &ContractsOpt) -> proc_macro2::TokenStream {
 
             fn instruction(&self) -> Instruction {
                 self.instruction.clone()
+            }
+            fn params(&self) -> Self::Params {
+                self.params.clone()
             }
             fn call(self, context: Self::Context) -> Self::CallResult {
                 self.params.clone().call(context)

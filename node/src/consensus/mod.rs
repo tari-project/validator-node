@@ -12,4 +12,4 @@ mod consensus_processor;
 mod consensus_worker;
 pub mod errors;
 
-const LOG_TARGET: &'static str = "consensus";
+const LOG_TARGET: &'static str = "tari_validator_node::consensus";

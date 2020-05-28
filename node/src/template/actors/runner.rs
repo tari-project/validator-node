@@ -80,4 +80,8 @@ impl<T: Template + Clone + 'static> Unpin for TemplateRunner<T> {}
 
 impl<T: Template + Clone + 'static> Actor for TemplateRunner<T> {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.context.actor_address = Some(ctx.address());
+    }
 }

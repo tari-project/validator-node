@@ -57,7 +57,7 @@ pub use context::{
     TokenInstructionContext,
 };
 
-const LOG_TARGET: &'static str = "validator_node::template";
+const LOG_TARGET: &'static str = "tari_validator_node::template";
 
 pub trait Contracts {
     fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig);

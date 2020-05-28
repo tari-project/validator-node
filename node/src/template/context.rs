@@ -242,8 +242,11 @@ impl<T: Template + Clone> InstructionContext<T> {
     /// Message can be created from a contract enum, which when derived has
     /// E::into_message([Instruction]) method
     pub async fn defer<M>(&self, msg: M) -> Result<(), TemplateError>
-    where M: ContractCallMsg<Template = T, Result = MessageResult> + 'static {
-        let _ = self.template_context.addr().send(msg).await?;
+    where M: ContractCallMsg<Template = T, Result = MessageResult> + std::fmt::Debug + 'static {
+        log::trace!(target: LOG_TARGET, "template={}, instruction={}, sending message to actor: {:?}", T::id(), self.instruction.id, msg.params());
+        assert!(self.template_context.addr().connected());
+        self.template_context.addr().send(msg).await??;
+        log::trace!(target: LOG_TARGET, "template={}, instruction={}, actor completed processing message", T::id(), self.instruction.id);
         Ok(())
     }
 
