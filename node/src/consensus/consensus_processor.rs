@@ -17,17 +17,18 @@ impl ConsensusProcessor {
         }
     }
 
-    pub async fn start(&mut self, consensus_receiver: Receiver<()>) {
+    pub async fn start(&mut self, kill_receiver: Receiver<()>) {
         info!(target: LOG_TARGET, "Starting consensus processor");
         let interval = self.node_config.consensus.poll_period as u64;
         let consensus_worker = ConsensusWorker::new(self.node_config.clone()).unwrap();
+
         loop {
-            if consensus_receiver.try_recv().is_ok() {
+            if kill_receiver.try_recv().is_ok() {
                 info!(target: LOG_TARGET, "Stopping consensus processor");
                 break;
             }
             // Poll for any updates to consensus state
-            if let Err(e) = consensus_worker.work(self.node_id) {
+            if let Err(e) = consensus_worker.work(self.node_id).await {
                 error!(target: LOG_TARGET, "Consensus error: {}", e);
             };
 

@@ -1,12 +1,13 @@
 use crate::{
     api::{middleware::*, routing},
     config::NodeConfig,
+    consensus::ConsensusProcessor,
     db::utils::db::build_pool,
 };
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
 use serde_json::json;
-use std::net::ToSocketAddrs;
+use std::{net::ToSocketAddrs, sync::mpsc};
 
 // Must be valid JSON
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;
@@ -19,6 +20,13 @@ where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
         "Server starting at {}",
         config.actix.addr().to_socket_addrs()?.next().unwrap()
     );
+
+    let mut consensus_processor = ConsensusProcessor::new(config.clone());
+    let (kill_sender, kill_receiver) = mpsc::channel::<()>();
+    // TODO: spawn consensus processors in separate Runtime
+    actix_rt::spawn(async move {
+        consensus_processor.start(kill_receiver).await;
+    });
 
     let cors_config = config.cors.clone();
     let mut server = HttpServer::new(move || {
@@ -63,6 +71,7 @@ where F: FnOnce(&mut web::ServiceConfig) + Send + Clone + 'static {
     };
 
     server.run().await?;
+    kill_sender.send(())?;
 
     Ok(())
 }

@@ -6,6 +6,7 @@ use crate::{
 use deadpool_postgres::Client;
 use uuid::Uuid;
 
+#[derive(Debug, PartialEq)]
 pub struct ConsensusCommittee {
     pub state: CommitteeState,
     pub asset_id: AssetID,
@@ -319,7 +320,7 @@ mod test {
             .await
             .unwrap()
             .unwrap()
-            .acquire_lock(60, &client)
+            .acquire_lock(60 as u64, &client)
             .await
             .unwrap();
 
