@@ -71,7 +71,7 @@ macro_rules! string_enum {
 string_enum! { AccessResource [Api, Wallet]}
 string_enum! { AggregateSignatureMessageStatus [Pending, Rejected, Accepted]}
 string_enum! { AssetStatus [Active, Retired]}
-string_enum! { TokenStatus [Active, Retired]}
+string_enum! { TokenStatus [Available, Active, Locked, Retired]}
 #[doc(hide)]
 string_enum! { ProposalStatus [Pending, Signed, Invalid, Declined, Finalized]}
 #[doc(hide)]
@@ -95,7 +95,7 @@ impl Default for AssetStatus {
 
 impl Default for InstructionStatus {
     fn default() -> Self {
-        Self::Pending
+        Self::Scheduled
     }
 }
 
@@ -107,7 +107,7 @@ impl Default for SignedProposalStatus {
 
 impl Default for TokenStatus {
     fn default() -> Self {
-        Self::Active
+        Self::Available
     }
 }
 

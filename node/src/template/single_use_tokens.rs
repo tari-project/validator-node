@@ -11,6 +11,7 @@ use tari_template_derive::Contracts;
 #[derive(Serialize, Deserialize)]
 struct TokenData {
     pub owner_pubkey: Pubkey,
+    pub used: bool,
 }
 
 /// ***************** Asset contracts *******************
@@ -42,6 +43,7 @@ impl AssetContracts {
         let asset = &context.asset;
         let data = TokenData {
             owner_pubkey: asset.asset_issuer_pub_key.clone(),
+            used: false
         };
         let data = serde_json::to_value(data).map_err(anyhow::Error::from)?;
         let new_token = move |token_id| NewToken {
@@ -65,18 +67,34 @@ impl AssetContracts {
 
 #[derive(Contracts, Serialize, Deserialize, Clone)]
 #[contracts(template = "SingleUseTokenTemplate", token)]
+/// Token contracts for SingleUseTokenTemplate
 pub enum TokenContracts {
+    /// sell_token accepting `price` and `user_pubkey` as input params
+    /// 1. creates subinstruction with `wallet_key`
+    /// 2. waiting for `price` to appear in the `wallet_key`, or `timeout_secs`
+    /// 3. reassings token to `user_pubkey`
+    /// NOTICE: ontract methods should implemented on this enum,
+    /// also *Params struct should be distict for every method
+    /// and passed as 2nd parameter
     #[contract(method = "sell_token")]
     SellToken(SellTokenParams),
+    /// sell_token_lock transitions token to Locked state
+    /// for while sell_token did not complete
     #[contract(method = "sell_token_lock")]
     SellTokenLock(SellTokenLockParams),
+    /// transfer_token is moving token to new owner
     #[contract(method = "transfer_token")]
     TransferToken(TransferTokenParams),
+    /// redeem_token returns token back to asset owner
+    /// also marking it as used
+    #[contract(method = "redeem_token")]
+    RedeemToken(RedeemTokenParams),
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SellTokenParams {
-    price: u64,
+    price: i64,
+    timeout_secs: i64,
     user_pubkey: Pubkey,
 }
 
@@ -90,6 +108,9 @@ pub struct TransferTokenParams {
     user_pubkey: Pubkey,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RedeemTokenParams;
+
 impl TokenContracts {
     /// Sell token for a `price` amount of tari to user with `user_pubkey`
     ///
@@ -102,21 +123,33 @@ impl TokenContracts {
     /// - Client need to retrieve wallet key from subinstruction and transfer amount
     async fn sell_token(
         context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
-        SellTokenParams { price, user_pubkey }: SellTokenParams,
-    ) -> Result<(), TemplateError>
+        SellTokenParams { price, timeout_secs, user_pubkey }: SellTokenParams,
+    ) -> Result<Token, TemplateError>
     {
-        let token = context.token.clone();
-        if token.status == TokenStatus::Retired {
-            return validation_err!("Tried to transfer already used token");
-        }
+        if let Err(err) = Self::validate_token(context, TokenStatus::Available) {
+            return validation_err!("Can't sell: {}", err);
+        };
         let wallet_key = context.create_temp_wallet().await?;
-        let subcontract: Self = SellTokenLockParams { wallet_key }.into();
+        let subcontract: Self = SellTokenLockParams { wallet_key: wallet_key.clone() }.into();
         let suninstruction = context
             .create_subinstruction("sell_token".into(), subcontract.clone())
             .await?;
         let message = subcontract.into_message(suninstruction);
         let _ = context.defer(message).await?;
-        Ok(())
+        // TODO: should start timeout timer once subinstruction moves to Commit
+
+        // TODO: implement better strategies for waiting for temporal events like subscriptions
+        while context.check_balance(&wallet_key).await? < price {
+            tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+        }
+        let token_data = TokenData { owner_pubkey: user_pubkey, used: false };
+        let data = UpdateToken {
+            status: Some(TokenStatus::Active),
+            append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
+            ..Default::default()
+        };
+        context.update_token(data).await?;
+        Ok(context.token.clone())
     }
 
     /// Subcontract for sell_token
@@ -125,6 +158,14 @@ impl TokenContracts {
         SellTokenLockParams { wallet_key }: SellTokenLockParams,
     ) -> Result<(), TemplateError>
     {
+        if let Err(err) = Self::validate_token(context, TokenStatus::Active) {
+            return validation_err!("Can't lock: {}", err);
+        };
+        let data = UpdateToken {
+            status: Some(TokenStatus::Locked),
+            ..Default::default()
+        };
+        context.update_token(data).await?;
         Ok(())
     }
 
@@ -134,17 +175,50 @@ impl TokenContracts {
         TransferTokenParams { user_pubkey }: TransferTokenParams,
     ) -> Result<Token, TemplateError>
     {
-        let token = context.token.clone();
-        if token.status == TokenStatus::Retired {
-            return validation_err!("Tried to transfer already used token");
-        }
-        let append_state_data_json = Some(json!({ "user_pubkey": user_pubkey }));
+        if let Err(err) = Self::validate_token(context, TokenStatus::Active) {
+            return validation_err!("Can't transfer: {}", err);
+        };
+        let token_data = TokenData { owner_pubkey: user_pubkey, used: false };
         let data = UpdateToken {
-            append_state_data_json,
+            append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
             ..Default::default()
         };
-        let token = context.update_token(token, data).await?;
-        Ok(token)
+        context.update_token(data).await?;
+        Ok(context.token.clone())
+    }
+
+    // With token contract TokenInstructionContext is always passed as first argument
+    async fn redeem_token(
+        context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
+        _: RedeemTokenParams,
+    ) -> Result<Token, TemplateError>
+    {
+        if let Err(err) = Self::validate_token(context, TokenStatus::Active) {
+            return validation_err!("Can't redeem: {}", err);
+        };
+        let token_data = TokenData {
+            owner_pubkey: context.asset.asset_issuer_pub_key.clone(),
+            used: true
+        };
+        let data = UpdateToken {
+            append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
+            ..Default::default()
+        };
+        context.update_token(data).await?;
+        Ok(context.token.clone())
+    }
+
+    fn validate_token(context: &mut TokenInstructionContext<SingleUseTokenTemplate>, status: TokenStatus) -> Result<(),String> {
+        if context.token.status != status {
+            return Err(format!("expected token status {}, got {}", status, context.token.status));
+        }
+        match serde_json::from_value::<TokenData>(context.token.additional_data_json.clone()) {
+            Ok(data) => if data.used {
+                return Err("already used token".into());
+            },
+            _ => {}
+        };
+        Ok(())
     }
 }
 

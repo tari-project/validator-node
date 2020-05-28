@@ -6,6 +6,7 @@ use super::{Template, TemplateError, TemplateRunner, LOG_TARGET};
 use crate::{
     db::{
         models::{
+            wallet::Wallet,
             consensus::instructions::*,
             tokens::{NewToken, Token, UpdateToken},
             AssetState,
@@ -254,6 +255,12 @@ impl<T: Template + Clone> InstructionContext<T> {
         transaction.commit().await.map_err(DBError::from)?;
         Ok(wallet.public_key_hex())
     }
+
+    /// Check balance on a wallet identified by wallet_key
+    pub async fn check_balance(&self, pubkey: &Pubkey) -> Result<i64, TemplateError> {
+        let wallet = Wallet::select_by_key(pubkey, &self.client).await?;
+        Ok(wallet.balance)
+    }
 }
 
 /// Provides environment and methods for Instruction's code on asset to execute
@@ -340,5 +347,13 @@ impl<T: Template + Clone> TokenInstructionContext<T> {
             Some(asset) => asset,
         };
         Ok(Self::new(context, asset, token))
+    }
+
+    /// Create token_append_only_state associated with current [Instruction] and token,
+    /// returns updated token
+    pub async fn update_token(&mut self, data: UpdateToken) -> Result<(), TemplateError> {
+        let token = self.token.clone();
+        self.token = token.update(data, &self.context.instruction, &self.context.client).await?;
+        Ok(())
     }
 }
