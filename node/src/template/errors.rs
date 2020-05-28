@@ -28,7 +28,7 @@ pub enum TemplateError {
         source: anyhow::Error,
     },
     #[error("Failed to receive actor response: {source}")]
-    ActorResponse{
+    ActorResponse {
         #[from]
         source: actix::MailboxError,
         backtrace: Backtrace,

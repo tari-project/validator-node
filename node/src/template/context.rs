@@ -210,8 +210,7 @@ impl<T: Template + Clone> InstructionContext<T> {
     ) -> Result<Instruction, TemplateError>
     {
         let initiating_node_id = self.instruction.initiating_node_id;
-        let id = InstructionID::new(initiating_node_id)
-            .map_err(anyhow::Error::from)?;
+        let id = InstructionID::new(initiating_node_id).map_err(anyhow::Error::from)?;
         let params = serde_json::to_value(data).map_err(anyhow::Error::from)?;
         let new = NewInstruction {
             id,
@@ -234,9 +233,7 @@ impl<T: Template + Clone> InstructionContext<T> {
     /// Message can be created from a contract enum, which when derived has
     /// E::into_message([Instruction]) method
     pub async fn defer<M>(&self, msg: M) -> Result<(), TemplateError>
-    where
-    M: ContractCallMsg<Template = T, Result = MessageResult> + 'static
-    {
+    where M: ContractCallMsg<Template = T, Result = MessageResult> + 'static {
         let _ = self.template_context.addr().send(msg).await?;
         Ok(())
     }
