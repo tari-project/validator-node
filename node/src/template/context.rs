@@ -119,6 +119,8 @@ pub struct InstructionContext<T: Template + Clone + 'static> {
     instruction: Instruction,
 }
 
+use super::actors::{ContractCallMsg, MessageResult};
+
 #[derive(Debug)]
 /// Event for transitioning [Instruction]
 /// Instruction's updates triggered via calling
@@ -136,23 +138,30 @@ impl<T: Template + Clone> InstructionContext<T> {
         T::id()
     }
 
+    /// Create and return token
     pub async fn create_token(&self, data: NewToken) -> Result<Token, TemplateError> {
         let id = Token::insert(data, &self.client).await?;
         Ok(Token::load(id, &self.client).await?)
     }
 
+    /// Create token_append_only_state associated with current [Instruction],
+    /// returns updated token
     pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, TemplateError> {
         Ok(token.update(data, &self.instruction, &self.client).await?)
     }
 
+    /// Load token by [TokenID]
     pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, TemplateError> {
         Ok(Token::find_by_token_id(&id, &self.client).await?)
     }
 
+    /// Load asset by [AssetID]
     pub async fn load_asset(&self, id: AssetID) -> Result<Option<AssetState>, TemplateError> {
         Ok(AssetState::find_by_asset_id(&id, &self.client).await?)
     }
 
+    /// Move current context's [Instruction] to a new state applying [ContextEvent]
+    // TODO: consider using https://github.com/fitzgen/state_machine_future for state machine impl
     pub async fn transition(&mut self, event: ContextEvent) -> Result<(), TemplateError> {
         log::trace!(
             target: LOG_TARGET,
@@ -193,6 +202,47 @@ impl<T: Template + Clone> InstructionContext<T> {
         Ok(())
     }
 
+    /// Creates [Instruction] as a child to current instruction
+    pub async fn create_subinstruction<D: serde::Serialize>(
+        &self,
+        contract_name: String,
+        data: D,
+    ) -> Result<Instruction, TemplateError>
+    {
+        let initiating_node_id = self.instruction.initiating_node_id;
+        let id = InstructionID::new(initiating_node_id)
+            .map_err(anyhow::Error::from)?;
+        let params = serde_json::to_value(data).map_err(anyhow::Error::from)?;
+        let new = NewInstruction {
+            id,
+            parent_id: Some(self.instruction.id),
+            initiating_node_id,
+            asset_id: self.instruction.asset_id.clone(),
+            token_id: self.instruction.token_id.clone(),
+            template_id: self.instruction.template_id,
+            contract_name,
+            status: InstructionStatus::Scheduled,
+            params,
+            ..Default::default()
+        };
+        Ok(self.template_context.create_instruction(new).await?)
+    }
+
+    /// Send message [ContractCallMsg] to subcontract and wait for subcontract to finish
+    /// ContractCallMsg is usually autoimplemented by #[derive(Contracts)] on enum `E`
+    /// (provided by contract developer), see [`crate::template::actors`] for details.
+    /// Message can be created from a contract enum, which when derived has
+    /// E::into_message([Instruction]) method
+    pub async fn defer<M>(&self, msg: M) -> Result<(), TemplateError>
+    where
+    M: ContractCallMsg<Template = T, Result = MessageResult> + 'static
+    {
+        let _ = self.template_context.addr().send(msg).await?;
+        Ok(())
+    }
+
+    /// Create temporary wallet for accepting payment in transaction
+    /// Method will return temp_wallet [Pubkey]
     pub async fn create_temp_wallet(&mut self) -> Result<Pubkey, TemplateError> {
         let transaction = self.client.transaction().await.map_err(DBError::from)?;
         let wallet_name = self.instruction.id.to_string();

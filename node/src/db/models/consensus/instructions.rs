@@ -17,6 +17,7 @@ use tokio_postgres::types::Type;
 #[pg_mapper(table = "instructions")]
 pub struct Instruction {
     pub id: InstructionID,
+    pub parent_id: Option<InstructionID>,
     pub initiating_node_id: NodeID,
     pub signature: String,
     pub asset_id: AssetID,
@@ -35,6 +36,7 @@ pub struct Instruction {
 #[derive(Default, Clone, Debug)]
 pub struct NewInstruction {
     pub id: InstructionID,
+    pub parent_id: Option<InstructionID>,
     pub initiating_node_id: NodeID,
     pub signature: String,
     pub asset_id: AssetID,
@@ -95,8 +97,9 @@ impl Instruction {
                 contract_name,
                 status,
                 params,
+                parent_id,
                 id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *";
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *";
         let stmt = client
             .prepare_typed(QUERY, &[
                 NodeID::SQL_TYPE,
@@ -120,6 +123,7 @@ impl Instruction {
                 &params.contract_name,
                 &params.status,
                 &params.params,
+                &params.parent_id,
                 &params.id,
             ])
             .await?;

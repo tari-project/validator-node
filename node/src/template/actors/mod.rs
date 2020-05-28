@@ -14,17 +14,16 @@
 //! using [derive(Contracts)] macro on Contracts enum:
 //! ```
 //! #[derive(Contracts, Serialize, Deserialize, Clone)]
-//! #[contracts(template="SingleUseTokenTemplate",token)]
+//! #[contracts(template = "SingleUseTokenTemplate", token)]
 //! pub enum TokenContracts {
-//!     #[contract(method="sell_token")]
+//!     #[contract(method = "sell_token")]
 //!     SellToken(SellTokenParams),
-//!     #[contract(method="sell_token_lock")]
+//!     #[contract(method = "sell_token_lock")]
 //!     SellTokenLock(SellTokenLockParams),
-//!     #[contract(method="transfer_token")]
+//!     #[contract(method = "transfer_token")]
 //!     TransferToken(TransferTokenParams),
 //! }
 //! ```
-
 
 pub use handler::*;
 pub use runner::*;

@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::ops::Try;
 
 pub type ContractCallResult<C> = Result<(Value, C), TemplateError>;
+pub type MessageResult = Result<(),TemplateError>;
 pub type AssetCallResult<T> = Result<(Value, AssetInstructionContext<T>), TemplateError>;
 pub type TokenCallResult<T> = Result<(Value, TokenInstructionContext<T>), TemplateError>;
 
@@ -20,7 +21,7 @@ pub type TokenCallResult<T> = Result<(Value, TokenInstructionContext<T>), Templa
 /// #[derive(Contracts)]
 /// enum MyContracts { ... }
 /// ```
-pub trait ContractCallMsg: Clone + Message {
+pub trait ContractCallMsg: Clone + Message + Send {
     type Params: Serialize + for<'de> Deserialize<'de> + Clone;
     type Template: Template + 'static;
     type CallResult: Future<Output = ContractCallResult<Self::Context>>;
@@ -36,9 +37,8 @@ pub trait ContractCallMsg: Clone + Message {
 impl<M, T> Handler<M> for TemplateRunner<T>
 where
     T: Template + 'static,
-    M: ContractCallMsg<Template = T> + 'static,
-    M::Params: Serialize + for<'de> Deserialize<'de> + Clone,
-    M::Result: Try<Ok = (), Error = TemplateError>,
+    M: ContractCallMsg<Template = T, Result = MessageResult> + 'static,
+    M::Params: Serialize + for<'de> Deserialize<'de> + Clone
 {
     type Result = ResponseActFuture<Self, M::Result>;
 

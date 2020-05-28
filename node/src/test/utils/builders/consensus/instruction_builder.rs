@@ -61,6 +61,7 @@ impl InstructionBuilder {
             contract_name: self.contract_name,
             status: self.status,
             params: self.params,
+            ..Default::default()
         };
         Ok(Instruction::insert(params, client).await?)
     }

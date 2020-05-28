@@ -93,7 +93,7 @@ mod contracts;
 mod test {
     use super::*;
 
-    const BAD: &[&str] = &[
+    const DERIVE_ERROR: &[&str] = &[
         r###"
 #[derive(Contracts)]
 #[contracts(template="Template",token)]
@@ -109,37 +109,6 @@ struct NotSupported {
         "###,
         r###"
 #[derive(Contracts)]
-#[contracts(template="Template",token)]
-enum NotSupported {
-    OptionOne(String),
-}
-        "###,
-        r###"
-#[derive(Contracts)]
-#[contracts(template="Template",token)]
-enum NotSupported {
-    #[contract(method="option_one")]
-    OptionOne,
-}
-        "###,
-        r###"
-#[derive(Contracts)]
-#[contracts(template="Template",token,asset)]
-enum NotSupported {
-    #[contract(method="option_one")]
-    OptionOne(String),
-}
-        "###,
-        r###"
-#[derive(Contracts)]
-#[contracts(template="Template")]
-enum NotSupported {
-    #[contract(method="option_one")]
-    OptionOne(String),
-}
-        "###,
-        r###"
-#[derive(Contracts)]
 #[contracts(token)]
 enum NotSupported {
     #[contract(method="option_one")]
@@ -149,10 +118,10 @@ enum NotSupported {
     ];
 
     #[test]
-    fn bad_templates() {
-        for input in BAD {
+    fn derive_error_templates() {
+        for input in DERIVE_ERROR {
             let parsed: syn::DeriveInput = syn::parse_str(*input).expect(format!("Failed to parse {}", input).as_str());
-            assert!(ContractsOpt::from_derive_input(&parsed).is_err(), "{}", input);
+            assert!(ContractsOpt::from_derive_input(&parsed).is_err(), "Expected error converting to ContractsOpt: {}", input);
         }
     }
 
@@ -218,5 +187,50 @@ pub enum TokenContracts {
         let output = derive_contracts_impl(parsed);
         println!("{}", output);
         //            .expect(format!("Failed to parse output{}", input).as_str());
+    }
+
+    const ERROR_TEMPLATES: &[&str] = &[
+        r###"
+#[derive(Contracts)]
+#[contracts(template="Template",token)]
+enum NotSupported {
+    #[contract(method="option_one")]
+    OptionOne,
+}
+        "###,
+        r###"
+#[derive(Contracts)]
+#[contracts(template="Template",token)]
+enum NotSupported {
+    OptionOne(String),
+}
+        "###,
+        r###"
+#[derive(Contracts)]
+#[contracts(template="Template",token,asset)]
+enum NotSupported {
+    #[contract(method="option_one")]
+    OptionOne(String),
+}
+        "###,
+        r###"
+#[derive(Contracts)]
+#[contracts(template="Template")]
+enum NotSupported {
+    #[contract(method="option_one")]
+    OptionOne(String),
+}
+        "###
+    ];
+
+    #[test]
+    fn error_templates() {
+        for tpl in ERROR_TEMPLATES {
+            let parsed: syn::DeriveInput = syn::parse_str(*tpl)
+                .expect(format!("Failed to parse {}", tpl).as_str());
+            let tokens = derive_contracts_impl(parsed);
+            let ident = tokens.into_iter().next().unwrap().to_string();
+            assert_eq!(ident, "compile_error");
+        }
     }
 }

@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tari_template_derive::Contracts;
 
-const LOG_TARGET: &'static str = "validator_node::template::single_use_tokens";
-
 #[derive(Serialize, Deserialize)]
 struct TokenData {
     pub owner_pubkey: Pubkey,
@@ -105,15 +103,20 @@ impl TokenContracts {
     async fn sell_token(
         context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
         SellTokenParams { price, user_pubkey }: SellTokenParams,
-    ) -> Result<Pubkey, TemplateError>
+    ) -> Result<(), TemplateError>
     {
         let token = context.token.clone();
         if token.status == TokenStatus::Retired {
             return validation_err!("Tried to transfer already used token");
         }
-        let wallet = context.create_temp_wallet().await?;
-        // context.subinstruction().await?;
-        Ok(wallet)
+        let wallet_key = context.create_temp_wallet().await?;
+        let subcontract: Self = SellTokenLockParams { wallet_key }.into();
+        let suninstruction = context
+            .create_subinstruction("sell_token".into(), subcontract.clone())
+            .await?;
+        let message = subcontract.into_message(suninstruction);
+        let _ = context.defer(message).await?;
+        Ok(())
     }
 
     /// Subcontract for sell_token
