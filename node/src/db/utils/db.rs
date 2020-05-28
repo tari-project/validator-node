@@ -37,9 +37,20 @@ pub async fn create_database(config: NodeConfig) -> Result<(), DBError> {
     pg.dbname("postgres");
     let client = connect_raw(pg).await?;
 
-    client
-        .execute(format!("CREATE DATABASE {}", dbname).as_str(), &[])
-        .await?;
+    let db_exists = client
+        .query_one(
+            "SELECT EXISTS(SELECT datname FROM pg_catalog.pg_database WHERE datname = $1)",
+            &[&dbname],
+        )
+        .await?
+        .get::<_, bool>(0);
+
+    if db_exists == false {
+        client
+            .execute(format!("CREATE DATABASE {}", dbname).as_str(), &[])
+            .await?;
+    }
+
     migrate(config).await?;
     Ok(())
 }
