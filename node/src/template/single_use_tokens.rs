@@ -13,6 +13,18 @@ struct TokenData {
     pub used: bool,
 }
 
+/// **************** TEMPLATE ************
+#[derive(Clone)]
+pub struct SingleUseTokenTemplate;
+impl Template for SingleUseTokenTemplate {
+    type AssetContracts = AssetContracts;
+    type TokenContracts = TokenContracts;
+
+    fn id() -> TemplateID {
+        1.into()
+    }
+}
+
 /// ***************** Asset contracts *******************
 
 //#[derive(Contracts)]
@@ -246,18 +258,6 @@ impl TokenContracts {
             _ => {},
         };
         Ok(())
-    }
-}
-
-/// **************** TEMPLATE ************
-#[derive(Clone)]
-pub struct SingleUseTokenTemplate;
-impl Template for SingleUseTokenTemplate {
-    type AssetContracts = AssetContracts;
-    type TokenContracts = TokenContracts;
-
-    fn id() -> TemplateID {
-        1.into()
     }
 }
 
