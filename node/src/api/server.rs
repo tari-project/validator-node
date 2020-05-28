@@ -8,7 +8,10 @@ use crate::{
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer, Scope};
 use serde_json::json;
-use std::{net::ToSocketAddrs, sync::Arc, sync::mpsc};
+use std::{
+    net::ToSocketAddrs,
+    sync::{mpsc, Arc},
+};
 use tokio::sync::Mutex;
 
 // Must be valid JSON
