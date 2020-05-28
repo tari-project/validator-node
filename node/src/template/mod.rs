@@ -10,8 +10,21 @@
 //!
 //! Contracts trait derived on enums matching variants to contract implementation (as async fn),
 //! all the boilerplate largely is provided via macros `#[derive(Contracts)]` and `#[contract]`.
+//! See [actors] module for details and single_use_tokens for example of TokenContracts implementation.
 //!
 //! NOTE: coupled with actix at Phase1 for API simplicity, might be decoupled later.
+//!
+//! - [TemplateRunner] implements [actix::Actor] and is executing Contract code in async Actor
+//! - Derive macros from [tari_validator_derive] allow token contracts auto-implementation,
+//! generating actix-web interface and Actor Handler with Message implementation
+//! - [ContractCallMsg] trait is a message triggering contract execution: Handler for TemplateRunner
+//! is auto-implemented for all Messages which implement ContractCallMsg
+//! - Wallets and generation of temp wallets available for contract via [InsturctionContext]
+//! - InstructionContext allows to create and wait for subinstructions from contract code
+//! - Instruction states transition via InstructionContext method, transitioning happens automatically
+//! based on contract execution result. See impl [`actix::Handler`] for [TemplateRunner]
+//! - Contracts can use tokio::delay_for to wait for external event
+
 
 // TODO: Potentially via unsafe code Template still might acquire access to the database connection
 // we shall provide some custom build script which disallows installing templates using unsafe on a node

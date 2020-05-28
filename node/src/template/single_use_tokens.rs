@@ -94,7 +94,7 @@ pub enum TokenContracts {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SellTokenParams {
     price: i64,
-    timeout_secs: i64,
+    timeout_secs: u64,
     user_pubkey: Pubkey,
 }
 
@@ -117,6 +117,7 @@ impl TokenContracts {
     /// ### Input Parameters:
     /// - price - amount of tari
     /// - user_pubkey - new owner of a token
+    /// - timeout_secs - timeout before Instruction is cancelled as expired
     ///
     /// # Caveats:
     /// - Instruction is creating subinstruction with a wallet key,
@@ -144,10 +145,15 @@ impl TokenContracts {
         let message = subcontract.into_message(suninstruction);
         let _ = context.defer(message).await?;
         // TODO: should start timeout timer once subinstruction moves to Commit
-
+        let timeout = std::time::Instant::now();
+        let timeout_secs = std::time::Duration::from_secs(timeout_secs);
         // TODO: implement better strategies for waiting for temporal events like subscriptions
         while context.check_balance(&wallet_key).await? < price {
             tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+            if timeout.elapsed() > timeout_secs {
+                // TODO: any failure in instrustion should also fail all subinstructions
+                return validation_err!("Timeout expired for sell_token");
+            }
         }
         let token_data = TokenData {
             owner_pubkey: user_pubkey,
