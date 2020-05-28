@@ -1,8 +1,8 @@
-use crate::{config::NodeConfig, db::migrations::migrate, cli::Arguments};
+use crate::{cli::Arguments, config::NodeConfig, db::migrations::migrate};
 use config::Source;
 use deadpool_postgres::{Client, Pool};
 use std::sync::Arc;
-use tari_common::{default_config, GlobalConfig, dir_utils::default_path};
+use tari_common::{default_config, dir_utils::default_path, GlobalConfig};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio_postgres::NoTls;
 
@@ -51,7 +51,7 @@ pub fn build_test_config() -> anyhow::Result<NodeConfig> {
     config.set("validator.postgres", pg)?;
     config.set(
         "validator.wallets_keys_path",
-        default_path("wallets", Some(&args.bootstrap.base_path)).to_str()
+        default_path("wallets", Some(&args.bootstrap.base_path)).to_str(),
     )?;
     let config = NodeConfig::load_from(&config, &global, false)?;
     log::trace!(target: "test_utils", "Load test config: {:?}", config);

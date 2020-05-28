@@ -265,7 +265,7 @@ pub mod asset_contracts_actix {
     use super::*;
     use crate::{
         api::errors::ApiError,
-        db::models::{consensus::instructions::*},
+        db::models::consensus::instructions::*,
         template::{actors::*, context::*},
         types::AssetID,
     };
@@ -322,6 +322,7 @@ pub mod asset_contracts_actix {
         type Context = AssetInstructionContext<Self::Template>;
         type Params = AssetContracts;
         type Template = SingleUseTokenTemplate;
+
         type CallResult = impl Future<Output = AssetCallResult<Self::Template>>;
         type ContextFuture = impl Future<Output = Result<Self::Context, TemplateError>>;
 
@@ -391,12 +392,12 @@ pub mod asset_contracts_actix {
 mod test {
     use super::*;
     use crate::{
-        db::models::{asset_states::*, wallet::*, consensus::instructions::*},
+        db::models::{asset_states::*, consensus::instructions::*, wallet::*},
         test::utils::{actix::TestAPIServer, builders::*, test_db_client, Test},
         types::AssetID,
     };
-    use serde_json::json;
     use deadpool_postgres::Client;
+    use serde_json::json;
 
     #[actix_rt::test]
     async fn issue_tokens_positive() {
@@ -447,7 +448,10 @@ mod test {
         let tpl = SingleUseTokenTemplate::id();
         let asset_id = Test::<AssetID>::from_template(tpl);
         let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
-        let asset_builder = AssetStateBuilder { asset_id: asset_id.clone(), ..Default::default() };
+        let asset_builder = AssetStateBuilder {
+            asset_id: asset_id.clone(),
+            ..Default::default()
+        };
         asset_builder.build(&client).await.unwrap();
 
         let mut resp = srv
@@ -481,7 +485,10 @@ mod test {
         let tpl = SingleUseTokenTemplate::id();
         let asset_id: AssetID = Test::from_template(tpl);
         let token_id: TokenID = Test::from_asset(&asset_id);
-        let token_builder = TokenBuilder { token_id: token_id.clone(), ..Default::default() };
+        let token_builder = TokenBuilder {
+            token_id: token_id.clone(),
+            ..Default::default()
+        };
         token_builder.build(&client).await.unwrap();
         token_id
     }
@@ -492,7 +499,11 @@ mod test {
         let (client, _lock) = test_db_client().await;
         let token_id = test_token(&client).await;
         let user_pubkey = Test::<Pubkey>::new();
-        let params = SellTokenParams { user_pubkey, timeout_secs: 1, price: 1};
+        let params = SellTokenParams {
+            user_pubkey,
+            timeout_secs: 1,
+            price: 1,
+        };
         let mut resp = srv
             .token_call(&token_id, "sell_token")
             .send_json(&params)
@@ -512,7 +523,11 @@ mod test {
         let user_pubkey = Test::<Pubkey>::new();
         let mut resp = srv
             .token_call(&token_id, "sell_token")
-            .send_json(&SellTokenParams { user_pubkey, timeout_secs: 1, price: 1})
+            .send_json(&SellTokenParams {
+                user_pubkey,
+                timeout_secs: 10,
+                price: 1,
+            })
             .await
             .unwrap();
 
@@ -526,7 +541,12 @@ mod test {
         for _ in 0u8..100 {
             tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
             let instruction = Instruction::load(id, &client).await.unwrap();
-            assert_ne!(instruction.status, InstructionStatus::Invalid, "Instruction: {:?}", instruction);
+            assert_ne!(
+                instruction.status,
+                InstructionStatus::Invalid,
+                "Instruction: {:?}",
+                instruction
+            );
             if instruction.status == InstructionStatus::Processing && wallet.is_none() {
                 let subinstructions = instruction.load_subinstructions(&client).await.unwrap();
                 if subinstructions.len() == 0 {
@@ -535,7 +555,7 @@ mod test {
                 assert_eq!(subinstructions.len(), 1);
                 let sub = subinstructions.first().unwrap();
                 let params: TokenContracts = serde_json::from_value(sub.params.clone()).unwrap();
-                if let TokenContracts::SellTokenLock(SellTokenLockParams { wallet_key}) = &params {
+                if let TokenContracts::SellTokenLock(SellTokenLockParams { wallet_key }) = &params {
                     let wallet = Some(Wallet::select_by_key(wallet_key, &client).await.unwrap());
                     // top up money in wallet
                     wallet.as_ref().unwrap().set_balance(1, &client).await.unwrap();
@@ -571,11 +591,23 @@ mod test {
         let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
         let (client, _lock) = test_db_client().await;
         let token_id = test_token(&client).await;
-        update_token(&token_id, UpdateToken { status: Some(TokenStatus::Active), ..Default::default()}, &client ).await;
+        update_token(
+            &token_id,
+            UpdateToken {
+                status: Some(TokenStatus::Active),
+                ..Default::default()
+            },
+            &client,
+        )
+        .await;
         let user_pubkey = Test::<Pubkey>::new();
         let mut resp = srv
             .token_call(&token_id, "sell_token")
-            .send_json(&SellTokenParams { user_pubkey, timeout_secs: 1, price: 1})
+            .send_json(&SellTokenParams {
+                user_pubkey,
+                timeout_secs: 1,
+                price: 1,
+            })
             .await
             .unwrap();
         let instruction: Instruction = resp.json().await.unwrap();
@@ -600,8 +632,18 @@ mod test {
         let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
         let (client, _lock) = test_db_client().await;
         let token_id = test_token(&client).await;
-        update_token(&token_id, UpdateToken { status: Some(TokenStatus::Active), ..Default::default()}, &client ).await;
-        let params = TransferTokenParams { user_pubkey: Test::<Pubkey>::new() };
+        update_token(
+            &token_id,
+            UpdateToken {
+                status: Some(TokenStatus::Active),
+                ..Default::default()
+            },
+            &client,
+        )
+        .await;
+        let params = TransferTokenParams {
+            user_pubkey: Test::<Pubkey>::new(),
+        };
         let mut resp = srv
             .token_call(&token_id, "transfer_token")
             .send_json(&params)
@@ -618,7 +660,12 @@ mod test {
         for _ in 0u8..10 {
             tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
             let instruction = Instruction::load(id, &client).await.unwrap();
-            assert_ne!(instruction.status, InstructionStatus::Invalid, "Instruction: {:?}", instruction);
+            assert_ne!(
+                instruction.status,
+                InstructionStatus::Invalid,
+                "Instruction: {:?}",
+                instruction
+            );
             if instruction.status == InstructionStatus::Pending {
                 let token = Token::find_by_token_id(&token_id, &client).await.unwrap().unwrap();
                 let data: TokenData = serde_json::from_value(token.additional_data_json).unwrap();
@@ -633,7 +680,6 @@ mod test {
         );
     }
 
-
     #[actix_rt::test]
     async fn redeem_token() {
         let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
@@ -641,9 +687,12 @@ mod test {
         let token_id = test_token(&client).await;
         let update = UpdateToken {
             status: Some(TokenStatus::Active),
-            append_state_data_json: Some(json!(TokenData { owner_pubkey: Test::<Pubkey>::new(), used: false }))
+            append_state_data_json: Some(json!(TokenData {
+                owner_pubkey: Test::<Pubkey>::new(),
+                used: false
+            })),
         };
-        update_token(&token_id, update, &client ).await;
+        update_token(&token_id, update, &client).await;
         let mut resp = srv
             .token_call(&token_id, "redeem_token")
             .send_json(&RedeemTokenParams)
@@ -660,10 +709,18 @@ mod test {
         for _ in 0u8..10 {
             tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
             let instruction = Instruction::load(id, &client).await.unwrap();
-            assert_ne!(instruction.status, InstructionStatus::Invalid, "Instruction: {:?}", instruction);
+            assert_ne!(
+                instruction.status,
+                InstructionStatus::Invalid,
+                "Instruction: {:?}",
+                instruction
+            );
             if instruction.status == InstructionStatus::Pending {
                 let token = Token::find_by_token_id(&token_id, &client).await.unwrap().unwrap();
-                let asset = AssetState::find_by_asset_id(&instruction.asset_id, &client).await.unwrap().unwrap();
+                let asset = AssetState::find_by_asset_id(&instruction.asset_id, &client)
+                    .await
+                    .unwrap()
+                    .unwrap();
                 let data: TokenData = serde_json::from_value(token.additional_data_json).unwrap();
                 assert_eq!(data.owner_pubkey, asset.asset_issuer_pub_key);
                 return;

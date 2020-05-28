@@ -79,12 +79,7 @@ impl Wallet {
     pub async fn set_balance(&self, balance: i64, client: &Client) -> Result<Wallet, DBError> {
         const QUERY: &'static str = "UPDATE wallet SET updated_at = NOW(), balance = $2 WHERE id = $1 RETURNING *";
         let stmt = client.prepare(QUERY).await?;
-        let row = client
-            .query_one(&stmt, &[
-                &self.id,
-                &balance
-            ])
-            .await?;
+        let row = client.query_one(&stmt, &[&self.id, &balance]).await?;
         Ok(Self::from_row(row)?)
     }
 }

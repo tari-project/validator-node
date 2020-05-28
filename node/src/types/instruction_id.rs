@@ -1,7 +1,7 @@
 use crate::types::{errors::TypeError, identity::generate_uuid_v1, NodeID};
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Deref};
-use tokio_postgres::types::{Type, FromSql, ToSql};
+use tokio_postgres::types::{FromSql, ToSql, Type};
 use uuid::Uuid;
 
 #[derive(Default, Copy, Clone, PartialEq, Debug, ToSql, FromSql, Deserialize, Serialize)]

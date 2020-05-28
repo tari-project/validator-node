@@ -106,7 +106,7 @@ impl WalletStore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::{Test, test_db_client};
+    use crate::test::utils::{test_db_client, Test};
     use multiaddr::Multiaddr;
     use tari_core::tari_utilities::hex::Hex;
     use tempdir::TempDir;

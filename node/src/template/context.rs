@@ -243,10 +243,21 @@ impl<T: Template + Clone> InstructionContext<T> {
     /// E::into_message([Instruction]) method
     pub async fn defer<M>(&self, msg: M) -> Result<(), TemplateError>
     where M: ContractCallMsg<Template = T, Result = MessageResult> + std::fmt::Debug + 'static {
-        log::trace!(target: LOG_TARGET, "template={}, instruction={}, sending message to actor: {:?}", T::id(), self.instruction.id, msg.params());
+        log::trace!(
+            target: LOG_TARGET,
+            "template={}, instruction={}, sending message to actor: {:?}",
+            T::id(),
+            self.instruction.id,
+            msg.params()
+        );
         assert!(self.template_context.addr().connected());
         self.template_context.addr().send(msg).await??;
-        log::trace!(target: LOG_TARGET, "template={}, instruction={}, actor completed processing message", T::id(), self.instruction.id);
+        log::trace!(
+            target: LOG_TARGET,
+            "template={}, instruction={}, actor completed processing message",
+            T::id(),
+            self.instruction.id
+        );
         Ok(())
     }
 
@@ -371,11 +382,10 @@ impl<T: Template + Clone> TokenInstructionContext<T> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::{TestTemplate, test_db_client, builders::TokenContextBuilder};
+    use crate::test::utils::{builders::TokenContextBuilder, test_db_client, TestTemplate};
 
     #[actix_rt::test]
     async fn instruction_failed() {
@@ -383,15 +393,27 @@ mod test {
         // diable logging as we expect some log errors here
         log::set_max_level(log::LevelFilter::Off);
         let (client, _lock) = test_db_client().await;
-        let mut token_ctx: TokenInstructionContext<TestTemplate> = TokenContextBuilder::default().build().await.unwrap();
+        let mut token_ctx: TokenInstructionContext<TestTemplate> =
+            TokenContextBuilder::default().build().await.unwrap();
         let instruction = token_ctx.context.instruction.clone();
         let instruction_id = instruction.id.clone();
         let context = token_ctx.context.template_context.clone();
-        assert!(context.clone().instruction_failed(instruction, "This should fail".into()).await.is_err());
+        assert!(context
+            .clone()
+            .instruction_failed(instruction, "This should fail".into())
+            .await
+            .is_err());
         let instruction = Instruction::load(instruction_id, &client).await.unwrap();
         assert_eq!(instruction.status, InstructionStatus::Scheduled);
-        assert!(token_ctx.context.transition(ContextEvent::StartProcessing).await.is_ok());
-        assert!(context.instruction_failed(instruction, "This should pass".into()).await.is_ok());
+        assert!(token_ctx
+            .context
+            .transition(ContextEvent::StartProcessing)
+            .await
+            .is_ok());
+        assert!(context
+            .instruction_failed(instruction, "This should pass".into())
+            .await
+            .is_ok());
         log::set_max_level(log_level);
     }
 }

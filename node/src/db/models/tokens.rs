@@ -247,7 +247,10 @@ mod test {
             ..NewToken::default()
         };
         let id = Token::insert(params.clone(), &client).await.unwrap();
-        let token = Token::find_by_token_id(&params.token_id, &client).await.unwrap().unwrap();
+        let token = Token::find_by_token_id(&params.token_id, &client)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(token.id, id);
     }
 
@@ -265,7 +268,6 @@ mod test {
         let token = Token::load(id, &client).await.unwrap();
         assert_eq!(token.status, TokenStatus::default());
     }
-
 
     #[actix_rt::test]
     async fn store_append_only_state() {

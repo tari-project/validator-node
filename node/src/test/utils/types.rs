@@ -41,7 +41,6 @@ impl Test<RaidID> {
         let raw = format!("{:015X}", random::<u32>());
         RaidID::from_base58(raw.as_str()).unwrap_or(RaidID::default())
     }
-
 }
 
 impl Test<NodeID> {
@@ -65,8 +64,8 @@ impl Test<Pubkey> {
     }
 }
 
-use tari_common::ConfigBootstrap;
 use crate::cli::Arguments;
+use tari_common::ConfigBootstrap;
 
 lazy_static::lazy_static! {
     static ref ARGUMENTS: Arguments = Arguments {
@@ -84,8 +83,8 @@ impl Test<Arguments> {
     }
 }
 
-use tempdir::TempDir;
 use tari_test_utils::random::string;
+use tempdir::TempDir;
 
 lazy_static::lazy_static! {
     static ref TEMP_DIR: TempDir = TempDir::new(string(8).as_str()).unwrap();
@@ -104,6 +103,7 @@ pub struct TestTemplate;
 impl Template for TestTemplate {
     type AssetContracts = ();
     type TokenContracts = ();
+
     fn id() -> TemplateID {
         Test::<TemplateID>::new()
     }

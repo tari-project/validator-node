@@ -1,6 +1,5 @@
-use crate::wallet::WalletStore;
+use crate::{test::utils::Test, wallet::WalletStore};
 use std::sync::Arc;
-use crate::test::utils::Test;
 use tempdir::TempDir;
 use tokio::sync::Mutex;
 

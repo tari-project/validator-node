@@ -198,7 +198,7 @@ impl Instruction {
     pub async fn load_subinstructions(&self, client: &Client) -> Result<Vec<Instruction>, DBError> {
         let stmt = "SELECT * FROM instructions WHERE parent_id = $1::\"InstructionID\"";
         let rows = client.query(stmt, &[&self.id]).await?;
-        Ok(rows.into_iter().map(Self::from_row).collect::<Result<Vec<_>,_>>()?)
+        Ok(rows.into_iter().map(Self::from_row).collect::<Result<Vec<_>, _>>()?)
     }
 }
 
