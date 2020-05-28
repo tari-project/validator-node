@@ -3,8 +3,7 @@ use crate::{
     config::NodeConfig,
     consensus::ConsensusProcessor,
     db::utils::db::build_pool,
-    template::single_use_tokens::SingleUseTokenTemplate,
-    template::{TemplateRunner, actix_web_impl::ActixTemplate}
+    template::{actix_web_impl::ActixTemplate, single_use_tokens::SingleUseTokenTemplate, TemplateRunner},
 };
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
@@ -33,8 +32,7 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
     });
 
     // TODO: so far predefined templates only... make templates runners configurable from main
-    let sut_runner =
-        TemplateRunner::<SingleUseTokenTemplate>::create(pool.clone(), config.clone());
+    let sut_runner = TemplateRunner::<SingleUseTokenTemplate>::create(pool.clone(), config.clone());
     let sut_context = sut_runner.start();
 
     let cors_config = config.cors.clone();
@@ -63,11 +61,11 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
             .wrap(AppVersionHeader::new());
 
         // the problem we solving here is for every template scope we need to install distinct app_data with DB pool
-        //TODO: abstract this configuration, make it reusable in tests too
+        // TODO: abstract this configuration, make it reusable in tests too
         let scopes = SingleUseTokenTemplate::actix_scopes();
-        let with_templates = scopes.into_iter().fold(app, |app, scope| {
-            app.service(scope.app_data(sut_context.clone()))
-        });
+        let with_templates = scopes
+            .into_iter()
+            .fold(app, |app, scope| app.service(scope.app_data(sut_context.clone())));
 
         with_templates
             .configure(routing::routes)
