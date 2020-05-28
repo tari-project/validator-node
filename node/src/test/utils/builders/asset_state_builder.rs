@@ -1,5 +1,5 @@
 use super::DigitalAssetBuilder;
-use crate::{db::models::*, test::utils::Test, types::AssetID};
+use crate::{db::models::*, test::utils::Test, types::{AssetID, Pubkey}};
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
 use rand::prelude::*;
@@ -12,7 +12,7 @@ pub struct AssetStateBuilder {
     pub description: String,
     pub limit_per_wallet: Option<u32>,
     pub allow_transfers: bool,
-    pub asset_issuer_pub_key: String,
+    pub asset_issuer_pub_key: Pubkey,
     pub authorized_signers: Vec<String>,
     pub expiry_date: Option<DateTime<Utc>>,
     pub initial_permission_bitflag: i64,
@@ -31,8 +31,7 @@ impl Default for AssetStateBuilder {
             description: "Description of asset".to_string(),
             limit_per_wallet: None,
             allow_transfers: true,
-            asset_issuer_pub_key: format!("7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0{}", x)
-                .into(),
+            asset_issuer_pub_key: Test::<Pubkey>::new(),
             authorized_signers: Vec::new(),
             expiry_date: None,
             initial_permission_bitflag: 0,

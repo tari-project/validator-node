@@ -21,6 +21,9 @@ pub struct WalletStore {
 impl WalletStore {
     /// Initialize store
     pub fn init(wallets_keys_path: PathBuf) -> Result<Self, WalletError> {
+        if !wallets_keys_path.exists() {
+            std::fs::create_dir(&wallets_keys_path)?;
+        }
         Ok(Self {
             wallets_keys_path,
             cache: HashMap::new(),
@@ -103,19 +106,17 @@ impl WalletStore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::test_db_client;
+    use crate::test::utils::{Test, test_db_client};
     use multiaddr::Multiaddr;
     use tari_core::tari_utilities::hex::Hex;
-    use tari_test_utils::random::string;
     use tempdir::TempDir;
 
     #[actix_rt::test]
     async fn general_usage() -> anyhow::Result<()> {
-        let temp_dir = TempDir::new(string(8).as_str())?;
         let (mut client, _lock) = test_db_client().await;
         let address = Multiaddr::empty();
 
-        let mut store = WalletStore::init(temp_dir.path().to_path_buf())?;
+        let mut store = WalletStore::init(Test::<TempDir>::get_path_buf())?;
         let wallet = NodeWallet::new(address, "taris".into())?;
         let pubkey = wallet.public_key_hex();
         let transaction = client.transaction().await?;
@@ -127,18 +128,15 @@ mod test {
         let wallet = store.get(pubkey.clone(), &client).await?;
         assert_eq!(wallet.name(), "taris");
         assert_eq!(wallet.public_key().to_hex(), pubkey);
-
-        temp_dir.close()?;
         Ok(())
     }
 
     #[actix_rt::test]
     async fn duplicate_key() -> anyhow::Result<()> {
-        let temp_dir = TempDir::new(string(8).as_str())?;
         let (mut client, _lock) = test_db_client().await;
         let address = Multiaddr::empty();
 
-        let mut store = WalletStore::init(temp_dir.path().to_path_buf())?;
+        let mut store = WalletStore::init(Test::<TempDir>::get_path_buf())?;
         let wallet = NodeWallet::new(address, "taris".to_string())?;
 
         let transaction = client.transaction().await?;
@@ -150,8 +148,6 @@ mod test {
 
         let count = store.load(&client).await?.len();
         assert_eq!(count, 1);
-
-        temp_dir.close()?;
         Ok(())
     }
 }

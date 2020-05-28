@@ -66,7 +66,7 @@ fn generate_web_body(
             // extract and transform parameters
             let asset_id = params.asset_id(context.template_id())?;
             let token_id = params.token_id(context.template_id())?;
-            let data = data.into_inner();
+            let data: #contracts = data.into_inner().into();
             // create transaction
             let instruction = NewInstruction {
                 asset_id: asset_id.clone(),
@@ -79,8 +79,7 @@ fn generate_web_body(
                 ..NewInstruction::default()
             };
             let instruction = context.create_instruction(instruction).await?;
-            let contract: #contracts = data.clone().into();
-            let message = contract.into_message(instruction.clone());
+            let message = data.clone().into_message(instruction.clone());
             context
                 .addr()
                 .try_send(message)

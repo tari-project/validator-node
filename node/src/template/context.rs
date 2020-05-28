@@ -55,7 +55,12 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
     }
 
     /// Creates [Instruction]
-    pub async fn create_instruction(&self, data: NewInstruction) -> Result<Instruction, TemplateError> {
+    pub async fn create_instruction(&self, mut data: NewInstruction) -> Result<Instruction, TemplateError> {
+        if data.id == InstructionID::default() {
+            // TODO: NodeID should be provided in context
+            // TODO: There should be better way
+            data.id = InstructionID::new(NodeID::stub()).map_err(anyhow::Error::from)?;
+        }
         if data.status != InstructionStatus::Scheduled {
             return processing_err!(
                 "Failed to create Instruction in status {}, initial status should be Scheduled",
@@ -69,6 +74,7 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
     /// Creates [InstructionContext] which can be used by [InstructionRunner] to process [Instruction]
     pub async fn instruction_context(&self, instruction: Instruction) -> Result<InstructionContext<T>, TemplateError> {
         let client = self.pool.get().await.map_err(DBError::from)?;
+        let instruction = Instruction::load(instruction.id, &client).await?;
         Ok(InstructionContext {
             client,
             instruction,
@@ -77,7 +83,7 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
     }
 
     /// Utility handler for actors when Instruction has failed
-    pub async fn instruction_failed(self, instruction: Instruction, error: String) {
+    pub async fn instruction_failed(self, instruction: Instruction, error: String) -> Result<(), TemplateError> {
         log::error!(
             target: LOG_TARGET,
             "template={}, instruction={}, Instruction processing failed {}",
@@ -103,7 +109,9 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
                 instruction.id,
                 error
             );
+            return Err(error);
         };
+        Ok(())
     }
 
     /// [TemplateRunner] Actor's address, which is responsible for processing [Instruction]s
@@ -357,5 +365,30 @@ impl<T: Template + Clone> TokenInstructionContext<T> {
             .update(data, &self.context.instruction, &self.context.client)
             .await?;
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::test::utils::{TestTemplate, test_db_client, builders::TokenContextBuilder};
+
+    #[actix_rt::test]
+    async fn instruction_failed() {
+        let log_level = log::max_level();
+        // diable logging as we expect some log errors here
+        log::set_max_level(log::LevelFilter::Off);
+        let (client, _lock) = test_db_client().await;
+        let mut token_ctx: TokenInstructionContext<TestTemplate> = TokenContextBuilder::default().build().await.unwrap();
+        let instruction = token_ctx.context.instruction.clone();
+        let instruction_id = instruction.id.clone();
+        let context = token_ctx.context.template_context.clone();
+        assert!(context.clone().instruction_failed(instruction, "This should fail".into()).await.is_err());
+        let instruction = Instruction::load(instruction_id, &client).await.unwrap();
+        assert_eq!(instruction.status, InstructionStatus::Scheduled);
+        assert!(token_ctx.context.transition(ContextEvent::StartProcessing).await.is_ok());
+        assert!(context.instruction_failed(instruction, "This should pass".into()).await.is_ok());
+        log::set_max_level(log_level);
     }
 }

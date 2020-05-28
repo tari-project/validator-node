@@ -25,7 +25,7 @@ impl Default for AssetContextBuilder {
         Self {
             template_id: 65536.into(),
             asset: None,
-            wallets: WalletStoreBuilder::default().build().unwrap(),
+            wallets: WalletStoreBuilder::build().unwrap(),
             address: Multiaddr::empty(),
             params: json!({}),
             contract_name: "test_contract".into(),
@@ -82,7 +82,7 @@ impl Default for TokenContextBuilder {
         Self {
             template_id: 65536.into(),
             token: None,
-            wallets: WalletStoreBuilder::default().build().unwrap(),
+            wallets: WalletStoreBuilder::build().unwrap(),
             address: Multiaddr::empty(),
             params: json!({}),
             contract_name: "test_contract".into(),

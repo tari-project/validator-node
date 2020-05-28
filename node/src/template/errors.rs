@@ -4,13 +4,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum TemplateError {
-    #[error("DB error in Template: {source:?}")]
+    #[error("DB error in Template: {source} {backtrace}")]
     DB {
         #[from]
         source: DBError,
         backtrace: Backtrace,
     },
-    #[error("Wallet error in Template: {source}")]
+    #[error("Wallet error in Template: {source} {backtrace}")]
     Wallet {
         #[from]
         source: WalletError,
@@ -27,7 +27,7 @@ pub enum TemplateError {
         #[source]
         source: anyhow::Error,
     },
-    #[error("Failed to receive actor response: {source}")]
+    #[error("Failed to receive actor response: {source} {backtrace}")]
     ActorResponse {
         #[from]
         source: actix::MailboxError,

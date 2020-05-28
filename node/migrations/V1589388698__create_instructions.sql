@@ -9,7 +9,7 @@ CREATE TABLE instructions (
                        token_id char(96) NULL references tokens(token_id),
                        template_id BIGINT NOT NULL,
                        contract_name TEXT NOT NULL,
-                       status TEXT NOT NULL DEFAULT 'Pending',
+                       status TEXT NOT NULL DEFAULT 'Scheduled',
                        params JSONB NOT NULL DEFAULT '{}',
                        result JSONB NOT NULL DEFAULT '{}',
                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

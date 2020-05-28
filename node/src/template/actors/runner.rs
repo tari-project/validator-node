@@ -36,8 +36,8 @@ impl<T: Template + Clone> TemplateRunner<T> {
     /// as TemplateRunner won't be able to function properly
     pub fn create(pool: Arc<Pool>, config: NodeConfig) -> Self {
         let path = config.wallets_keys_path.clone();
-        let wallets = WalletStore::init(path)
-            .expect(format!("Failed to create TemplateRunner {}: WalletStore:", T::id()).as_str());
+        let wallets = WalletStore::init(path.clone())
+            .expect(format!("Failed to create TemplateRunner {}: WalletStore at {:?}:", T::id(), path).as_str());
         let wallets = Arc::new(Mutex::new(wallets));
         let node_address = config.public_address.clone().expect(
             format!(

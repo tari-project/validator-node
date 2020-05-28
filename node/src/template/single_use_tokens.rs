@@ -64,7 +64,7 @@ impl AssetContracts {
 
 /// ***************** Token contracts *******************
 
-#[derive(Contracts, Serialize, Deserialize, Clone)]
+#[derive(Contracts, Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[contracts(template = "SingleUseTokenTemplate", token)]
 /// Token contracts for SingleUseTokenTemplate
 pub enum TokenContracts {
@@ -90,24 +90,24 @@ pub enum TokenContracts {
     RedeemToken(RedeemTokenParams),
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct SellTokenParams {
     price: i64,
     timeout_secs: u64,
     user_pubkey: Pubkey,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct SellTokenLockParams {
     wallet_key: Pubkey,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct TransferTokenParams {
     user_pubkey: Pubkey,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct RedeemTokenParams;
 
 impl TokenContracts {
@@ -356,7 +356,7 @@ pub mod asset_contracts_actix {
     {
         // extract and transform parameters
         let asset_id = params.asset_id(context.template_id())?;
-        let data = data.into_inner();
+        let data: AssetContracts = data.into_inner().into();
         // start instruction
         let instruction = NewInstruction {
             asset_id: asset_id.clone(),
@@ -368,8 +368,7 @@ pub mod asset_contracts_actix {
             ..NewInstruction::default()
         };
         let instruction = context.create_instruction(instruction).await?;
-        let contract: AssetContracts = data.clone().into();
-        let message = contract.into_message(instruction.clone());
+        let message = data.clone().into_message(instruction.clone());
         context
             .addr()
             .try_send(message)
@@ -389,11 +388,12 @@ pub mod asset_contracts_actix {
 mod test {
     use super::*;
     use crate::{
-        db::models::consensus::instructions::*,
+        db::models::{wallet::*, consensus::instructions::*},
         test::utils::{actix::TestAPIServer, builders::*, test_db_client, Test},
         types::AssetID,
     };
     use serde_json::json;
+    use deadpool_postgres::Client;
 
     #[actix_rt::test]
     async fn issue_tokens_positive() {
@@ -444,13 +444,8 @@ mod test {
         let tpl = SingleUseTokenTemplate::id();
         let asset_id = Test::<AssetID>::from_template(tpl);
         let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
-        AssetStateBuilder {
-            asset_id: asset_id.clone(),
-            ..Default::default()
-        }
-        .build(&client)
-        .await
-        .unwrap();
+        let asset_builder = AssetStateBuilder { asset_id: asset_id.clone(), ..Default::default() };
+        asset_builder.build(&client).await.unwrap();
 
         let mut resp = srv
             .asset_call(&asset_id, "issue_tokens")
@@ -478,4 +473,154 @@ mod test {
             instruction
         );
     }
+
+    async fn test_token(client: &Client) -> TokenID {
+        let tpl = SingleUseTokenTemplate::id();
+        let asset_id: AssetID = Test::from_template(tpl);
+        let token_id: TokenID = Test::from_asset(&asset_id);
+        let token_builder = TokenBuilder { token_id: token_id.clone(), ..Default::default() };
+        token_builder.build(&client).await.unwrap();
+        token_id
+    }
+
+    #[actix_rt::test]
+    async fn instruction_params() {
+        let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
+        let (client, _lock) = test_db_client().await;
+        let token_id = test_token(&client).await;
+        let user_pubkey = Test::<Pubkey>::new();
+        let params = SellTokenParams { user_pubkey, timeout_secs: 1, price: 1};
+        let mut resp = srv
+            .token_call(&token_id, "sell_token")
+            .send_json(&params)
+            .await
+            .unwrap();
+
+        let instruction: Instruction = resp.json().await.unwrap();
+        let params2: TokenContracts = serde_json::from_value(instruction.params).unwrap();
+        assert_eq!(params2, params.into());
+    }
+
+    #[actix_rt::test]
+    async fn sell_token_full_stack() {
+        let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
+        let (client, _lock) = test_db_client().await;
+        let token_id = test_token(&client).await;
+        let user_pubkey = Test::<Pubkey>::new();
+        let mut resp = srv
+            .token_call(&token_id, "sell_token")
+            .send_json(&SellTokenParams { user_pubkey, timeout_secs: 1, price: 1})
+            .await
+            .unwrap();
+
+        assert!(resp.status().is_success());
+        let instruction: Instruction = resp.json().await.unwrap();
+        assert_eq!(instruction.status, InstructionStatus::Scheduled);
+
+        let id = instruction.id;
+        let wallet: Option<Wallet> = None;
+        // TODO: need better solution for async Actor tests, some Test wrapper for actor
+        for _ in 0u8..10 {
+            tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
+            let instruction = Instruction::load(id, &client).await.unwrap();
+            assert_ne!(instruction.status, InstructionStatus::Invalid, "Instruction: {:?}", instruction);
+            if instruction.status == InstructionStatus::Processing && wallet.is_none() {
+                let subinstructions = instruction.load_subinstructions(&client).await.unwrap();
+                assert_eq!(subinstructions.len(), 1);
+                let sub = subinstructions.first().unwrap();
+                let params: TokenContracts = serde_json::from_value(sub.params.clone()).unwrap();
+                if let TokenContracts::SellTokenLock(SellTokenLockParams { wallet_key}) = &params {
+                    let wallet = Some(Wallet::select_by_key(wallet_key, &client).await.unwrap());
+                    // top up money in wallet
+                    wallet.as_ref().unwrap().set_balance(1, &client).await.unwrap();
+                } else {
+                    panic!("Incorrect params in subcontract {:?}", params)
+                }
+            } else if instruction.status == InstructionStatus::Pending {
+                return;
+            }
+        }
+        let instruction = Instruction::load(id, &client).await.unwrap();
+        panic!(
+            "Waiting for Actor to process Instruction longer than 1s {:?}",
+            instruction
+        );
+    }
+
+    #[actix_rt::test]
+    async fn sell_token_negative() {
+        let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
+        let (client, _lock) = test_db_client().await;
+        let token_id = test_token(&client).await;
+        let token = Token::find_by_token_id(&token_id, &client).await.unwrap().unwrap();
+        let instruction = consensus::InstructionBuilder {
+            token_id: Some(token_id.clone()),
+            status: InstructionStatus::Commit,
+            ..Default::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
+        let update = UpdateToken { status: Some(TokenStatus::Active), ..Default::default() };
+        let _ = token.update(update, &instruction, &client).await.unwrap();
+        let user_pubkey = Test::<Pubkey>::new();
+        let mut resp = srv
+            .token_call(&token_id, "sell_token")
+            .send_json(&SellTokenParams { user_pubkey, timeout_secs: 1, price: 1})
+            .await
+            .unwrap();
+        let instruction: Instruction = resp.json().await.unwrap();
+        let id = instruction.id;
+        for _ in 0u8..10 {
+            tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
+            let instruction = Instruction::load(id, &client).await.unwrap();
+            if instruction.status != InstructionStatus::Scheduled {
+                assert_eq!(instruction.status, InstructionStatus::Invalid);
+                return;
+            }
+        }
+        let instruction = Instruction::load(id, &client).await.unwrap();
+        panic!(
+            "Waiting for Actor to process Instruction longer than 1s {:?}",
+            instruction
+        );
+    }
+
+    #[actix_rt::test]
+    async fn transfer_token() {
+        let srv = TestAPIServer::<SingleUseTokenTemplate>::new();
+        let (client, _lock) = test_db_client().await;
+        let token_id = test_token(&client).await;
+        let params = TransferTokenParams { user_pubkey: Test::<Pubkey>::new() };
+        let mut resp = srv
+            .token_call(&token_id, "transfer_token")
+            .send_json(&params)
+            .await
+            .unwrap();
+
+        assert!(resp.status().is_success());
+        let instruction: Instruction = resp.json().await.unwrap();
+        assert_eq!(instruction.status, InstructionStatus::Scheduled);
+        let _: TokenContracts = serde_json::from_value(instruction.params).unwrap();
+
+        let id = instruction.id;
+        // TODO: need better solution for async Actor tests, some Test wrapper for actor
+        for _ in 0u8..10 {
+            tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
+            let instruction = Instruction::load(id, &client).await.unwrap();
+            assert_ne!(instruction.status, InstructionStatus::Invalid, "Instruction: {:?}", instruction);
+            if instruction.status == InstructionStatus::Pending {
+                let token = Token::find_by_token_id(&token_id, &client).await.unwrap().unwrap();
+                let data: TokenData = serde_json::from_value(token.additional_data_json).unwrap();
+                assert_eq!(data.owner_pubkey, params.user_pubkey);
+                return;
+            }
+        }
+        let instruction = Instruction::load(id, &client).await.unwrap();
+        panic!(
+            "Waiting for Actor to process Instruction longer than 1s {:?}",
+            instruction
+        );
+    }
+
 }

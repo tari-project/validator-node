@@ -3,10 +3,9 @@ use crate::{
     template::{context::*, Template, TemplateError, TemplateRunner, LOG_TARGET},
 };
 use actix::prelude::*;
-use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::ops::Try;
 
 pub type ContractCallResult<C> = Result<(Value, C), TemplateError>;
 pub type MessageResult = Result<(), TemplateError>;
@@ -67,16 +66,9 @@ where
                 // TODO: commit DB transaction
                 Ok(())
             }
-            .then(move |res: Result<(), TemplateError>| async move {
-                match res {
-                    // update instruction after contract executed
-                    Ok(()) => M::Result::from_ok(()),
-                    Err(err) => {
-                        context.instruction_failed(instruction, err.to_string()).await;
-                        // TODO: commit DB transaction
-                        M::Result::from_error(err)
-                    },
-                }
+            .or_else(move |err: TemplateError| async move {
+                let _ = context.instruction_failed(instruction, err.to_string()).await;
+                Err(err)
             }),
         );
         Box::pin(fut)

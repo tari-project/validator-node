@@ -1,16 +1,15 @@
-use crate::{config::NodeConfig, db::migrations::migrate};
+use crate::{config::NodeConfig, db::migrations::migrate, cli::Arguments};
 use config::Source;
 use deadpool_postgres::{Client, Pool};
 use std::sync::Arc;
-use tari_common::{default_config, ConfigBootstrap, GlobalConfig};
-use tari_test_utils::random::string;
+use tari_common::{default_config, GlobalConfig, dir_utils::default_path};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio_postgres::NoTls;
 
 pub mod actix;
 pub mod builders;
 mod types;
-pub use types::Test;
+pub use types::{Test, TestTemplate};
 
 lazy_static::lazy_static! {
     static ref LOCK_DB_POOL: Mutex<Pool> = {
@@ -39,24 +38,21 @@ pub async fn test_db_client<'a>() -> (Client, MutexGuard<'a, Pool>) {
 
 /// Generate a standard test config
 pub fn build_test_global_config() -> anyhow::Result<GlobalConfig> {
-    let temp_dir = tempdir::TempDir::new(string(8).as_str())?;
-    let bootstrap = ConfigBootstrap {
-        base_path: temp_dir.into_path(),
-        ..Default::default()
-    };
-    Ok(GlobalConfig::convert_from(default_config(&bootstrap))?)
+    let bootstrap = &Test::<Arguments>::get().bootstrap;
+    Ok(GlobalConfig::convert_from(default_config(bootstrap))?)
 }
 
 /// Generate a standard test config
 pub fn build_test_config() -> anyhow::Result<NodeConfig> {
-    let mut config = config::Config::new();
+    let args = Test::<Arguments>::get();
+    let mut config = default_config(&args.bootstrap);
     let pg = config::Environment::with_prefix("PG_TEST").collect()?;
+    let global = build_test_global_config()?;
     config.set("validator.postgres", pg)?;
     config.set(
         "validator.wallets_keys_path",
-        format!("{}/wallets", option_env!("OUT_DIR").unwrap_or("./.tari")),
+        default_path("wallets", Some(&args.bootstrap.base_path)).to_str()
     )?;
-    let global = build_test_global_config()?;
     let config = NodeConfig::load_from(&config, &global, false)?;
     log::trace!(target: "test_utils", "Load test config: {:?}", config);
     Ok(config)

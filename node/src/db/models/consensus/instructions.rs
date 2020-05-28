@@ -194,6 +194,12 @@ impl Instruction {
         // to expected state
         Ok((Vec::new(), Vec::new()))
     }
+
+    pub async fn load_subinstructions(&self, client: &Client) -> Result<Vec<Instruction>, DBError> {
+        let stmt = "SELECT * FROM instructions WHERE parent_id = $1::\"InstructionID\"";
+        let rows = client.query(stmt, &[&self.id]).await?;
+        Ok(rows.into_iter().map(Self::from_row).collect::<Result<Vec<_>,_>>()?)
+    }
 }
 
 #[cfg(test)]
@@ -205,6 +211,7 @@ mod test {
             AssetStateBuilder,
         },
         test_db_client,
+        Test,
     };
     use serde_json::json;
 
@@ -279,5 +286,48 @@ mod test {
         assert_eq!(instruction2.token_id, updated.token_id);
         assert_eq!(instruction2.status, updated.status);
         assert!(instruction2.updated_at > initial_updated_at);
+    }
+
+    #[actix_rt::test]
+    async fn subinstruction() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+        let params = NewInstruction {
+            id: Test::<InstructionID>::new(),
+            asset_id: asset.asset_id.clone(),
+            template_id: asset.asset_id.template_id(),
+            contract_name: "test_contract".into(),
+            params: json!({"test_param": 1}),
+            ..NewInstruction::default()
+        };
+        let instruction = Instruction::insert(params, &client).await.unwrap();
+        let params = NewInstruction {
+            id: Test::<InstructionID>::new(),
+            asset_id: instruction.asset_id.clone(),
+            template_id: instruction.asset_id.template_id(),
+            parent_id: Some(instruction.id.clone()),
+            ..NewInstruction::default()
+        };
+        let subinstruction = Instruction::insert(params, &client).await.unwrap();
+
+        let subinstructions = instruction.load_subinstructions(&client).await.unwrap();
+        assert_eq!(subinstructions.len(), 1);
+        assert_eq!(subinstructions[0].parent_id, Some(instruction.id));
+        assert_eq!(subinstructions[0], subinstruction);
+    }
+
+    #[actix_rt::test]
+    async fn default_state() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+
+        let params = NewInstruction {
+            id: Test::<InstructionID>::new(),
+            asset_id: asset.asset_id.clone(),
+            template_id: asset.asset_id.template_id(),
+            ..NewInstruction::default()
+        };
+        let instruction = Instruction::insert(params, &client).await.unwrap();
+        assert_eq!(instruction.status, InstructionStatus::default());
     }
 }
