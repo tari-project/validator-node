@@ -263,7 +263,7 @@ mod test {
         let instruction = Instruction::insert(params, &client).await.unwrap();
         assert_eq!(instruction.template_id, asset.asset_id.template_id());
         assert_eq!(instruction.params, json!({"test_param": 1}));
-        assert_eq!(instruction.status, InstructionStatus::Pending);
+        assert_eq!(instruction.status, InstructionStatus::Scheduled);
 
         let initial_updated_at = instruction.updated_at;
         let data = UpdateInstruction {

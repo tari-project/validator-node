@@ -6,9 +6,9 @@ use super::{Template, TemplateError, TemplateRunner, LOG_TARGET};
 use crate::{
     db::{
         models::{
-            wallet::Wallet,
             consensus::instructions::*,
             tokens::{NewToken, Token, UpdateToken},
+            wallet::Wallet,
             AssetState,
         },
         utils::errors::DBError,
@@ -353,7 +353,9 @@ impl<T: Template + Clone> TokenInstructionContext<T> {
     /// returns updated token
     pub async fn update_token(&mut self, data: UpdateToken) -> Result<(), TemplateError> {
         let token = self.token.clone();
-        self.token = token.update(data, &self.context.instruction, &self.context.client).await?;
+        self.token = token
+            .update(data, &self.context.instruction, &self.context.client)
+            .await?;
         Ok(())
     }
 }

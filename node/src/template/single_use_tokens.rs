@@ -43,7 +43,7 @@ impl AssetContracts {
         let asset = &context.asset;
         let data = TokenData {
             owner_pubkey: asset.asset_issuer_pub_key.clone(),
-            used: false
+            used: false,
         };
         let data = serde_json::to_value(data).map_err(anyhow::Error::from)?;
         let new_token = move |token_id| NewToken {
@@ -123,14 +123,21 @@ impl TokenContracts {
     /// - Client need to retrieve wallet key from subinstruction and transfer amount
     async fn sell_token(
         context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
-        SellTokenParams { price, timeout_secs, user_pubkey }: SellTokenParams,
+        SellTokenParams {
+            price,
+            timeout_secs,
+            user_pubkey,
+        }: SellTokenParams,
     ) -> Result<Token, TemplateError>
     {
         if let Err(err) = Self::validate_token(context, TokenStatus::Available) {
             return validation_err!("Can't sell: {}", err);
         };
         let wallet_key = context.create_temp_wallet().await?;
-        let subcontract: Self = SellTokenLockParams { wallet_key: wallet_key.clone() }.into();
+        let subcontract: Self = SellTokenLockParams {
+            wallet_key: wallet_key.clone(),
+        }
+        .into();
         let suninstruction = context
             .create_subinstruction("sell_token".into(), subcontract.clone())
             .await?;
@@ -142,7 +149,10 @@ impl TokenContracts {
         while context.check_balance(&wallet_key).await? < price {
             tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
         }
-        let token_data = TokenData { owner_pubkey: user_pubkey, used: false };
+        let token_data = TokenData {
+            owner_pubkey: user_pubkey,
+            used: false,
+        };
         let data = UpdateToken {
             status: Some(TokenStatus::Active),
             append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
@@ -178,7 +188,10 @@ impl TokenContracts {
         if let Err(err) = Self::validate_token(context, TokenStatus::Active) {
             return validation_err!("Can't transfer: {}", err);
         };
-        let token_data = TokenData { owner_pubkey: user_pubkey, used: false };
+        let token_data = TokenData {
+            owner_pubkey: user_pubkey,
+            used: false,
+        };
         let data = UpdateToken {
             append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
             ..Default::default()
@@ -198,7 +211,7 @@ impl TokenContracts {
         };
         let token_data = TokenData {
             owner_pubkey: context.asset.asset_issuer_pub_key.clone(),
-            used: true
+            used: true,
         };
         let data = UpdateToken {
             append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
@@ -208,15 +221,24 @@ impl TokenContracts {
         Ok(context.token.clone())
     }
 
-    fn validate_token(context: &mut TokenInstructionContext<SingleUseTokenTemplate>, status: TokenStatus) -> Result<(),String> {
+    fn validate_token(
+        context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
+        status: TokenStatus,
+    ) -> Result<(), String>
+    {
         if context.token.status != status {
-            return Err(format!("expected token status {}, got {}", status, context.token.status));
+            return Err(format!(
+                "expected token status {}, got {}",
+                status, context.token.status
+            ));
         }
         match serde_json::from_value::<TokenData>(context.token.additional_data_json.clone()) {
-            Ok(data) => if data.used {
-                return Err("already used token".into());
+            Ok(data) => {
+                if data.used {
+                    return Err("already used token".into());
+                }
             },
-            _ => {}
+            _ => {},
         };
         Ok(())
     }
