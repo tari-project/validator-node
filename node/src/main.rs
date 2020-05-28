@@ -8,11 +8,6 @@ use tari_validator_node::{
     db::{migrations, utils},
 };
 
-fn template_scopes() -> Vec<actix_web::Scope> {
-    use tari_validator_node::template::{actix_web_impl::ActixTemplate, single_use_tokens};
-    single_use_tokens::SingleUseTokenTemplate::actix_scopes()
-}
-
 #[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
     let mut args = Arguments::from_args();
@@ -28,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
     let node_config = NodeConfig::load_from(&config, &global_config, true)?;
 
     match args.command {
-        Commands::Start => actix_main(node_config, template_scopes).await?,
+        Commands::Start => actix_main(node_config).await?,
         Commands::Init => {
             println!("Initializing database {:?}", node_config.postgres.dbname);
             utils::db::create_database(node_config).await?;
