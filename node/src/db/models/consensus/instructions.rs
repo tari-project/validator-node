@@ -205,15 +205,49 @@ impl Instruction {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test::utils::{
-        builders::{
-            consensus::{InstructionBuilder, ProposalBuilder},
-            AssetStateBuilder,
+    use crate::{
+        db::models::*,
+        test::utils::{
+            builders::{
+                consensus::{InstructionBuilder, ProposalBuilder},
+                AssetStateBuilder,
+            },
+            test_db_client,
         },
         test_db_client,
         Test,
     };
     use serde_json::json;
+
+    #[actix_rt::test]
+    async fn find_pending() {
+        let (client, _lock) = test_db_client().await;
+        let instruction = InstructionBuilder::default().build(&client).await.unwrap();
+        let instruction2 = InstructionBuilder::default().build(&client).await.unwrap();
+        let instruction3 = InstructionBuilder::default().build(&client).await.unwrap();
+
+        // instruction is ignored if an existing block is present
+        let mut asset_state = AssetState::find_by_asset_id(&instruction.asset_id, &client)
+            .await
+            .unwrap()
+            .unwrap();
+        asset_state.acquire_lock(60 as u64, &client).await.unwrap();
+
+        // instruction3 is ignored as it is not pending
+        instruction3
+            .update(
+                UpdateInstruction {
+                    status: Some(InstructionStatus::Commit),
+                    ..UpdateInstruction::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        let instructions = Instruction::find_pending(&client).await.unwrap();
+        assert_eq!(instructions, Some((instruction2.asset_id.clone(), vec![instruction2])));
+    }
 
     #[actix_rt::test]
     async fn update_instructions_status() {

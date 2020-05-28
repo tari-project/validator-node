@@ -1,6 +1,7 @@
 use crate::{
     api::{middleware::*, routing},
     config::NodeConfig,
+    consensus::ConsensusProcessor,
     db::utils::db::build_pool,
     wallet::WalletStore,
 };
@@ -24,6 +25,13 @@ where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
         "Server starting at {}",
         config.actix.addr().to_socket_addrs()?.next().unwrap()
     );
+
+    let mut consensus_processor = ConsensusProcessor::new(config.clone());
+    let (kill_sender, kill_receiver) = mpsc::channel::<()>();
+    // TODO: spawn consensus processors in separate Runtime
+    actix_rt::spawn(async move {
+        consensus_processor.start(kill_receiver).await;
+    });
 
     let cors_config = config.cors.clone();
     let mut server = HttpServer::new(move || {
@@ -80,6 +88,7 @@ where F: (FnOnce() -> Vec<Scope>) + Clone + Send + 'static {
     };
 
     server.run().await?;
+    kill_sender.send(())?;
 
     Ok(())
 }

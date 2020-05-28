@@ -56,11 +56,18 @@ impl AggregateSignatureMessage {
         Ok(aggregate_signature_message)
     }
 
+    /// Load aggregate signature message from database by ID
+    pub async fn load(id: uuid::Uuid, client: &Client) -> Result<Self, DBError> {
+        let stmt = "SELECT * FROM aggregate_signature_messages WHERE id = $1";
+        let result = client.query_one(stmt, &[&id]).await?;
+        Ok(Self::from_row(result)?)
+    }
+
     pub async fn validate(&self, client: &Client) -> Result<(), DBError> {
         // Stub, always validates as valid
         self.update(
             UpdateAggregateSignatureMessage {
-                status: Some(self.status),
+                status: Some(AggregateSignatureMessageStatus::Accepted),
             },
             client,
         )
@@ -83,6 +90,17 @@ impl AggregateSignatureMessage {
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let row = client.query_one(&stmt, &[&data.status, &self.id]).await?;
         Ok(Self::from_row(row)?)
+    }
+
+    /// Load aggregate signature messages from database by ProposalID
+    pub async fn load_by_proposal_id(id: ProposalID, client: &Client) -> Result<Vec<Self>, DBError> {
+        let stmt = "SELECT * FROM aggregate_signature_messages WHERE proposal_id = $1::\"ProposalID\"";
+        Ok(client
+            .query(stmt, &[&id])
+            .await?
+            .into_iter()
+            .map(|row| Self::from_row(row))
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     pub async fn proposal(&self, client: &Client) -> Result<Proposal, DBError> {
@@ -114,6 +132,7 @@ impl NewAggregateSignatureMessage {
 mod test {
     use super::*;
     use crate::{
+        db::models::AssetState,
         test::utils::{
             builders::consensus::{AggregateSignatureMessageBuilder, ProposalBuilder},
             test_db_client,
@@ -121,6 +140,92 @@ mod test {
         types::NodeID,
     };
     use serde_json::json;
+
+    #[actix_rt::test]
+    async fn find_pending() {
+        let (client, _lock) = test_db_client().await;
+        let aggregate_signature_message = AggregateSignatureMessageBuilder::default()
+            .build(&client)
+            .await
+            .unwrap();
+        let aggregate_signature_message2 = AggregateSignatureMessageBuilder::default()
+            .build(&client)
+            .await
+            .unwrap();
+        let aggregate_signature_message3 = AggregateSignatureMessageBuilder::default()
+            .build(&client)
+            .await
+            .unwrap();
+
+        // Status not pending
+        aggregate_signature_message2
+            .update(
+                UpdateAggregateSignatureMessage {
+                    status: Some(AggregateSignatureMessageStatus::Accepted),
+                    ..UpdateAggregateSignatureMessage::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        // Asset is locked
+        let proposal = Proposal::load(aggregate_signature_message3.proposal_id, &client)
+            .await
+            .unwrap();
+        let mut asset_state = AssetState::find_by_asset_id(&proposal.asset_id, &client)
+            .await
+            .unwrap()
+            .unwrap();
+        asset_state.acquire_lock(60 as u64, &client).await.unwrap();
+
+        let found_aggregate_signature_messages = AggregateSignatureMessage::find_pending(&client).await.unwrap();
+        assert_eq!(found_aggregate_signature_messages, Some(aggregate_signature_message));
+    }
+
+    #[actix_rt::test]
+    async fn load() {
+        let (client, _lock) = test_db_client().await;
+        let aggregate_signature_message = AggregateSignatureMessageBuilder::default()
+            .build(&client)
+            .await
+            .unwrap();
+
+        let found_aggregate_signature_message =
+            AggregateSignatureMessage::load(aggregate_signature_message.id, &client)
+                .await
+                .unwrap();
+        assert_eq!(aggregate_signature_message, found_aggregate_signature_message);
+    }
+
+    #[actix_rt::test]
+    async fn validate() {
+        let (client, _lock) = test_db_client().await;
+        let aggregate_signature_message = AggregateSignatureMessageBuilder::default()
+            .build(&client)
+            .await
+            .unwrap();
+        // TODO: augment test logic for passing and failing validation once no longer a stub
+        assert!(aggregate_signature_message.validate(&client).await.is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn load_by_proposal_id() {
+        let (client, _lock) = test_db_client().await;
+        let proposal = ProposalBuilder::default().build(&client).await.unwrap();
+        let aggregate_signature_message = AggregateSignatureMessageBuilder {
+            proposal_id: Some(proposal.id),
+            ..AggregateSignatureMessageBuilder::default()
+        }
+        .build(&client)
+        .await
+        .unwrap();
+
+        let aggregate_signature_messages = AggregateSignatureMessage::load_by_proposal_id(proposal.id, &client)
+            .await
+            .unwrap();
+        assert_eq!(aggregate_signature_messages, vec![aggregate_signature_message]);
+    }
 
     #[actix_rt::test]
     async fn crud() {
@@ -134,9 +239,30 @@ mod test {
             signature_data: signature_data.clone(),
             status: AggregateSignatureMessageStatus::Pending,
         };
-        let aggregate_signature_message = AggregateSignatureMessage::insert(params, &client).await.unwrap();
+        let mut aggregate_signature_message = AggregateSignatureMessage::insert(params, &client).await.unwrap();
         assert_eq!(aggregate_signature_message.proposal_id, proposal.id);
         assert_eq!(aggregate_signature_message.signature_data, signature_data);
+        assert_eq!(
+            aggregate_signature_message.status,
+            AggregateSignatureMessageStatus::Pending
+        );
+
+        aggregate_signature_message = aggregate_signature_message
+            .update(
+                UpdateAggregateSignatureMessage {
+                    status: Some(AggregateSignatureMessageStatus::Accepted),
+                    ..UpdateAggregateSignatureMessage::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+        assert_eq!(aggregate_signature_message.proposal_id, proposal.id);
+        assert_eq!(aggregate_signature_message.signature_data, signature_data);
+        assert_eq!(
+            aggregate_signature_message.status,
+            AggregateSignatureMessageStatus::Accepted
+        );
     }
 
     #[actix_rt::test]

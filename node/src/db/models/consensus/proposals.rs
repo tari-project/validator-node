@@ -119,6 +119,15 @@ impl Proposal {
             proposal_id: self.id,
             signature: "stub-signature".to_string(),
         };
+        self.update(
+            UpdateProposal {
+                status: Some(ProposalStatus::Signed),
+                ..UpdateProposal::default()
+            },
+            &client,
+        )
+        .await?;
+
         Ok(SignedProposal::insert(params, &client).await?)
     }
 
@@ -127,7 +136,7 @@ impl Proposal {
         let view = if leader {
             // Find pending view for asset, switch to commit
             let asset_id = self.new_view.asset_id.clone();
-            let found_view = View::find_by_asset_status(asset_id, ViewStatus::PreCommit, &client)
+            let found_view = View::find_by_asset_status(&asset_id, ViewStatus::PreCommit, &client)
                 .await?
                 .first()
                 .map(|v| v.clone())
@@ -205,6 +214,46 @@ mod test {
         types::consensus::AppendOnlyState,
     };
     use serde_json::json;
+
+    #[actix_rt::test]
+    async fn find_pending() {
+        let (client, _lock) = test_db_client().await;
+        let proposal = ProposalBuilder::default().build(&client).await.unwrap();
+        let proposal2 = ProposalBuilder::default().build(&client).await.unwrap();
+        let proposal3 = ProposalBuilder::default().build(&client).await.unwrap();
+
+        // proposal is ignored if an existing block is present
+        let mut asset_state = AssetState::find_by_asset_id(&proposal.asset_id, &client)
+            .await
+            .unwrap()
+            .unwrap();
+        asset_state.acquire_lock(60 as u64, &client).await.unwrap();
+
+        // proposal3 is ignored as it is not pending
+        proposal3
+            .update(
+                UpdateProposal {
+                    status: Some(ProposalStatus::Signed),
+                    ..UpdateProposal::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        let proposals = Proposal::find_pending(&client).await.unwrap();
+        assert_eq!(proposals, Some(proposal2));
+    }
+
+    #[actix_rt::test]
+    async fn create_partial_signature() {
+        let (client, _lock) = test_db_client().await;
+        let proposal = ProposalBuilder::default().build(&client).await.unwrap();
+        assert_eq!(
+            proposal.create_partial_signature().await.unwrap(),
+            "stub-signature".to_string()
+        );
+    }
 
     #[actix_rt::test]
     async fn mark_invalid() {
@@ -292,5 +341,19 @@ mod test {
         let proposal = Proposal::insert(params, &client).await.unwrap();
         assert_eq!(proposal.id, id);
         assert_eq!(proposal.new_view, new_view);
+
+        proposal
+            .update(
+                UpdateProposal {
+                    status: Some(ProposalStatus::Signed),
+                    ..UpdateProposal::default()
+                },
+                &client,
+            )
+            .await
+            .unwrap();
+
+        let proposal = Proposal::load(proposal.id, &client).await.unwrap();
+        assert_eq!(proposal.status, ProposalStatus::Signed);
     }
 }
