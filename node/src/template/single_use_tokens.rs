@@ -5,7 +5,6 @@ use crate::{
     validation_err,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tari_template_derive::Contracts;
 
 #[derive(Serialize, Deserialize)]
@@ -171,7 +170,7 @@ impl TokenContracts {
     /// Subcontract for sell_token
     async fn sell_token_lock(
         context: &mut TokenInstructionContext<SingleUseTokenTemplate>,
-        SellTokenLockParams { wallet_key }: SellTokenLockParams,
+        _: SellTokenLockParams,
     ) -> Result<(), TemplateError>
     {
         if let Err(err) = Self::validate_token(context, TokenStatus::Active) {

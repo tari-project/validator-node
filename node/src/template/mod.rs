@@ -14,6 +14,7 @@
 //!
 //! NOTE: coupled with actix at Phase1 for API simplicity, might be decoupled later.
 //!
+//! ### Notes:
 //! - [TemplateRunner] implements [actix::Actor] and is executing Contract code in async Actor
 //! - Derive macros from [tari_validator_derive] allow token contracts auto-implementation,
 //! generating actix-web interface and Actor Handler with Message implementation
@@ -24,7 +25,13 @@
 //! - Instruction states transition via InstructionContext method, transitioning happens automatically
 //! based on contract execution result. See impl [`actix::Handler`] for [TemplateRunner]
 //! - Contracts can use tokio::delay_for to wait for external event
-
+//!
+//! ### Caveats:
+//! - Contract Actors sharing thread pool with actix_web
+//! - There is no subscriptions on external events for contract code, like wallet balance change or
+//! transaction status change, hence contracts should use delay_for and check to wait for event to occur
+//! - Contract code does not implement restart and continuation on failure,
+//! does not support rollbacks on failures
 
 // TODO: Potentially via unsafe code Template still might acquire access to the database connection
 // we shall provide some custom build script which disallows installing templates using unsafe on a node

@@ -12,7 +12,7 @@
 //!
 //! Implementations for [AssetCallMsg] and [TokenCallMsg] might be derived
 //! using [derive(Contracts)] macro on Contracts enum:
-//! ```
+//! ```ignore
 //! #[derive(Contracts, Serialize, Deserialize, Clone)]
 //! #[contracts(template = "SingleUseTokenTemplate", token)]
 //! pub enum TokenContracts {

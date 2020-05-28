@@ -121,7 +121,11 @@ enum NotSupported {
     fn derive_error_templates() {
         for input in DERIVE_ERROR {
             let parsed: syn::DeriveInput = syn::parse_str(*input).expect(format!("Failed to parse {}", input).as_str());
-            assert!(ContractsOpt::from_derive_input(&parsed).is_err(), "Expected error converting to ContractsOpt: {}", input);
+            assert!(
+                ContractsOpt::from_derive_input(&parsed).is_err(),
+                "Expected error converting to ContractsOpt: {}",
+                input
+            );
         }
     }
 
@@ -220,14 +224,13 @@ enum NotSupported {
     #[contract(method="option_one")]
     OptionOne(String),
 }
-        "###
+        "###,
     ];
 
     #[test]
     fn error_templates() {
         for tpl in ERROR_TEMPLATES {
-            let parsed: syn::DeriveInput = syn::parse_str(*tpl)
-                .expect(format!("Failed to parse {}", tpl).as_str());
+            let parsed: syn::DeriveInput = syn::parse_str(*tpl).expect(format!("Failed to parse {}", tpl).as_str());
             let tokens = derive_contracts_impl(parsed);
             let ident = tokens.into_iter().next().unwrap().to_string();
             assert_eq!(ident, "compile_error");

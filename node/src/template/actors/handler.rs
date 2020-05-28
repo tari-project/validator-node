@@ -17,7 +17,7 @@ pub type TokenCallResult<T> = Result<(Value, TokenInstructionContext<T>), Templa
 /// auto-implementation of [actix::Handler] for contract messages
 ///
 /// TokenCallMsg implementation is usually derived with proc-macro Contracts on enum:
-/// ```
+/// ```ignore
 /// #[derive(Contracts)]
 /// enum MyContracts { ... }
 /// ```
