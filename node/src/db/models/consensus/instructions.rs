@@ -213,9 +213,8 @@ mod test {
                 AssetStateBuilder,
             },
             test_db_client,
+            Test,
         },
-        test_db_client,
-        Test,
     };
     use serde_json::json;
 
