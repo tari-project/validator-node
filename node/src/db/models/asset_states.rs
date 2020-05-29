@@ -1,7 +1,7 @@
 use super::AssetStatus;
 use crate::{
     db::utils::{errors::DBError, validation::ValidationErrors},
-    types::{AssetID, InstructionID},
+    types::{AssetID, InstructionID, TemplateID},
 };
 use bytes::BytesMut;
 use chrono::{DateTime, Duration, Utc};
@@ -156,6 +156,19 @@ impl AssetState {
         let stmt = "SELECT * FROM asset_states_view WHERE asset_id = $1";
         let result = client.query_opt(stmt, &[&asset_id]).await?;
         Ok(result.map(AssetState::from_row).transpose()?)
+    }
+
+    /// Find asset state records by template id mask
+    pub async fn find_by_template_id(template_id: &TemplateID, client: &Client) -> Result<Vec<AssetState>, DBError> {
+        let stmt = "SELECT * FROM asset_states_view WHERE asset_id LIKE $1";
+        let mut mask = template_id.to_hex();
+        mask.truncate(12);
+        let mask = format!("{}%", mask);
+        let results = client.query(stmt, &[&mask]).await?;
+        Ok(results
+            .into_iter()
+            .map(AssetState::from_row)
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     // Store append only state

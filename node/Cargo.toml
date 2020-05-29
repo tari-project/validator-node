@@ -7,6 +7,11 @@ repository = "https://github.com/tari-labs/validator-node"
 license = "BSD-3-Clause"
 edition = "2018"
 
+[lib]
+crate-type = ["lib"]
+bench = false
+doctest = false #not supported for now
+
 [dependencies]
 tari_common = "^0.1"
 tari_comms = "^0.1"
@@ -17,21 +22,21 @@ tari_template_derive = { path = "../template-derive", version = "0.1" }
 
 actix-cors = "0.2"
 actix-http = "1.0.1"
-actix-rt = "1.1.0"
+actix-rt = "1.1.1"
 actix-service = "1.0"
-actix-web-httpauth = "0.4.0"
+actix-web-httpauth = "0.4.1"
 actix-web = "2.0.0"
 actix = "0.10.0-alpha.3"
 anyhow = "1"
 bytes = "0.5.4"
 chrono = "0.4"
 config = { version = "0.9.3", default_features = false }
-deadpool = "0.5.0"
+deadpool = "0.5.1"
 deadpool-postgres = { version = "0.5.5", features = ["config"] }
-dotenv = "0.15"
 futures = "0.3"
 itertools = "0.9"
 jsonwebtoken = "7"
+lazy_static = "1.4"
 log = "0.4"
 postgres = "0.17.1"
 postgres-protocol = "0.5.0"
@@ -40,17 +45,15 @@ rand = "0.7"
 refinery = { version = "0.2", features = ["tokio-postgres"]}
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-structopt = { version = "0.3", default_features = false }
 thiserror = "1"
-tokio = { version = "0.2.6", default_features = false, features = ["sync"] }
+tokio = { version = "0.2.21", default_features = false, features = ["sync"] }
 tokio-pg-mapper = { version = "0.1.8", features = ["derive"] }
 tokio-postgres = { version = "0.5.3", features = ["with-uuid-0_8", "with-chrono-0_4", "with-serde_json-1"] }
 uuid = { version = "0.8", features = ["serde", "v1"] }
-lazy_static = "1.4"
-pretty_env_logger = "0.4.0" 
-tempdir = "0.3.7"
 multiaddr = {version = "0.7.0", package = "parity-multiaddr"}
-tari_test_utils = "^0.0"
 
 [dev-dependencies]
-pretty_env_logger = "0.4"
+tari_test_utils = "^0.0"
+pretty_env_logger = "0.4.0"
+tempdir = "0.3.7"
+dotenv = "0.15"

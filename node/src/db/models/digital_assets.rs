@@ -1,4 +1,7 @@
-use crate::{db::utils::errors::DBError, types::CommitteeMode};
+use crate::{
+    db::utils::errors::DBError,
+    types::{CommitteeMode, TemplateID},
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
@@ -46,6 +49,14 @@ impl DigitalAsset {
             .await?;
 
         Ok(result.get(0))
+    }
+
+    /// Find digital asset records by template id
+    pub async fn find_by_template_id(template_id: &TemplateID, client: &Client) -> Result<Vec<Self>, DBError> {
+        let stmt = "SELECT * FROM digital_assets WHERE template_type = $1";
+        let ttype = template_id.template_type();
+        let results = client.query(stmt, &[&ttype]).await?;
+        Ok(results.into_iter().map(Self::from_row).collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Load digital asset record

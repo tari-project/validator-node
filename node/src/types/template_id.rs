@@ -8,6 +8,8 @@ use std::{
     error::Error,
     fmt,
     hash::{Hash, Hasher},
+    num::ParseIntError,
+    str::FromStr,
 };
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, ToSql, Type};
 
@@ -37,6 +39,41 @@ impl fmt::Display for TemplateID {
             write!(f, "-confidential")?;
         }
         Ok(())
+    }
+}
+
+/// Converts TemplateID from String in form {type}.{version}
+impl FromStr for TemplateID {
+    type Err = TypeError;
+
+    fn from_str(input: &str) -> Result<Self, TypeError> {
+        let parts: Vec<_> = input.split(".").collect();
+        match parts.len() {
+            1 => {
+                let template_type: u32 = parts[0]
+                    .parse()
+                    .map_err(|err: ParseIntError| TypeError::parse_field("TemplateID::template_type", err.into()))?;
+                Ok(Self {
+                    template_type,
+                    template_version: 0,
+                    tail: 0,
+                })
+            },
+            2 => {
+                let template_type: u32 = parts[0]
+                    .parse()
+                    .map_err(|err: ParseIntError| TypeError::parse_field("TemplateID::template_type", err.into()))?;
+                let template_version: u16 = parts[1]
+                    .parse()
+                    .map_err(|err: ParseIntError| TypeError::parse_field("TemplateID::template_version", err.into()))?;
+                Ok(Self {
+                    template_type,
+                    template_version,
+                    tail: 0,
+                })
+            },
+            _ => Err(TypeError::parse_field_raw("TemplateID", input)),
+        }
     }
 }
 

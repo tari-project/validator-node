@@ -64,22 +64,18 @@ impl Test<Pubkey> {
     }
 }
 
-use crate::cli::Arguments;
 use tari_common::ConfigBootstrap;
 
 lazy_static::lazy_static! {
-    static ref ARGUMENTS: Arguments = Arguments {
-        bootstrap: ConfigBootstrap {
-            base_path: Test::<TempDir>::get_path_buf(),
-            ..Default::default()
-        },
+    static ref BOOTSTRAP: ConfigBootstrap = ConfigBootstrap {
+        base_path: Test::<TempDir>::get_path_buf(),
         ..Default::default()
     };
 }
 
-impl Test<Arguments> {
-    pub fn get() -> &'static Arguments {
-        &ARGUMENTS
+impl Test<ConfigBootstrap> {
+    pub fn get() -> &'static ConfigBootstrap {
+        &BOOTSTRAP
     }
 }
 
