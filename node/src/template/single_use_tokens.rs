@@ -5,6 +5,7 @@ use crate::{
     validation_err,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tari_template_derive::Contracts;
 
 #[derive(Serialize, Deserialize)]
@@ -56,11 +57,10 @@ impl AssetContracts {
             owner_pubkey: asset.asset_issuer_pub_key.clone(),
             used: false,
         };
-        let data = serde_json::to_value(data).map_err(anyhow::Error::from)?;
         let new_token = move |token_id| NewToken {
             token_id,
             asset_state_id: asset.id.clone(),
-            initial_data_json: data.clone(),
+            initial_data_json: json!(data),
             ..NewToken::default()
         };
         for data in token_ids.into_iter().map(new_token) {
@@ -172,7 +172,7 @@ impl TokenContracts {
         };
         let data = UpdateToken {
             status: Some(TokenStatus::Active),
-            append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
+            append_state_data_json: Some(json!(token_data)),
             ..Default::default()
         };
         context.update_token(data).await?;
@@ -210,7 +210,7 @@ impl TokenContracts {
             used: false,
         };
         let data = UpdateToken {
-            append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
+            append_state_data_json: Some(json!(token_data)),
             ..Default::default()
         };
         context.update_token(data).await?;
@@ -231,7 +231,7 @@ impl TokenContracts {
             used: true,
         };
         let data = UpdateToken {
-            append_state_data_json: Some(serde_json::to_value(token_data).unwrap()),
+            append_state_data_json: Some(json!(token_data)),
             ..Default::default()
         };
         context.update_token(data).await?;
