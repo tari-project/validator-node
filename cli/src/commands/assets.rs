@@ -151,8 +151,8 @@ mod test {
     #[actix_rt::test]
     async fn test_asset_create() {
         let config = build_test_config().unwrap();
-        let client = db_client(&config).await?;
-        CreateAsset {
+        let client = db_client(&config).await.unwrap();
+        let asset = CreateAsset {
             template: 1.into(),
             name: "may rocket launch".into(),
             description: "".into(),
@@ -161,8 +161,9 @@ mod test {
             issuer: "user_pub_key".into(),
             data: Some(format!(r#"{{ "custom": "{}" }}"#, string(8))),
         }
-        .run(config)
+        .run(&client)
         .await
         .unwrap();
+        assert_eq!(asset.name, "may rocket launch".into());
     }
 }
