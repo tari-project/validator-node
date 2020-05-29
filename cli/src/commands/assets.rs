@@ -151,7 +151,8 @@ mod test {
     #[actix_rt::test]
     async fn test_asset_create() {
         let config = build_test_config().unwrap();
-        AssetCommands::Create(CreateAsset {
+        let client = db_client(&config).await?;
+        CreateAsset {
             template: 1.into(),
             name: "may rocket launch".into(),
             description: "".into(),
@@ -159,7 +160,7 @@ mod test {
             raid_id: None,
             issuer: "user_pub_key".into(),
             data: Some(format!(r#"{{ "custom": "{}" }}"#, string(8))),
-        })
+        }
         .run(config)
         .await
         .unwrap();
