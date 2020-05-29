@@ -472,8 +472,18 @@ mod test {
         let asset = AssetStateBuilder::default().build(&client).await.unwrap();
         let asset2 = AssetStateBuilder::default().build(&client).await.unwrap();
         let consensus_committee = test_committee(Some(asset.asset_id), NodeID::stub(), &client).await;
-        assert!(asset.blocked_until <= Utc::now());
-        assert!(asset2.blocked_until <= Utc::now());
+        assert!(
+            asset.blocked_until <= Utc::now(),
+            "{:?} > {:?}",
+            asset.blocked_until,
+            Utc::now()
+        );
+        assert!(
+            asset2.blocked_until <= Utc::now(),
+            "{:?} > {:?}",
+            asset2.blocked_until,
+            Utc::now()
+        );
 
         consensus_committee.acquire_lock(10, &client).await.unwrap();
         let asset = AssetState::load(asset.id, &client).await.unwrap();

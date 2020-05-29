@@ -120,8 +120,9 @@ impl AssetState {
                 initial_permission_bitflag,
                 initial_data_json,
                 asset_id,
-                digital_asset_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id";
+                digital_asset_id,
+                blocked_until
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id";
         let stmt = client.prepare(QUERY).await?;
         let result = client
             .query_one(&stmt, &[
@@ -136,6 +137,7 @@ impl AssetState {
                 &params.initial_data_json,
                 &params.asset_id,
                 &params.digital_asset_id,
+                &Utc::now(),
             ])
             .await?;
 

@@ -1,6 +1,6 @@
 use crate::{
     db::models::{consensus::*, ProposalStatus},
-    test::utils::builders::consensus::ViewBuilder,
+    test::utils::{builders::consensus::ViewBuilder, Test},
     types::{NodeID, ProposalID},
 };
 use deadpool_postgres::Client;
@@ -32,7 +32,7 @@ impl ProposalBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<Proposal> {
         let id = match self.id {
             Some(id) => id,
-            None => ProposalID::new(NodeID::stub()).await?,
+            None => ProposalID::new(Test::<NodeID>::new()).await?,
         };
         let new_view = match self.new_view {
             Some(new_view) => new_view,
@@ -40,7 +40,7 @@ impl ProposalBuilder {
         };
 
         let params = NewProposal {
-            node_id: self.node_id.unwrap_or_else(|| NodeID::stub()),
+            node_id: self.node_id.unwrap_or_else(|| Test::<NodeID>::new()),
             asset_id: new_view.asset_id.clone(),
             id,
             new_view,

@@ -1,0 +1,38 @@
+sequenceDiagram
+    Client ->> Initiator node: sell_token(token_id,new_owner)
+
+    activate Initiator node
+    Initiator node ->> Initiator node: create temp_wallet and sell_token_lock
+    Note right of Initiator node: INSERT instruction "sell_token(..)"
+    Initiator node ->> Committee: transition(token_id,sell_token_lock(temp_wallet,timeout))
+    Note right of Committee: INSERT instruction "sell_token(..)"
+    alt if consensus reached
+    Note over Initiator node,Committee: UPDATE instruction_id SET state = WaitingForTari
+    Committee ->> Initiator node: Commit
+    else timeout expired
+    Committee -->> Initiator node : Cancel sell_token(token_id)
+    end
+
+
+    Initiator node ->> Client: (instruction_id,temp_wallet)
+    deactivate Initiator node
+
+    Note right of Client: Client pulling instruction status
+    par Client to Initiator node
+    Client ->> Initiator node: status(instruction_id)
+    Initiator node ->> Client: WaitingForTari
+    end
+
+    Note right of Client: Client sending tari to temp_wallet
+    Client -->> base layer: send tari to temp_wallet
+    Initiator node -->> base layer: send-tari(asset_beneficiaries)
+    Initiator node ->> Committee: transition(token_id,sell_token_complete(new_owner))
+    Committee ->> Initiator node: sell_token_complete Commit
+
+    Note over Initiator node,Committee: UPDATE instruction_id SET state = SellTokenComplete
+
+    Note right of Client: Client pulling instruction status
+    par Client to Initiator node
+    Client ->> Initiator node: status(instruction_id)
+    Initiator node ->> Client: SellTokenComplete
+    end

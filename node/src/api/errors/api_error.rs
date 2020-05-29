@@ -1,21 +1,34 @@
 use super::*;
-use crate::{db::utils::errors::DBError, types::errors::TypeError};
+use crate::{db::utils::errors::DBError, template::errors::TemplateError, types::errors::TypeError};
 use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
 use serde_json::json;
+use std::backtrace::Backtrace;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ApiError {
-    #[error("DB error: {0}")]
-    DBError(#[from] DBError),
+    #[error("DB error: {source:?}: {backtrace:?}")]
+    DBError {
+        #[from]
+        source: DBError,
+        backtrace: Backtrace,
+    },
     #[error("Incorrect value: {0}")]
     Type(#[from] TypeError),
-    #[error("Contract error: {0}")]
-    Contract(#[from] anyhow::Error),
-    #[error("Application error: {0}")]
-    ApplicationError(#[from] ApplicationError),
+    #[error("Application error: {source}: {backtrace:?}")]
+    ApplicationError {
+        #[from]
+        source: ApplicationError,
+        backtrace: Backtrace,
+    },
     #[error("Auth error: {0}")]
     AuthError(#[from] AuthError),
+    #[error("Template error: {source}: {backtrace:?}")]
+    Template {
+        #[from]
+        source: TemplateError,
+        backtrace: Backtrace,
+    },
 }
 
 pub struct ResponseData {
@@ -23,6 +36,7 @@ pub struct ResponseData {
     pub error_response: HttpResponse,
 }
 
+// TODO: move this to individual modules, impl ResponseError to DBError and TemplateError
 impl ApiError {
     pub fn load_response_data(&self) -> ResponseData {
         let generic_error_response_data = ResponseData {
@@ -30,9 +44,9 @@ impl ApiError {
             error_response: HttpResponse::InternalServerError().json(json!({"error": "An error has occurred"})),
         };
         match self {
-            ApiError::ApplicationError(ApplicationError {
-                reason: _, error_type
-            }) => {
+            ApiError::ApplicationError{ source: ApplicationError {
+                error_type, ..
+            }, ..} => {
                 match error_type {
                     ApplicationErrorType::Unprocessable => ResponseData {
                         status_code: StatusCode::UNPROCESSABLE_ENTITY,
@@ -66,7 +80,9 @@ impl ApiError {
                     }
                 }
             },
-            ApiError::DBError(db_error) => match db_error {
+            ApiError::DBError{source, ..} |
+            ApiError::Template{source: TemplateError::DB { source, .. }, .. }
+            => match source {
                 DBError::Postgres(postgres_error) => {
                     if let Some(code) = postgres_error.code() {
                         let (status_code, message) = match code.code() {
@@ -103,10 +119,15 @@ impl ApiError {
                 error_response: HttpResponse::build(StatusCode::BAD_REQUEST)
                     .json(json!({ "error": err.to_string() })),
             },
-            ApiError::Contract(err) => ResponseData {
+            ApiError::Template{source: TemplateError::Validation(err), .. } => ResponseData {
+                status_code: StatusCode::BAD_REQUEST,
+                error_response: HttpResponse::build(StatusCode::BAD_REQUEST)
+                    .json(json!({ "error": err.to_string() })),
+            },
+            ApiError::Template{ source, .. } => ResponseData {
                 status_code: StatusCode::INTERNAL_SERVER_ERROR,
                 error_response: HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
-                    .json(json!({ "error": err.to_string() })),
+                    .json(json!({ "error": source.to_string() })),
             },
         }
     }

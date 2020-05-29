@@ -23,7 +23,7 @@ impl Default for AssetID {
         Self {
             template_id: 0.into(),
             features: 0,
-            raid_id: RaidID::from_base58("000000000000000").unwrap(),
+            raid_id: RaidID::default(),
             hash: format!("{:032X}", 0),
         }
     }
@@ -32,6 +32,15 @@ impl Default for AssetID {
 impl AssetID {
     /// AssetID stored as BPCHAR, it might change in the future
     pub const SQL_TYPE: Type = Type::BPCHAR;
+
+    pub fn new(template_id: TemplateID, features: u16, raid_id: RaidID, hash: String) -> Self {
+        Self {
+            template_id,
+            features,
+            raid_id,
+            hash,
+        }
+    }
 
     #[inline]
     pub fn features(&self) -> u16 {

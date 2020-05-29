@@ -13,6 +13,7 @@ tari_comms = "^0.1"
 tari_core = "^0.1"
 tari_crypto = "^0.3"
 tari_wallet = "^0.1"
+tari_template_derive = { path = "../template-derive", version = "0.1" }
 
 actix-cors = "0.2"
 actix-http = "1.0.1"
@@ -20,6 +21,7 @@ actix-rt = "1.1.0"
 actix-service = "1.0"
 actix-web-httpauth = "0.4.0"
 actix-web = "2.0.0"
+actix = "0.10.0-alpha.3"
 anyhow = "1"
 bytes = "0.5.4"
 chrono = "0.4"
@@ -41,14 +43,14 @@ serde_json = "1.0"
 structopt = { version = "0.3", default_features = false }
 thiserror = "1"
 tokio = { version = "0.2.6", default_features = false, features = ["sync"] }
-tokio-pg-mapper = { version = "0.1.7", features = ["derive"] }
+tokio-pg-mapper = { version = "0.1.8", features = ["derive"] }
 tokio-postgres = { version = "0.5.3", features = ["with-uuid-0_8", "with-chrono-0_4", "with-serde_json-1"] }
 uuid = { version = "0.8", features = ["serde", "v1"] }
-async-trait = "0.1.30"
 lazy_static = "1.4"
-
-[dev-dependencies]
+pretty_env_logger = "0.4.0" 
 tempdir = "0.3.7"
 multiaddr = {version = "0.7.0", package = "parity-multiaddr"}
 tari_test_utils = "^0.0"
+
+[dev-dependencies]
 pretty_env_logger = "0.4"

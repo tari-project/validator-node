@@ -1,11 +1,15 @@
-use crate::{config::NodeConfig, db::migrations::migrate};
-use actix_web::web;
+use crate::{cli::Arguments, config::NodeConfig, db::migrations::migrate};
 use config::Source;
 use deadpool_postgres::{Client, Pool};
+use std::sync::Arc;
+use tari_common::{default_config, dir_utils::default_path, GlobalConfig};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio_postgres::NoTls;
 
-pub(crate) mod builders;
+pub mod actix;
+pub mod builders;
+mod types;
+pub use types::{Test, TestTemplate};
 
 lazy_static::lazy_static! {
     static ref LOCK_DB_POOL: Mutex<Pool> = {
@@ -13,10 +17,10 @@ lazy_static::lazy_static! {
         let pool = config.postgres.create_pool(NoTls).expect("LOCK_DB_POOL: failed to create DB pool");
         Mutex::new(pool)
     };
-    static ref ACTIX_DB_POOL: web::Data<Pool> = {
+    static ref ACTIX_DB_POOL: Arc<Pool> = {
         let config = build_test_config().expect("ACTIX_DB_POOL: failed to create test config");
         let pool = config.postgres.create_pool(NoTls).expect("ACTIX_DB_POOL: failed to create DB pool");
-        web::Data::new(pool)
+        Arc::new(pool)
     };
 }
 
@@ -33,15 +37,25 @@ pub async fn test_db_client<'a>() -> (Client, MutexGuard<'a, Pool>) {
 }
 
 /// Generate a standard test config
+pub fn build_test_global_config() -> anyhow::Result<GlobalConfig> {
+    let bootstrap = &Test::<Arguments>::get().bootstrap;
+    Ok(GlobalConfig::convert_from(default_config(bootstrap))?)
+}
+
+/// Generate a standard test config
 pub fn build_test_config() -> anyhow::Result<NodeConfig> {
-    let mut config = config::Config::new();
+    let args = Test::<Arguments>::get();
+    let mut config = default_config(&args.bootstrap);
     let pg = config::Environment::with_prefix("PG_TEST").collect()?;
+    let global = build_test_global_config()?;
     config.set("validator.postgres", pg)?;
     config.set(
         "validator.wallets_keys_path",
-        format!("{}/wallets", option_env!("OUT_DIR").unwrap_or("./.tari")),
+        default_path("wallets", Some(&args.bootstrap.base_path)).to_str(),
     )?;
-    Ok(NodeConfig::load_from(&config, false)?)
+    let config = NodeConfig::load_from(&config, &global, false)?;
+    log::trace!(target: "test_utils", "Load test config: {:?}", config);
+    Ok(config)
 }
 
 /// Return DB pool for automated tests.
@@ -52,7 +66,7 @@ pub async fn test_pool<'a>() -> MutexGuard<'a, Pool> {
     LOCK_DB_POOL.lock().await
 }
 
-pub fn actix_test_pool() -> web::Data<Pool> {
+pub fn actix_test_pool() -> Arc<Pool> {
     ACTIX_DB_POOL.clone()
 }
 

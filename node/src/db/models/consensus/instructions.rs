@@ -1,6 +1,7 @@
+pub use crate::db::models::InstructionStatus;
 use crate::{
     db::{
-        models::{InstructionStatus, NewAssetStateAppendOnly, NewTokenStateAppendOnly},
+        models::{NewAssetStateAppendOnly, NewTokenStateAppendOnly},
         utils::errors::DBError,
     },
     types::{AssetID, InstructionID, NodeID, ProposalID, TemplateID, TokenID},
@@ -16,6 +17,7 @@ use tokio_postgres::types::Type;
 #[pg_mapper(table = "instructions")]
 pub struct Instruction {
     pub id: InstructionID,
+    pub parent_id: Option<InstructionID>,
     pub initiating_node_id: NodeID,
     pub signature: String,
     pub asset_id: AssetID,
@@ -24,6 +26,7 @@ pub struct Instruction {
     pub contract_name: String,
     pub status: InstructionStatus,
     pub params: Value,
+    pub result: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub proposal_id: Option<ProposalID>,
@@ -33,6 +36,7 @@ pub struct Instruction {
 #[derive(Default, Clone, Debug)]
 pub struct NewInstruction {
     pub id: InstructionID,
+    pub parent_id: Option<InstructionID>,
     pub initiating_node_id: NodeID,
     pub signature: String,
     pub asset_id: AssetID,
@@ -46,6 +50,7 @@ pub struct NewInstruction {
 /// Query parameters for optionally updating instruction fields
 #[derive(Default, Clone, Debug)]
 pub struct UpdateInstruction {
+    pub result: Option<Value>,
     pub status: Option<InstructionStatus>,
     pub proposal_id: Option<ProposalID>,
 }
@@ -92,8 +97,9 @@ impl Instruction {
                 contract_name,
                 status,
                 params,
+                parent_id,
                 id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *";
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *";
         let stmt = client
             .prepare_typed(QUERY, &[
                 NodeID::SQL_TYPE,
@@ -117,6 +123,7 @@ impl Instruction {
                 &params.contract_name,
                 &params.status,
                 &params.params,
+                &params.parent_id,
                 &params.id,
             ])
             .await?;
@@ -159,12 +166,13 @@ impl Instruction {
             UPDATE instructions SET
                 status = COALESCE($1, status),
                 proposal_id = $2::\"ProposalID\",
+                result =  COALESCE($3, result),
                 updated_at = NOW()
-            WHERE id = $3::\"InstructionID\"
+            WHERE id = $4::\"InstructionID\"
             RETURNING *";
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         let row = client
-            .query_one(&stmt, &[&data.status, &data.proposal_id, &self.id])
+            .query_one(&stmt, &[&data.status, &data.proposal_id, &data.result, &self.id])
             .await?;
         Ok(Self::from_row(row)?)
     }
@@ -186,6 +194,12 @@ impl Instruction {
         // to expected state
         Ok((Vec::new(), Vec::new()))
     }
+
+    pub async fn load_subinstructions(&self, client: &Client) -> Result<Vec<Instruction>, DBError> {
+        let stmt = "SELECT * FROM instructions WHERE parent_id = $1::\"InstructionID\"";
+        let rows = client.query(stmt, &[&self.id]).await?;
+        Ok(rows.into_iter().map(Self::from_row).collect::<Result<Vec<_>, _>>()?)
+    }
 }
 
 #[cfg(test)]
@@ -199,6 +213,7 @@ mod test {
                 AssetStateBuilder,
             },
             test_db_client,
+            Test,
         },
     };
     use serde_json::json;
@@ -288,7 +303,7 @@ mod test {
         let instruction = Instruction::insert(params, &client).await.unwrap();
         assert_eq!(instruction.template_id, asset.asset_id.template_id());
         assert_eq!(instruction.params, json!({"test_param": 1}));
-        assert_eq!(instruction.status, InstructionStatus::Pending);
+        assert_eq!(instruction.status, InstructionStatus::Scheduled);
 
         let initial_updated_at = instruction.updated_at;
         let data = UpdateInstruction {
@@ -304,5 +319,48 @@ mod test {
         assert_eq!(instruction2.token_id, updated.token_id);
         assert_eq!(instruction2.status, updated.status);
         assert!(instruction2.updated_at > initial_updated_at);
+    }
+
+    #[actix_rt::test]
+    async fn subinstruction() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+        let params = NewInstruction {
+            id: Test::<InstructionID>::new(),
+            asset_id: asset.asset_id.clone(),
+            template_id: asset.asset_id.template_id(),
+            contract_name: "test_contract".into(),
+            params: json!({"test_param": 1}),
+            ..NewInstruction::default()
+        };
+        let instruction = Instruction::insert(params, &client).await.unwrap();
+        let params = NewInstruction {
+            id: Test::<InstructionID>::new(),
+            asset_id: instruction.asset_id.clone(),
+            template_id: instruction.asset_id.template_id(),
+            parent_id: Some(instruction.id.clone()),
+            ..NewInstruction::default()
+        };
+        let subinstruction = Instruction::insert(params, &client).await.unwrap();
+
+        let subinstructions = instruction.load_subinstructions(&client).await.unwrap();
+        assert_eq!(subinstructions.len(), 1);
+        assert_eq!(subinstructions[0].parent_id, Some(instruction.id));
+        assert_eq!(subinstructions[0], subinstruction);
+    }
+
+    #[actix_rt::test]
+    async fn default_state() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+
+        let params = NewInstruction {
+            id: Test::<InstructionID>::new(),
+            asset_id: asset.asset_id.clone(),
+            template_id: asset.asset_id.template_id(),
+            ..NewInstruction::default()
+        };
+        let instruction = Instruction::insert(params, &client).await.unwrap();
+        assert_eq!(instruction.status, InstructionStatus::default());
     }
 }

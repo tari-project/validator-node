@@ -2,7 +2,7 @@ CREATE TABLE token_state_append_only (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
     token_id char(96) NOT NULL references tokens(token_id),
     instruction_id "InstructionID" NOT NULL references instructions(id),
-    status TEXT NOT NULL DEFAULT 'Active',
+    status TEXT NOT NULL DEFAULT 'Available',
     state_data_json JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -14,7 +14,7 @@ CREATE OR REPLACE VIEW tokens_view AS
 SELECT
     t.*,
     COALESCE(tsao.state_data_json, t.initial_data_json) as additional_data_json,
-    COALESCE(tsao.status,'Active') as status
+    COALESCE(tsao.status,'Available') as status
 FROM
   tokens t
 LEFT JOIN

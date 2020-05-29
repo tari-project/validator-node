@@ -1,0 +1,21 @@
+flowchart LR
+    subgraph RPC
+    input --params--> handler
+    end
+    queue[(queue)]
+    handler --instruction--> queue
+    queue --notify--> TemplateRunner
+    subgraph Template
+    TemplateRunner --is_token--> TokenContext
+    TokenContext --store--> TokenAppendOnly
+    TemplateRunner --is_asset--> AssetContext
+    AssetContext --store--> AssetStateAppendOnly
+    end
+    db[(database)]
+    TokenAppendOnly --> db
+    AssetStateAppendOnly --> db
+    ConsensusWorker --pull_pending_committee--> db
+    subgraph Consensus
+    ConsensusWorker --new_view--> ConsensusCommittee
+    ConsensusCommittee --consensus--> ConsensusCommittee
+    end

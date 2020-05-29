@@ -66,10 +66,12 @@ impl Arguments {
         Ok(())
     }
 
-    pub fn load_configuration(&self) -> Result<config::Config, ConfigError> {
+    pub fn load_configuration(&mut self) -> Result<config::Config, ConfigError> {
         let mut config = self.bootstrap.load_configuration()?;
-        if config.get_str("validator.wallets_keys_path").is_err() && self.wallets_keys_path.is_some() {
-            let wallet_path = self.wallets_keys_path.clone().unwrap();
+        if config.get_str("validator.wallets_keys_path").is_err() {
+            let wallet_path = self
+                .wallets_keys_path
+                .get_or_insert(default_path("wallets", Some(&self.bootstrap.base_path)));
             config.set("validator.wallets_keys_path", wallet_path.to_str())?;
         };
         Ok(config)

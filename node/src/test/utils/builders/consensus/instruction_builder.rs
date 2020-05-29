@@ -1,6 +1,6 @@
 use crate::{
     db::models::{consensus::*, InstructionStatus},
-    test::utils::builders::AssetStateBuilder,
+    test::utils::{builders::AssetStateBuilder, Test},
     types::{AssetID, InstructionID, NodeID, TemplateID, TokenID},
 };
 use deadpool_postgres::Client;
@@ -25,7 +25,7 @@ impl Default for InstructionBuilder {
     fn default() -> Self {
         Self {
             id: None,
-            initiating_node_id: NodeID::stub(),
+            initiating_node_id: Test::<NodeID>::new(),
             signature: "stub-signature".to_string(),
             asset_id: None,
             token_id: None,
@@ -48,7 +48,7 @@ impl InstructionBuilder {
 
         let id = match self.id {
             Some(id) => id,
-            None => InstructionID::new(self.initiating_node_id).await?,
+            None => InstructionID::new(self.initiating_node_id)?,
         };
 
         let params = NewInstruction {
@@ -61,6 +61,7 @@ impl InstructionBuilder {
             contract_name: self.contract_name,
             status: self.status,
             params: self.params,
+            ..Default::default()
         };
         Ok(Instruction::insert(params, client).await?)
     }

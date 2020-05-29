@@ -1,4 +1,4 @@
-use crate::{db::models::wallet::*, errors::WalletError};
+use crate::{db::models::wallet::*, errors::WalletError, types::Pubkey};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
@@ -10,12 +10,12 @@ use tari_wallet::util::emoji::EmojiId;
 
 /// Newly Generated tari wallet identity, used to initialize HotWallet
 #[derive(Serialize, Deserialize, Clone)]
-pub struct WalletID {
+pub struct NodeWallet {
     identity: NodeIdentity,
     name: String,
 }
 
-impl std::fmt::Display for WalletID {
+impl std::fmt::Display for NodeWallet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Name: {}\n", self.name)?;
         write!(f, "{}", self.identity)?;
@@ -24,7 +24,7 @@ impl std::fmt::Display for WalletID {
     }
 }
 
-impl WalletID {
+impl NodeWallet {
     /// Create a new encapsulated [`NodeIdentity`]
     /// ## Parameters
     /// `public_addr` - Network address of the base node
@@ -36,13 +36,13 @@ impl WalletID {
 
     /// Generated public key hex
     #[inline]
-    pub fn public_key_hex(&self) -> String {
+    pub fn public_key_hex(&self) -> Pubkey {
         self.identity.public_key().to_hex()
     }
 }
 
-impl From<&WalletID> for NewWallet {
-    fn from(source: &WalletID) -> Self {
+impl From<&NodeWallet> for NewWallet {
+    fn from(source: &NodeWallet) -> Self {
         Self {
             pub_key: source.public_key_hex(),
             name: source.name.clone(),
@@ -53,7 +53,7 @@ impl From<&WalletID> for NewWallet {
 /// Shared wallet entity, keeps track of wallet keys, attributes and balance
 #[derive(Clone)]
 pub struct HotWallet {
-    id: WalletID,
+    id: NodeWallet,
     data: Wallet,
     /* Notes for later when linking to base node Wallet:
      * The easiest way to embed wallet is via Wallet struct - it produces a container that holds all
@@ -76,20 +76,20 @@ impl std::fmt::Display for HotWallet {
 }
 
 impl HotWallet {
-    /// HotWallet's should be loaded via [`WalletStore`], created via [`WalletID`]
-    pub(crate) fn new(id: WalletID, data: Wallet) -> Self {
+    /// HotWallet's should be loaded via [`WalletStore`], created via [`NodeWallet`]
+    pub(crate) fn new(id: NodeWallet, data: Wallet) -> Self {
         Self { id, data }
     }
 
     /// Wallet's node identity
     #[inline]
-    pub fn identity(&self) -> &WalletID {
+    pub fn identity(&self) -> &NodeWallet {
         &self.id
     }
 
     /// Wallet public key
     #[inline]
-    pub fn public_key_hex(&self) -> String {
+    pub fn public_key_hex(&self) -> Pubkey {
         self.id.public_key_hex()
     }
 

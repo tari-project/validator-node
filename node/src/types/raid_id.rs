@@ -6,6 +6,12 @@ use super::errors::TypeError;
 #[derive(Debug, Hash, Eq, Clone, PartialEq)]
 pub struct RaidID(String);
 
+impl Default for RaidID {
+    fn default() -> Self {
+        Self("000000000000000".into())
+    }
+}
+
 impl RaidID {
     pub fn from_base58(raw: &str) -> Result<Self, TypeError> {
         if raw.len() != 15 {

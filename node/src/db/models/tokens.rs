@@ -16,7 +16,7 @@ use std::error::Error;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, Json, ToSql, Type};
 
-#[derive(Clone, Serialize, PostgresMapper)]
+#[derive(Clone, Serialize, Deserialize, PostgresMapper)]
 #[pg_mapper(table = "tokens_view")]
 pub struct Token {
     pub id: uuid::Uuid,
@@ -114,7 +114,7 @@ impl Token {
     /// Find token record by token id )
     pub async fn find_by_token_id(token_id: &TokenID, client: &Client) -> Result<Option<Token>, DBError> {
         const QUERY: &'static str = "SELECT * FROM tokens_view WHERE token_id = $1";
-        let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
+        let stmt = client.prepare(QUERY).await?;
         let result = client.query_opt(&stmt, &[&token_id]).await?;
         Ok(result.map(Self::from_row).transpose()?)
     }
@@ -176,8 +176,8 @@ mod test {
         test::utils::{
             builders::{consensus::InstructionBuilder, AssetStateBuilder, TokenBuilder},
             test_db_client,
+            Test,
         },
-        types::NodeID,
     };
     use serde_json::json;
 
@@ -190,7 +190,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
+            token_id: Test::from_asset(&asset.asset_id),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -201,7 +201,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
+            token_id: Test::from_asset(&asset.asset_id),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -212,7 +212,7 @@ mod test {
         let params = NewToken {
             asset_state_id: asset2.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
+            token_id: Test::from_asset(&asset.asset_id),
             ..NewToken::default()
         };
         let token_id = Token::insert(params, &client).await.unwrap();
@@ -229,11 +229,44 @@ mod test {
         let params = NewToken {
             asset_state_id: asset.id,
             initial_data_json: json!({"value": true}),
-            token_id: TokenID::new(&asset.asset_id, &NodeID::stub()).unwrap(),
+            token_id: Test::from_asset(&asset.asset_id),
             ..NewToken::default()
         };
         Token::insert(params.clone(), &client).await.unwrap();
         assert!(Token::insert(params, &client).await.is_err());
+    }
+
+    #[actix_rt::test]
+    async fn find_by_token_id() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+
+        let params = NewToken {
+            asset_state_id: asset.id,
+            token_id: Test::from_asset(&asset.asset_id),
+            ..NewToken::default()
+        };
+        let id = Token::insert(params.clone(), &client).await.unwrap();
+        let token = Token::find_by_token_id(&params.token_id, &client)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(token.id, id);
+    }
+
+    #[actix_rt::test]
+    async fn default_state() {
+        let (client, _lock) = test_db_client().await;
+        let asset = AssetStateBuilder::default().build(&client).await.unwrap();
+
+        let params = NewToken {
+            asset_state_id: asset.id,
+            token_id: Test::from_asset(&asset.asset_id),
+            ..NewToken::default()
+        };
+        let id = Token::insert(params, &client).await.unwrap();
+        let token = Token::load(id, &client).await.unwrap();
+        assert_eq!(token.status, TokenStatus::default());
     }
 
     #[actix_rt::test]

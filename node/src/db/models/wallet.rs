@@ -72,6 +72,16 @@ impl Wallet {
             .await
             .map(|row| Wallet::from_row(row))??)
     }
+
+    /// Update wallet's balance
+    // TODO: the whole wallet thing might get info from base layer instead in the future...
+    #[allow(dead_code)]
+    pub async fn set_balance(&self, balance: i64, client: &Client) -> Result<Wallet, DBError> {
+        const QUERY: &'static str = "UPDATE wallet SET updated_at = NOW(), balance = $2 WHERE id = $1 RETURNING *";
+        let stmt = client.prepare(QUERY).await?;
+        let row = client.query_one(&stmt, &[&self.id, &balance]).await?;
+        Ok(Self::from_row(row)?)
+    }
 }
 
 #[cfg(test)]
@@ -82,7 +92,7 @@ mod test {
     const PUBKEY: &'static str = "7e6f4b801170db0bf86c9257fe562492469439556cba069a12afd1c72c585b0f";
 
     #[actix_rt::test]
-    async fn crud() -> anyhow::Result<()> {
+    async fn crud() {
         load_env();
         let (mut client, _lock) = test_db_client().await;
 
@@ -90,15 +100,15 @@ mod test {
             pub_key: PUBKEY.to_owned(),
             ..NewWallet::default()
         };
-        let transaction = client.transaction().await?;
-        let inserted = Wallet::insert(new_wallet_params, &transaction).await?;
-        transaction.commit().await?;
+        let transaction = client.transaction().await.unwrap();
+        let inserted = Wallet::insert(new_wallet_params, &transaction).await.unwrap();
+        transaction.commit().await.unwrap();
 
         let query_inserted = SelectWallet {
             id: Some(inserted.id.clone()),
             ..SelectWallet::default()
         };
-        let wallets = Wallet::select(query_inserted, &client).await?;
+        let wallets = Wallet::select(query_inserted, &client).await.unwrap();
         assert_eq!(wallets.len(), 1);
         assert_eq!(wallets[0].pub_key, PUBKEY.to_owned());
 
@@ -106,15 +116,13 @@ mod test {
             pub_key: Some(PUBKEY.to_owned()),
             ..SelectWallet::default()
         };
-        let wallets = Wallet::select(query_pub_key, &client).await?;
+        let wallets = Wallet::select(query_pub_key, &client).await.unwrap();
         assert_eq!(wallets.len(), 1);
         assert_eq!(wallets[0].id, inserted.id);
-
-        Ok(())
     }
 
     #[actix_rt::test]
-    async fn transaction_abort() -> anyhow::Result<()> {
+    async fn transaction_abort() {
         load_env();
         let (mut client, _lock) = test_db_client().await;
 
@@ -122,21 +130,20 @@ mod test {
             pub_key: PUBKEY.to_owned(),
             ..NewWallet::default()
         };
-        let transaction = client.transaction().await?;
-        let inserted = Wallet::insert(new_wallet_params, &transaction).await?;
+        let transaction = client.transaction().await.unwrap();
+        let inserted = Wallet::insert(new_wallet_params, &transaction).await.unwrap();
         drop(transaction);
 
         let query_inserted = SelectWallet {
             id: Some(inserted.id.clone()),
             ..SelectWallet::default()
         };
-        let wallets = Wallet::select(query_inserted, &client).await?;
+        let wallets = Wallet::select(query_inserted, &client).await.unwrap();
         assert_eq!(wallets.len(), 0);
-        Ok(())
     }
 
     #[actix_rt::test]
-    async fn insert_duplicate() -> anyhow::Result<()> {
+    async fn insert_duplicate() {
         load_env();
         let (mut client, _lock) = test_db_client().await;
 
@@ -145,22 +152,39 @@ mod test {
             ..NewWallet::default()
         };
 
-        let transaction = client.transaction().await?;
-        let inserted1 = Wallet::insert(new_wallet_params.clone(), &transaction).await?;
-        transaction.commit().await?;
-        let transaction = client.transaction().await?;
-        let inserted2 = Wallet::insert(new_wallet_params.clone(), &transaction).await?;
-        transaction.commit().await?;
+        let transaction = client.transaction().await.unwrap();
+        let inserted1 = Wallet::insert(new_wallet_params.clone(), &transaction).await.unwrap();
+        transaction.commit().await.unwrap();
+        let transaction = client.transaction().await.unwrap();
+        let inserted2 = Wallet::insert(new_wallet_params.clone(), &transaction).await.unwrap();
+        transaction.commit().await.unwrap();
         assert_eq!(inserted1.id, inserted2.id);
 
         let query_pub_key = SelectWallet {
             pub_key: Some(PUBKEY.to_owned()),
             ..SelectWallet::default()
         };
-        let wallets = Wallet::select(query_pub_key, &client).await?;
+        let wallets = Wallet::select(query_pub_key, &client).await.unwrap();
         assert_eq!(wallets.len(), 1);
         assert_eq!(wallets[0].id, inserted1.id);
+    }
 
-        Ok(())
+    #[actix_rt::test]
+    async fn set_balance() {
+        load_env();
+        let (mut client, _lock) = test_db_client().await;
+
+        let new_wallet_params = NewWallet {
+            pub_key: PUBKEY.to_owned(),
+            ..NewWallet::default()
+        };
+
+        let transaction = client.transaction().await.unwrap();
+        let wallet = Wallet::insert(new_wallet_params.clone(), &transaction).await.unwrap();
+        transaction.commit().await.unwrap();
+        assert_eq!(wallet.balance, 0);
+        wallet.set_balance(100, &client).await.unwrap();
+        let wallet = Wallet::select_by_key(&wallet.pub_key, &client).await.unwrap();
+        assert_eq!(wallet.balance, 100);
     }
 }

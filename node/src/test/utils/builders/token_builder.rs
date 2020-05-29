@@ -1,7 +1,6 @@
 use super::AssetStateBuilder;
-use crate::{db::models::*, types::TokenID};
+use crate::{db::models::*, test::utils::Test, types::*};
 use deadpool_postgres::Client;
-use rand::prelude::*;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -16,16 +15,10 @@ pub struct TokenBuilder {
 
 impl Default for TokenBuilder {
     fn default() -> Self {
-        let x: u32 = random();
         Self {
             asset_state_id: None,
             initial_data_json: serde_json::from_str("{}").unwrap(),
-            token_id: format!(
-                "7e6f4b801170db0bf86c9257fe56249.469439556cba069a12afd1c72c585b0a{:032X}",
-                x
-            )
-            .parse()
-            .unwrap(),
+            token_id: Test::<TokenID>::from_asset(&Test::<AssetID>::from_template(65536.into())),
             __non_exhaustive: (),
         }
     }
@@ -36,7 +29,16 @@ impl TokenBuilder {
     pub async fn build(self, client: &Client) -> anyhow::Result<Token> {
         let asset_state_id = match self.asset_state_id {
             Some(asset_state_id) => asset_state_id,
-            None => AssetStateBuilder::default().build(client).await?.id,
+            None => {
+                let asset_id = self.token_id.asset_id();
+                AssetStateBuilder {
+                    asset_id,
+                    ..Default::default()
+                }
+                .build(client)
+                .await?
+                .id
+            },
         };
 
         let params = NewToken {

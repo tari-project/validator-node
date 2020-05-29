@@ -5,6 +5,9 @@
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
 #![deny(unused_must_use)]
 #![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![feature(backtrace)]
+#![feature(try_trait)]
+#![feature(type_alias_impl_trait)]
 
 pub mod api;
 pub mod cli;
@@ -16,5 +19,4 @@ pub mod template;
 pub mod types;
 pub mod wallet;
 
-#[cfg(test)]
 pub mod test;

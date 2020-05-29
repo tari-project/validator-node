@@ -1,6 +1,7 @@
 use super::ProposalBuilder;
 use crate::{
     db::models::{consensus::*, AggregateSignatureMessageStatus, ProposalStatus},
+    test::utils::Test,
     types::{consensus::SignatureData, NodeID, ProposalID},
 };
 use deadpool_postgres::Client;
@@ -19,7 +20,7 @@ impl Default for AggregateSignatureMessageBuilder {
         Self {
             proposal_id: None,
             signature_data: SignatureData {
-                signatures: serde_json::from_value(json!([[NodeID::stub(), "stub-signature"]])).unwrap(),
+                signatures: serde_json::from_value(json!([[Test::<NodeID>::new(), "stub-signature"]])).unwrap(),
             },
             __non_exhaustive: (),
         }
