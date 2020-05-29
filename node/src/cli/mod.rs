@@ -9,6 +9,8 @@ mod access;
 pub use access::AccessCommands;
 mod wallet;
 pub use wallet::WalletCommands;
+mod template;
+pub use template::TemplateCommands;
 
 #[derive(StructOpt, Default, Debug)]
 /// The reference Tari cryptocurrency validation node implementation
@@ -36,6 +38,8 @@ pub enum Commands {
     Access(AccessCommands),
     /// Manage wallets
     Wallet(WalletCommands),
+    /// Manage assets
+    Template(TemplateCommands),
     /// Recreate and migrate database,  *DANGER!* it will wipe all data
     Wipe {
         /// Don't prompt for confirmation
