@@ -42,6 +42,14 @@ impl AssetID {
         }
     }
 
+    /// Generates 32 hex char string hash from input string
+    // TODO: this is a stub, perhaps AssetState should have
+    // proper hash function based on it's field
+    pub fn generate_hash(input: String) -> String {
+        let num: u128 = input.bytes().fold(0, |s, i| s + i as u128);
+        format!("{:032X}", num)
+    }
+
     #[inline]
     pub fn features(&self) -> u16 {
         self.features

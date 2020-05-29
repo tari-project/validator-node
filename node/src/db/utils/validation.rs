@@ -32,7 +32,16 @@ impl ValidationErrors {
 
 impl Display for ValidationErrors {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "Validation errors:\n")?;
+        for (field, err) in self.0.iter() {
+            write!(
+                f,
+                "* {} - {:?}\n",
+                *field,
+                err.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+            )?;
+        }
+        Ok(())
     }
 }
 

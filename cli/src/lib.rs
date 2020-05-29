@@ -9,15 +9,13 @@
 #![feature(try_trait)]
 #![feature(type_alias_impl_trait)]
 
-// TODO: think of moving api to separate crate
-pub mod api;
-// TODO: think of moving config to separate crate
-pub mod config;
-pub mod consensus;
-pub mod db;
-pub mod template;
-pub mod types;
-pub mod wallet;
+mod errors;
+pub use errors::ConfigError;
+mod args;
+pub use args::Arguments;
+pub mod commands;
+pub use commands::Commands;
+pub mod ui;
 
 #[cfg(test)]
-pub(crate) mod test;
+pub(crate) mod test_utils;

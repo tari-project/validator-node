@@ -1,11 +1,11 @@
-use crate::{
+use structopt::StructOpt;
+use tari_validator_node::{
     config::NodeConfig,
     db::{
         models::{Access, AccessResource, NewAccess, SelectAccess},
         utils::db::db_client,
     },
 };
-use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 pub enum AccessCommands {

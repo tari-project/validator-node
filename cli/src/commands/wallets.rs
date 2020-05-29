@@ -1,29 +1,26 @@
-use crate::{
-    config::NodeConfig,
-    db::utils::db::db_client,
-    db::model::*,
-};
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
+use tari_validator_node::{
+    config::NodeConfig,
+    db::utils::db::db_client,
+    wallet::{NodeWallet, WalletStore},
+};
 
 #[derive(StructOpt, Debug)]
-pub enum AssetCommands {
-    /// Create new asset
+pub enum WalletCommands {
+    /// Create new wallet
     Create {
-        /// Name of the asset
+        /// Internal unique name of the wallet
         #[structopt(short = "n", long)]
         name: String,
-        /// Descriptions
-        #[structopt(short = "d", long)]
-        description: String,
     },
-    /// List assets
+    /// List wallets available on this node
     List,
-    /// List asset tokens
-    Tokens {
+    /// Wallet details: key, balance, emoji
+    Info {
         /// Public key of a wallet
         #[structopt(short = "k", long)]
-        asset_id: AssetID,
+        pubkey: String,
     },
 }
 

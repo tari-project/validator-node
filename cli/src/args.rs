@@ -1,16 +1,9 @@
-use crate::errors::ConfigError;
+use super::{Commands, ConfigError};
 use structopt::StructOpt;
 use tari_common::{
     dir_utils::{create_data_directory, default_path},
     ConfigBootstrap,
 };
-
-mod access;
-pub use access::AccessCommands;
-mod wallet;
-pub use wallet::WalletCommands;
-mod template;
-pub use template::TemplateCommands;
 
 #[derive(StructOpt, Default, Debug)]
 /// The reference Tari cryptocurrency validation node implementation
@@ -24,33 +17,6 @@ pub struct Arguments {
     pub wallets_keys_path: Option<std::path::PathBuf>,
     #[structopt(subcommand)]
     pub command: Commands,
-}
-
-#[derive(StructOpt, Debug)]
-pub enum Commands {
-    /// Init configs and create the database, also running migrations
-    Init,
-    /// Start node
-    Start,
-    /// Run the migrations
-    Migrate,
-    /// API access management
-    Access(AccessCommands),
-    /// Manage wallets
-    Wallet(WalletCommands),
-    /// Manage assets
-    Template(TemplateCommands),
-    /// Recreate and migrate database,  *DANGER!* it will wipe all data
-    Wipe {
-        /// Don't prompt for confirmation
-        #[structopt(short)]
-        y: bool,
-    },
-}
-impl Default for Commands {
-    fn default() -> Self {
-        Commands::Start
-    }
 }
 
 impl Arguments {
@@ -81,5 +47,3 @@ impl Arguments {
         Ok(config)
     }
 }
-
-// TODO: test - load_configuration should set validator.wallets_keys_path to <base_path>/wallets
