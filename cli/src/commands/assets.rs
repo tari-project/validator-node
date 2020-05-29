@@ -164,6 +164,6 @@ mod test {
         .run(&client)
         .await
         .unwrap();
-        assert_eq!(asset.name, "may rocket launch".into());
+        assert_eq!(asset.name, "may rocket launch".to_string());
     }
 }
