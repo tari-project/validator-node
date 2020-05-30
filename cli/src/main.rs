@@ -3,10 +3,10 @@ use structopt::StructOpt;
 use tari_common::GlobalConfig;
 use tari_validator_node::{
     api::server::actix_main,
-    cli::{Arguments, Commands},
     config::NodeConfig,
     db::{migrations, utils},
 };
+use tvnc::{Arguments, Commands};
 
 #[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
@@ -46,6 +46,14 @@ async fn main() -> anyhow::Result<()> {
             }
             println!("Resetting database {:?}", node_config.postgres.dbname);
             utils::db::reset_database(node_config).await?;
+        },
+        Commands::Template(cmd) => {
+            println!("Template -> {:?}", cmd);
+            cmd.run(node_config).await?;
+        },
+        Commands::Asset(cmd) => {
+            println!("Asset -> {:?}", cmd);
+            cmd.run(node_config).await?;
         },
     };
 

@@ -1,4 +1,5 @@
-use crate::{db::models::wallet::*, errors::WalletError, types::Pubkey};
+use super::WalletError;
+use crate::{db::models::wallet::*, types::Pubkey};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};

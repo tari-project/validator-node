@@ -1,10 +1,10 @@
-use crate::{
+use structopt::StructOpt;
+use tari_common::GlobalConfig;
+use tari_validator_node::{
     config::NodeConfig,
     db::utils::db::db_client,
     wallet::{NodeWallet, WalletStore},
 };
-use structopt::StructOpt;
-use tari_common::GlobalConfig;
 
 #[derive(StructOpt, Debug)]
 pub enum WalletCommands {

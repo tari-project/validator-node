@@ -1,12 +1,15 @@
 //! Wallet operations
 
-use crate::{db::models::wallet::*, errors::WalletError};
+use crate::db::models::wallet::*;
 use deadpool_postgres::{Client, Transaction};
 use log::info;
 use std::{collections::HashMap, path::PathBuf};
 
 mod hot_wallet;
 pub use hot_wallet::{HotWallet, NodeWallet};
+
+mod errors;
+pub use errors::WalletError;
 
 const LOG_TARGET: &'static str = "tari_validator_node::wallet";
 

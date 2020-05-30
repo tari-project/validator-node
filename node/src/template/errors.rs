@@ -1,4 +1,4 @@
-use crate::{db::utils::errors::DBError, errors::WalletError};
+use crate::{db::utils::errors::DBError, wallet::WalletError};
 use std::backtrace::Backtrace;
 use thiserror::Error;
 

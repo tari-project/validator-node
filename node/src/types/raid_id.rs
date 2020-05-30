@@ -1,4 +1,5 @@
 use super::errors::TypeError;
+use std::str::FromStr;
 
 /// Registered Asset Issuer Domain (RAID) TXT record
 /// It uniquely identifies pubkey with domain owner based on formula Hash256(PubKey || FQDN)
@@ -9,6 +10,15 @@ pub struct RaidID(String);
 impl Default for RaidID {
     fn default() -> Self {
         Self("000000000000000".into())
+    }
+}
+
+/// Converts RaidID from base58 15 char String
+impl FromStr for RaidID {
+    type Err = TypeError;
+
+    fn from_str(input: &str) -> Result<Self, TypeError> {
+        Self::from_base58(input)
     }
 }
 
