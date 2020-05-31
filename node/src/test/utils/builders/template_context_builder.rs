@@ -51,7 +51,7 @@ impl AssetContextBuilder {
         };
 
         let config = build_test_config()?;
-        let runner = TemplateRunner::create(pool, config);
+        let runner = TemplateRunner::create(pool, config, None);
         let context = runner.start();
         let instruction = NewInstruction {
             asset_id: asset.asset_id.clone(),
@@ -110,7 +110,7 @@ impl TokenContextBuilder {
         let asset = AssetState::load(token.asset_state_id, &client).await?;
 
         let config = build_test_config()?;
-        let runner = TemplateRunner::create(pool, config);
+        let runner = TemplateRunner::create(pool, config, None);
         let context = runner.start();
         let instruction = NewInstruction {
             id: Test::<InstructionID>::new(),

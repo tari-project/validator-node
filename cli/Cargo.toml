@@ -12,17 +12,22 @@ edition = "2018"
 [dependencies]
 tari_common = "^0.1"
 tari_validator_node = { version = "0.1.0", path = "../node" }
-structopt = { version = "0.3", default_features = false }
-dotenv = "0.15"
-thiserror = "1"
-config = { version = "0.9.3", default_features = false }
-actix-rt = "1.1.1"
-anyhow = "1"
-deadpool-postgres = { version = "0.5.5", features = ["config"] }
-lazy_static = "1.4"
-tokio = { version = "0.2.21", default_features = false, features = ["sync"] }
-serde_json = "1"
 
+actix-rt = "1.1.1"
+actix = "0.10.0-alpha.3"
+awc = "1.0"
+anyhow = "1"
+config = { version = "0.9.3", default_features = false }
+dotenv = "0.15"
+deadpool-postgres = { version = "0.5.5", features = ["config"] }
+futures = "0.3"
+lazy_static = "1.4"
+log = "0.4.8"
+serde = "1"
+serde_json = "1"
+structopt = { version = "0.3", default_features = false }
+thiserror = "1"
+tokio = { version = "0.2.21", default_features = false, features = ["sync"] }
 tui = { version = "0.9.5", features = ["crossterm"] }
 crossterm = "0.17"
 

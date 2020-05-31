@@ -1,5 +1,6 @@
 use crate::{
     config::NodeConfig,
+    metrics::Metrics,
     template::{Template, TemplateContext},
     types::TemplateID,
     wallet::WalletStore,
@@ -23,7 +24,7 @@ impl<T: Template + Clone> TemplateRunner<T> {
 
     /// Validates if [TemplateContext] is connected to this [actix::Actor]
     pub fn connected(&self) -> bool {
-        match self.context.actor_address.as_ref() {
+        match self.context.actor_addr.as_ref() {
             Some(addr) => addr.connected(),
             None => false,
         }
@@ -34,7 +35,7 @@ impl<T: Template + Clone> TemplateRunner<T> {
     /// ## Panics
     /// It will panic if NodeConfig.public_address is missing or failed to create WalletStore,
     /// as TemplateRunner won't be able to function properly
-    pub fn create(pool: Arc<Pool>, config: NodeConfig) -> Self {
+    pub fn create(pool: Arc<Pool>, config: NodeConfig, metrics_addr: Option<Addr<Metrics>>) -> Self {
         let path = config.wallets_keys_path.clone();
         let wallets = WalletStore::init(path.clone()).expect(
             format!(
@@ -57,7 +58,8 @@ impl<T: Template + Clone> TemplateRunner<T> {
             pool,
             wallets,
             node_address,
-            actor_address: None,
+            actor_addr: None,
+            metrics_addr,
         };
         Self { context }
     }
@@ -71,7 +73,7 @@ impl<T: Template + Clone> TemplateRunner<T> {
             panic!("Failed to start already running TemplateRunner<{}>", T::id());
         }
         let mut context = self.context.clone();
-        context.actor_address = Some(Actor::start(self));
+        context.actor_addr = Some(Actor::start(self));
         context
     }
 
@@ -88,6 +90,6 @@ impl<T: Template + Clone + 'static> Actor for TemplateRunner<T> {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.context.actor_address = Some(ctx.address());
+        self.context.actor_addr = Some(ctx.address());
     }
 }

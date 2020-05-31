@@ -37,7 +37,8 @@ pub enum AssetContracts {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct IssueTokensParams {
-    token_ids: Vec<TokenID>,
+    token_ids: Option<Vec<TokenID>>,
+    amount: Option<u16>,
 }
 
 // TODO: return type is converted to ContextEvent with Value parameter,
@@ -48,9 +49,21 @@ pub struct IssueTokensParams {
 impl AssetContracts {
     pub async fn issue_tokens(
         context: &mut AssetInstructionContext<SingleUseTokenTemplate>,
-        IssueTokensParams { token_ids }: IssueTokensParams,
+        IssueTokensParams { token_ids, amount }: IssueTokensParams,
     ) -> Result<Vec<Token>, TemplateError>
     {
+        let token_ids: Vec<TokenID> = if let Some(token_ids) = token_ids {
+            token_ids
+        } else {
+            if let Some(amount) = amount {
+                (0..amount)
+                    .map(|_| TokenID::new(context.asset_id(), &context.node_id()))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(anyhow::Error::from)?
+            } else {
+                return validation_err!("Either token_ids or amount should be specified in request json body");
+            }
+        };
         let mut tokens = Vec::with_capacity(token_ids.len());
         let asset = &context.asset;
         let data = TokenData {
@@ -399,44 +412,66 @@ mod test {
     use deadpool_postgres::Client;
     use serde_json::json;
 
-    #[actix_rt::test]
-    async fn issue_tokens_positive() {
-        let (_client, _lock) = test_db_client().await;
+    async fn build_context() -> AssetInstructionContext<SingleUseTokenTemplate> {
         let template_id = SingleUseTokenTemplate::id();
-        let context = AssetContextBuilder {
+        AssetContextBuilder {
             template_id,
             ..Default::default()
         }
         .build()
         .await
-        .unwrap();
-        let asset_id = context.asset.asset_id.clone();
-        let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
-        let contract = AssetContracts::IssueTokens(IssueTokensParams {
-            token_ids: token_ids.clone(),
-        });
+        .unwrap()
+    }
+
+    #[actix_rt::test]
+    async fn issue_tokens_positive() {
+        let (_client, _lock) = test_db_client().await;
+        let context = build_context().await;
+        let asset_id = context.asset_id();
+        let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(asset_id)).collect();
+        let contract: AssetContracts = IssueTokensParams {
+            token_ids: Some(token_ids.clone()),
+            amount: None,
+        }
+        .into();
 
         let (tokens, _) = contract.call(context).await.unwrap();
         let tokens: Vec<Token> = serde_json::from_value(tokens).unwrap();
         for (token, token_id) in tokens.iter().zip(token_ids.iter()) {
             assert_eq!(token.token_id, *token_id);
         }
+
+        let context = build_context().await;
+        let asset_id = context.asset_id().clone();
+        let contract: AssetContracts = IssueTokensParams {
+            token_ids: None,
+            amount: Some(10),
+        }
+        .into();
+        let (tokens, _) = contract.call(context).await.unwrap();
+        let tokens: Vec<Token> = serde_json::from_value(tokens).unwrap();
+        for token in tokens.iter() {
+            assert_eq!(token.token_id.asset_id(), asset_id);
+        }
     }
 
     #[actix_rt::test]
     async fn issue_tokens_negative() {
         let (_client, _lock) = test_db_client().await;
-        let template_id = SingleUseTokenTemplate::id();
-        let context = AssetContextBuilder {
-            template_id,
-            ..Default::default()
+        let context = build_context().await;
+        let token_ids: Option<Vec<_>> = Some((0..10).map(|_| Test::<TokenID>::new()).collect());
+        let contract: AssetContracts = IssueTokensParams {
+            token_ids,
+            amount: None,
         }
-        .build()
-        .await
-        .unwrap();
-        let asset_id = AssetID::default();
-        let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(&asset_id)).collect();
-        let contract = AssetContracts::IssueTokens(IssueTokensParams { token_ids });
+        .into();
+        assert!(contract.call(context).await.is_err());
+        let context = build_context().await;
+        let contract: AssetContracts = IssueTokensParams {
+            token_ids: None,
+            amount: None,
+        }
+        .into();
         assert!(contract.call(context).await.is_err());
     }
 

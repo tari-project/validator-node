@@ -17,7 +17,7 @@ impl<T: Template + 'static> Default for HttpRequestBuilder<T> {
     fn default() -> Self {
         let pool = actix_test_pool();
         let config = build_test_config().unwrap();
-        let runner = TemplateRunner::<T>::create(pool, config);
+        let runner = TemplateRunner::<T>::create(pool, config, None);
         let context = runner.start();
         let test_request = TestRequest::default().data(context).data(T::id());
         Self {

@@ -15,7 +15,7 @@ mod args;
 pub use args::Arguments;
 pub mod commands;
 pub use commands::Commands;
-pub mod ui;
+pub mod console;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

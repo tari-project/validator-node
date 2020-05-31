@@ -1,8 +1,5 @@
 use super::{Contracts, Template, LOG_TARGET};
-use crate::{
-    api::errors::ApiError,
-    types::{AssetID, TemplateID, TokenID},
-};
+use crate::types::{errors::TypeError, AssetID, TemplateID, TokenID};
 use actix_web::web;
 use log::info;
 use serde::Deserialize;
@@ -14,7 +11,7 @@ pub struct AssetCallParams {
     hash: String,
 }
 impl AssetCallParams {
-    pub fn asset_id(&self, tpl: TemplateID) -> Result<AssetID, ApiError> {
+    pub fn asset_id(&self, tpl: TemplateID) -> Result<AssetID, TypeError> {
         let template_id = tpl.to_hex();
         Ok(format!("{}{}{}.{}", template_id, self.features, self.raid_id, self.hash).parse()?)
     }
@@ -28,11 +25,11 @@ pub struct TokenCallParams {
     uid: String,
 }
 impl TokenCallParams {
-    pub fn token_id(&self, tpl: TemplateID) -> Result<TokenID, ApiError> {
+    pub fn token_id(&self, tpl: TemplateID) -> Result<TokenID, TypeError> {
         Ok(format!("{}{}", self.asset_id(tpl)?, self.uid).parse()?)
     }
 
-    pub fn asset_id(&self, tpl: TemplateID) -> Result<AssetID, ApiError> {
+    pub fn asset_id(&self, tpl: TemplateID) -> Result<AssetID, TypeError> {
         AssetCallParams::from(self).asset_id(tpl)
     }
 }
@@ -44,6 +41,30 @@ impl From<&TokenCallParams> for AssetCallParams {
             hash: token.hash.clone(),
         }
     }
+}
+
+pub fn asset_call_path(asset_id: &AssetID, instruction: &str) -> String {
+    format!(
+        "/asset_call/{}/{:04X}/{}/{}/{}",
+        asset_id.template_id(),
+        asset_id.features(),
+        asset_id.raid_id().to_base58(),
+        asset_id.hash(),
+        instruction
+    )
+}
+
+pub fn token_call_path(token_id: &TokenID, instruction: &str) -> String {
+    let asset_id = token_id.asset_id();
+    format!(
+        "/token_call/{}/{:04X}/{}/{}/{}/{}",
+        asset_id.template_id(),
+        asset_id.features(),
+        asset_id.raid_id().to_base58(),
+        asset_id.hash(),
+        token_id.uid().to_simple(),
+        instruction
+    )
 }
 
 pub trait ActixTemplate: Template {
@@ -120,6 +141,8 @@ mod test {
         types::{InstructionID, NodeID},
     };
     use actix_web::{dev::Payload, http::StatusCode, web, FromRequest, HttpResponse, Result};
+    use serde::{Deserialize, Serialize};
+    use serde_json::json;
 
     #[actix_rt::test]
     async fn requests() {
@@ -264,12 +287,8 @@ mod test {
         let srv = TestAPIServer::<TestTemplate>::new();
 
         let tpl = TestTemplate::id();
-        let asset: AssetID = format!("{}{:04X}{:015X}.{:032X}", tpl.to_hex(), 1, 2, 3)
-            .parse()
-            .unwrap();
-        let token: TokenID = format!("{}{:04X}{:015X}.{:032X}{:032X}", tpl.to_hex(), 1, 2, 3, 4)
-            .parse()
-            .unwrap();
+        let asset: AssetID = Test::<AssetID>::from_template(tpl);
+        let token: TokenID = Test::<TokenID>::from_asset(&asset);
 
         let mut resp = srv.asset_call(&asset, "test").send().await.unwrap();
         assert!(resp.status().is_success(), "{:?}", resp);
@@ -290,11 +309,25 @@ mod test {
     {
         Ok(HttpResponse::Ok().body(path.asset_id(ctx.template_id())?.to_string()))
     }
+    #[derive(Serialize, Deserialize, Clone)]
+    struct Params {
+        token_id: TokenID,
+    }
+    // Asset contracts
+    async fn asset_handler_context_with_body(
+        _: web::Path<AssetCallParams>,
+        body: web::Json<Params>,
+        _: web::Data<TemplateContext<TestTemplateContext>>,
+    ) -> Result<HttpResponse>
+    {
+        Ok(HttpResponse::Ok().body(body.into_inner().token_id.to_string()))
+    }
     enum AssetConractsContext {}
     impl Contracts for AssetConractsContext {
         fn setup_actix_routes(tpl: TemplateID, scope: &mut web::ServiceConfig) {
             log::info!("template={}, registering asset routes", tpl);
             scope.service(web::resource("test").route(web::post().to(asset_handler_context)));
+            scope.service(web::resource("test_body").route(web::post().to(asset_handler_context_with_body)));
         }
     }
     #[derive(Clone)]
@@ -319,5 +352,50 @@ mod test {
         let mut resp = srv.asset_call(&asset_id, "test").send().await.unwrap();
         assert!(resp.status().is_success(), "{:?}", resp);
         assert_eq!(resp.body().await.unwrap(), asset_id.to_string());
+    }
+
+    #[actix_rt::test]
+    async fn template_context_bad_path() {
+        let srv = TestAPIServer::<TestTemplateContext>::new();
+
+        let tpl = TestTemplateContext::id();
+        let url = format!("/asset_call/{}/{:03X}/{:015X}/{:032X}/test", tpl, 1, 2, 3);
+        let mut res = srv.post(url).send().await.unwrap();
+        let res: serde_json::Value = res.json().await.unwrap();
+        let error = res.as_object().unwrap().get("error").unwrap().as_str().unwrap();
+        assert_eq!(
+            format!("{}", error),
+            "AssetID should be 64-char string, got 000100010000001000000000000002.00000000000000000000000000000003 \
+             instread"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn template_context_good_token_id_param() {
+        let srv = TestAPIServer::<TestTemplateContext>::new();
+
+        let tpl = TestTemplateContext::id();
+        let url = format!("/asset_call/{}/{:03X}/{:015X}/{:032X}/test_body", tpl, 1, 2, 3);
+        let token_id = Test::<TokenID>::new();
+        let body = Params { token_id };
+        let mut res = srv.post(url).send_json(&body).await.unwrap();
+        let res: serde_json::Value = res.json().await.unwrap();
+        assert_eq!(res, json!(body.token_id));
+    }
+
+    #[actix_rt::test]
+    async fn template_context_bad_token_id_param() {
+        let srv = TestAPIServer::<TestTemplateContext>::new();
+
+        let tpl = TestTemplateContext::id();
+        let url = format!("/asset_call/{}/{:03X}/{:015X}/{:032X}/test_body", tpl, 1, 2, 3);
+        let body = json!({"token_id": "bad_token_id"});
+        let res = srv.post(url).send_json(&body).await.unwrap();
+        assert!(res.status().is_client_error(), "{:?}", res);
+        // TODO: Fix Deserialize ErrorResponse to provide error message, by default it's empty:
+        // https://docs.rs/actix-http/1.0.1/src/actix_http/error.rs.html#204-208
+        //        let res: serde_json::Value = res.json().await.unwrap();
+        //        let error = res.as_object().unwrap().get("error").unwrap().as_str().unwrap();
+        //        assert_eq!(format!("{}", error), "");
     }
 }

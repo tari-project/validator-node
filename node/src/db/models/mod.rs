@@ -8,4 +8,4 @@ pub mod digital_assets;
 pub mod enums;
 pub mod tokens;
 #[doc(hide)]
-pub(crate) mod wallet;
+pub mod wallet;

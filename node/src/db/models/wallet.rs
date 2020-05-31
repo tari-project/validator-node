@@ -10,7 +10,7 @@ use tokio_postgres::types::Type;
 /// [Wallet] should be used instead
 #[derive(Serialize, Deserialize, Debug, Clone, PostgresMapper)]
 #[pg_mapper(table = "wallet")]
-pub(crate) struct Wallet {
+pub struct Wallet {
     pub id: uuid::Uuid,
     pub pub_key: String,
     pub balance: i64,
@@ -28,7 +28,7 @@ pub(crate) struct NewWallet {
 
 /// Query paramteres for searching wallet records
 #[derive(Default, Clone, Debug)]
-pub(crate) struct SelectWallet {
+pub struct SelectWallet {
     pub id: Option<uuid::Uuid>,
     pub pub_key: Option<String>,
     pub name: Option<String>,
@@ -36,7 +36,7 @@ pub(crate) struct SelectWallet {
 
 impl Wallet {
     /// Add wallet record
-    pub async fn insert<'t>(params: NewWallet, client: &Transaction<'t>) -> Result<Wallet, DBError> {
+    pub(crate) async fn insert<'t>(params: NewWallet, client: &Transaction<'t>) -> Result<Wallet, DBError> {
         const QUERY: &'static str = "INSERT INTO wallet (pub_key, name) VALUES ($1,$2)
             ON CONFLICT (pub_key) DO UPDATE SET updated_at = NOW() RETURNING *";
         let stmt = client.prepare(QUERY).await?;
@@ -68,6 +68,7 @@ impl Wallet {
 
         let stmt = client.prepare_typed(QUERY, &[Type::TEXT]).await?;
         Ok(client
+            // TODO: convert to query_opt
             .query_one(&stmt, &[pubkey])
             .await
             .map(|row| Wallet::from_row(row))??)
