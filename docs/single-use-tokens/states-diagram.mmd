@@ -1,6 +1,7 @@
 stateDiagram-v2
     [*] --> Available: Issue
-    Available --> Active: Sell token
+    Available --> Locked: Sell token
+    Locked --> Active: Sell token
     Active --> Active: Transfer token
     Active --> Used: Redeem
     Used --> Active: UnRedeem

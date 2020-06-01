@@ -11,10 +11,10 @@ Template engine is responsible for reactive processing of instructions inline wi
 - AssetTemplateContext is execution context for asset, able to execute instruction on asset
 - TokenTemplateContext is execution context for token, able to execute instruction on token
 
-### Actix implementation:
+### Implementation:
 
 1. Middleware - actix middleware - generic HTTP handler, will extract pubkey (from auth token?), validate that token is signed with pubkey and add pubkey to Context
-2. Endpoint Handler - actix handler on routes `/asset_call/:id` and `/token_call/:id` - find matching templateID, decode RPC method signature and params, call matching trait implementation `asset_call(..)` or `token_call(..)`. Will pass context information, e.g. wallet pubkey, template data, request headers, JWT headers
-3. Template router - template trait methods `asset_call` and `token_call` - will match procedure name passed as parameter to implementation, validate passed parameters correctness, can query any asset and token details within a given template and call procedure
-4. Smart Contract initiation - procedure implementation running on single node accepting RPC - validates call parameters and amends `asset` and/or `tokens` correspondingly, moving to `Prepare` state
-5. Smart Contract execution - procedure implementation running on comittee nodes moving item to `Committed` state initiated by serialized RPC signed by initiation node
+2. Endpoint Handler - actix handler on routes `/asset_call/:id` and `/token_call/:id` - find matching templateID, decode RPC method signature and params, call handler matching trait implementation parameters `asset_call(..)` or `token_call(..)`. handler will create Instruction in `Scheduled` state and send message to `TemplateRunner` actor
+3. Template Runner - accepting message with typed parameters will move Instruction to `Processing` state, call relevant template trait method, on success will transition Instruction as `Pending` with Value result, on failure transitions to `Invalid` with `{"error":message}` as result.
+4. Smart Contract method would have access to token, asset details and operations via `AssetTemplateContext` or `TokenTemplateContext` depending on contract type
+5. Consensus logic described in [instruction processing](../INSTRUCTION_PROCESSING.md)
