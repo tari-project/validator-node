@@ -1,38 +1,36 @@
 sequenceDiagram
-    Client ->> Initiator node: sell_token(token_id,new_owner)
+    Client ->> Initiator node: sell_token(token_id,price,new_owner,tiemout)
 
     activate Initiator node
-    Initiator node ->> Initiator node: create temp_wallet and sell_token_lock
     Note right of Initiator node: INSERT instruction "sell_token(..)"
-    Initiator node ->> Committee: transition(token_id,sell_token_lock(temp_wallet,timeout))
-    Note right of Committee: INSERT instruction "sell_token(..)"
+    Initiator node ->> Client: (sell_token)
+    Initiator node ->> Initiator node: create temp_wallet and sell_token_lock
+    Note right of Initiator node: INSERT instruction "sell_token_lock(tempWallet)"
+    Initiator node ->> Committee: transition(sell_token_lock(tempWallet),Pending)
+    Note right of Committee: INSERT instruction "sell_token_lock(..)"
     alt if consensus reached
-    Note over Initiator node,Committee: UPDATE instruction_id SET state = WaitingForTari
-    Committee ->> Initiator node: Commit
+    Committee ->> Initiator node:  transition(sell_token_lock(tempWallet),Commit)
     else timeout expired
-    Committee -->> Initiator node : Cancel sell_token(token_id)
+    Initiator node ->> Committee: transition(sell_token_lock(tempWallet),Invalid)
     end
-
-
-    Initiator node ->> Client: (instruction_id,temp_wallet)
     deactivate Initiator node
 
     Note right of Client: Client pulling instruction status
     par Client to Initiator node
-    Client ->> Initiator node: status(instruction_id)
-    Initiator node ->> Client: WaitingForTari
+    Client ->> Initiator node: status_with_subinstructions(sell_token)
+    Initiator node ->> Client: sell_token_lock(tempWallet)=Commit,sell_token(tokenID)=Processing
     end
 
+    activate Initiator node
     Note right of Client: Client sending tari to temp_wallet
     Client -->> base layer: send tari to temp_wallet
     Initiator node -->> base layer: send-tari(asset_beneficiaries)
-    Initiator node ->> Committee: transition(token_id,sell_token_complete(new_owner))
-    Committee ->> Initiator node: sell_token_complete Commit
-
-    Note over Initiator node,Committee: UPDATE instruction_id SET state = SellTokenComplete
+    Initiator node ->> Committee: transition(sell_token(tokenID),Pending)
+    Committee ->> Initiator node: transition(sell_token(tokenID),Commit)
+    deactivate Initiator node
 
     Note right of Client: Client pulling instruction status
     par Client to Initiator node
-    Client ->> Initiator node: status(instruction_id)
-    Initiator node ->> Client: SellTokenComplete
+    Client ->> Initiator node: status_with_subinstructions(sell_token)
+    Initiator node ->> Client: sell_token_lock(tempWallet)=Commit,sell_token(tokenID)=Commit
     end

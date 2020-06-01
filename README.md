@@ -34,6 +34,18 @@ cargo run -- wipe -y
 PG_DBNAME=validator_test cargo run -- wipe
 ```
 
+### Template operations
+```
+cargo run -- template list
+```
+
+### Asset operations
+```
+cargo run -- asset list <template-id>
+cargo run -- asset view <asset-id>
+cargo run -- asset create <template-id> "asset name" --issuer pubkey
+```
+
 ### Api Access management
 ```
 cargo run -- access grant api --pubkey XXX
