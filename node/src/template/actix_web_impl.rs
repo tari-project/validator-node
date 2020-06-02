@@ -379,8 +379,8 @@ mod test {
         let token_id = Test::<TokenID>::new();
         let body = Params { token_id };
         let mut res = srv.post(url).send_json(&body).await.unwrap();
-        let res: serde_json::Value = res.json().await.unwrap();
-        assert_eq!(res, json!(body.token_id));
+        let res = res.body().await.unwrap();
+        assert_eq!(res, body.token_id.to_string());
     }
 
     #[actix_rt::test]

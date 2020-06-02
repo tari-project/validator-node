@@ -78,9 +78,15 @@ mod test {
     async fn instruction_spark_actor_counters_timed() {
         let _ = pretty_env_logger::try_init();
         let addr = Metrics::default().start();
+        let metrics = addr
+            .send(MetricsConfig {
+                instructions_spark_sizes: 3,
+            })
+            .await
+            .unwrap();
 
         let metrics = addr.send(GetMetrics).await.unwrap();
-        assert_eq!(metrics.instructions_scheduled_spark, vec![0]);
+        assert_eq!(metrics.instructions_scheduled_spark, vec![0, 0, 0]);
 
         let id = Test::<InstructionID>::new();
         let event: MetricEvent = InstructionEvent {
@@ -90,12 +96,12 @@ mod test {
         .into();
         addr.send(event.clone()).await.unwrap();
         let metrics = addr.send(GetMetrics).await.unwrap();
-        assert_eq!(metrics.instructions_scheduled_spark, vec![1]);
+        assert_eq!(metrics.instructions_scheduled_spark, vec![0, 0, 1]);
         delay_for(Duration::from_millis(1500)).await;
 
         let metrics = addr.send(GetMetrics).await.unwrap();
-        assert_eq!(metrics.instructions_scheduled_spark, vec![1, 0]);
-        assert_eq!(metrics.instructions_processing_spark, vec![0, 0]);
+        assert_eq!(metrics.instructions_scheduled_spark, vec![0, 1, 0]);
+        assert_eq!(metrics.instructions_processing_spark, vec![0, 0, 0]);
 
         let event: MetricEvent = InstructionEvent {
             id,
@@ -110,9 +116,9 @@ mod test {
         .into();
         addr.send(event2).await.unwrap();
         let metrics = addr.send(GetMetrics).await.unwrap();
-        assert_eq!(metrics.instructions_scheduled_spark, vec![1, 1]);
-        assert_eq!(metrics.instructions_processing_spark, vec![0, 1]);
-        assert_eq!(metrics.instructions_pending_spark, vec![0, 0]);
+        assert_eq!(metrics.instructions_scheduled_spark, vec![0, 1, 1]);
+        assert_eq!(metrics.instructions_processing_spark, vec![0, 0, 1]);
+        assert_eq!(metrics.instructions_pending_spark, vec![0, 0, 0]);
 
         let id2 = Test::<InstructionID>::new();
         let event3: MetricEvent = InstructionEvent {
@@ -129,9 +135,9 @@ mod test {
         addr.send(event4.clone()).await.unwrap();
         addr.send(event4).await.unwrap();
         let metrics = addr.send(GetMetrics).await.unwrap();
-        assert_eq!(metrics.instructions_pending_spark, vec![0, 1]);
-        assert_eq!(metrics.instructions_processing_spark, vec![0, 1]);
-        assert_eq!(metrics.instructions_scheduled_spark, vec![1, 3]);
+        assert_eq!(metrics.instructions_pending_spark, vec![0, 0, 1]);
+        assert_eq!(metrics.instructions_processing_spark, vec![0, 0, 1]);
+        assert_eq!(metrics.instructions_scheduled_spark, vec![0, 1, 3]);
 
         delay_for(Duration::from_millis(1000)).await;
         let metrics = addr.send(GetMetrics).await.unwrap();

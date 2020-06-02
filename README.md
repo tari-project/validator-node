@@ -104,26 +104,31 @@ Id                                                                              
 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405 1                    Available
 ...
 
-> cargo run -- instruction token 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405 sell_token '{"price": 1, "user_pubkey": "new_owner", "timeout_secs": 300}'
+> tvnc instruction token 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405 sell_token '{"price": 1, "user_pubkey": "new_owner", "timeout_secs": 300}'
 Root Id                                   Status     Params
  **  c63f6d5c-a4d1-11ea-8040-000102030405 Processing {"SellToken":{"price":1,"timeout_secs":300,"user_pubkey":"new_owner"}}
      c649f5ba-a4d1-11ea-8041-000000000000 Pending    {"SellTokenLock":{"wallet_key":"100cf9ffe39a5c7b6201910ace22e4a1d0e6bd22ab59f616a2d18cdfe8ea2b4e"}}
 
-> cargo run -- instruction  status c63f6d5c-a4d1-11ea-8040-000102030405
+> tvnc instruction  status c63f6d5c-a4d1-11ea-8040-000102030405
 Root Id                                   Status     Params
  **  c63f6d5c-a4d1-11ea-8040-000102030405 Processing {"SellToken":{"price":1,"timeout_secs":300,"user_pubkey":"new_owner"}}
      c649f5ba-a4d1-11ea-8041-000000000000 Commit     {"SellTokenLock":{"wallet_key":"100cf9ffe39a5c7b6201910ace22e4a1d0e6bd22ab59f616a2d18cdfe8ea2b4e"}}
 
-> cargo run -- wallet balance 100cf9ffe39a5c7b6201910ace22e4a1d0e6bd22ab59f616a2d18cdfe8ea2b4e 1
+> tvnc wallet balance 100cf9ffe39a5c7b6201910ace22e4a1d0e6bd22ab59f616a2d18cdfe8ea2b4e 1
 Field                     Value
 balance                   1
 ...
 
-> cargo run -- instruction  status c63f6d5c-a4d1-11ea-8040-000102030405
-...
+> tvnc instruction  status c63f6d5c-a4d1-11ea-8040-000102030405
 Root Id                                   Status     Params
-
  **  c63f6d5c-a4d1-11ea-8040-000102030405 Commit     {"SellToken":{"price":1,"timeout_secs":300,"user_pubkey":"new_owner"}}
      c649f5ba-a4d1-11ea-8041-000000000000 Commit     {"SellTokenLock":{"wallet_key":"100cf9ffe39a5c7b6201910ace22e4a1d0e6bd22ab59f616a2d18cdfe8ea2b4e"}}
+
+> tvnc instruction token redeem 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405 'null'
+...
+
+> tvnc token view 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405
+Field                     Value
+additional_data_json      {"owner_pubkey":"issuer_key","used":true}
 
 ```
