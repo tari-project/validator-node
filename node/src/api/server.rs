@@ -3,20 +3,32 @@ use crate::{
     config::NodeConfig,
     consensus::ConsensusProcessor,
     db::utils::db::build_pool,
+    metrics::Metrics,
     template::{actix_web_impl::ActixTemplate, single_use_tokens::SingleUseTokenTemplate, TemplateRunner},
 };
+use actix::Addr;
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
+use futures::{
+    future::{select, Either},
+    pin_mut,
+};
 use serde_json::json;
 use std::{
     net::ToSocketAddrs,
     sync::{mpsc, Arc},
 };
+use tokio::sync::oneshot::Sender;
 
 // Must be valid JSON
 const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request", "remote_ip":"%a", "user_agent": "%{User-Agent}i", "request": "%r", "uri": "%U", "status_code": %s, "response_time": %D, "api_version":"%{x-app-version}o", "client_version": "%{X-API-Client-Version}i" }"#;
 
-pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
+pub async fn actix_main(
+    config: NodeConfig,
+    metrics_addr: Option<Addr<Metrics>>,
+    mut kill_console: Sender<()>,
+) -> anyhow::Result<()>
+{
     let pool = Arc::new(build_pool(&config.postgres)?);
 
     println!(
@@ -32,7 +44,7 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
     });
 
     // TODO: so far predefined templates only... make templates runners configurable from main
-    let sut_runner = TemplateRunner::<SingleUseTokenTemplate>::create(pool.clone(), config.clone());
+    let sut_runner = TemplateRunner::<SingleUseTokenTemplate>::create(pool.clone(), config.clone(), metrics_addr);
     let sut_context = sut_runner.start();
 
     let cors_config = config.cors.clone();
@@ -66,7 +78,7 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
         let scopes = SingleUseTokenTemplate::actix_scopes();
         let with_templates = scopes
             .into_iter()
-            .fold(app, |app, scope| app.service(scope.app_data(sut_context.clone())));
+            .fold(app, |app, scope| app.service(scope.data(sut_context.clone())));
 
         with_templates
             .configure(routing::routes)
@@ -86,8 +98,24 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
         server = server.maxconn(maxconn);
     };
 
-    server.run().await?;
-    kill_sender.send(())?;
+    let server = server.run();
+    let console_closed_fut = kill_console.closed();
+    pin_mut!(console_closed_fut);
+
+    match select(server, console_closed_fut).await {
+        Either::Left((Err(err), _)) => {
+            log::error!("Actix web server exit with error: {}", err);
+            let _ = kill_sender.send(());
+            return Err(err)?;
+        },
+        Either::Left((Ok(_), _)) => {
+            let _ = kill_sender.send(());
+        },
+        Either::Right((_, server)) => {
+            server.stop(true).await;
+            let _ = kill_sender.send(());
+        },
+    }
 
     Ok(())
 }

@@ -111,4 +111,10 @@ impl HotWallet {
     pub fn balance(&self) -> i64 {
         self.data.balance
     }
+
+    /// Wallet data structure
+    #[inline]
+    pub fn data(&self) -> &Wallet {
+        &self.data
+    }
 }

@@ -145,7 +145,6 @@ impl ResponseError for ApiError {
         } else if response_data.status_code.is_client_error() {
             log::info!(target: LOG_TARGET, "Client error: {}", self);
         }
-
         response_data.error_response
     }
 }

@@ -1,3 +1,5 @@
+use crate::console::Terminal;
+use serde_json::json;
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
 use tari_validator_node::{
@@ -11,16 +13,21 @@ pub enum WalletCommands {
     /// Create new wallet
     Create {
         /// Internal unique name of the wallet
-        #[structopt(short = "n", long)]
         name: String,
     },
     /// List wallets available on this node
     List,
     /// Wallet details: key, balance, emoji
-    Info {
+    View {
         /// Public key of a wallet
-        #[structopt(short = "k", long)]
         pubkey: String,
+    },
+    /// Set wallet's balance to amount of micro-tari
+    Balance {
+        /// Public key of a wallet
+        pubkey: String,
+        /// New balance
+        balance: i64,
     },
 }
 
@@ -35,17 +42,24 @@ impl WalletCommands {
                 let wallet = NodeWallet::new(global_config.public_address.clone(), name)?;
                 let wallet = store.add(wallet, &transaction).await?;
                 transaction.commit().await?;
-                println!("{}", wallet);
+                Terminal::basic().render_object("Wallet details", wallet.data().clone());
             },
             Self::List => {
                 let wallets = store.load(&client).await?;
-                for wallet in wallets.iter() {
-                    println!("{}\n", wallet);
-                }
+                let output: Vec<_> = wallets
+                    .iter()
+                    .map(|w| json!({"Pubkey": w.public_key(), "Name": w.name(), "Balance": w.balance()}))
+                    .collect();
+                Terminal::basic().render_list("Wallets", output, &["Pubkey", "Name", "Balance"], &[20, 40, 16]);
             },
-            Self::Info { pubkey } => {
+            Self::View { pubkey } => {
                 let wallet = store.get(pubkey, &client).await?;
-                println!("{}", wallet);
+                Terminal::basic().render_object("Wallet details", wallet.data().clone());
+            },
+            Self::Balance { pubkey, balance } => {
+                let wallet = store.get(pubkey, &client).await?;
+                let wallet = wallet.data().set_balance(balance, &client).await?;
+                Terminal::basic().render_object("Wallet details", wallet);
             },
         };
         Ok(())

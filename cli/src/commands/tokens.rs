@@ -1,4 +1,4 @@
-use crate::ui::{render_object_as_table, render_value_as_table};
+use crate::console::Terminal;
 use serde_json::json;
 use structopt::StructOpt;
 use tari_validator_node::{
@@ -42,13 +42,12 @@ impl TokenCommands {
                                 }))
                             }
 
-                            render_value_as_table(
+                            Terminal::basic().render_list(
                                 format!("Tokens of asset ID {}", asset_id.to_string()).as_str(),
-                                json!(output),
+                                output,
                                 &["Id", "IssueNumber", "Status"],
                                 &[96, 20, 20],
-                            )
-                            .await;
+                            );
                         }
                     },
                     None => {
@@ -59,7 +58,7 @@ impl TokenCommands {
             Self::View { token_id } => {
                 let token: Option<DisplayToken> = Token::find_by_token_id(&token_id, &client).await?.map(|t| t.into());
                 if token.is_some() {
-                    render_object_as_table("Token details:", json!(token)).await;
+                    Terminal::basic().render_object("Token details:", token);
                 } else {
                     println!("Token not found!");
                 }

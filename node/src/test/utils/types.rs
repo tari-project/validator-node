@@ -13,6 +13,7 @@ impl Test<TemplateID> {
 
 impl Test<AssetID> {
     /// Generate random test [AssetID] on [Test<TemplateID>]
+    #[allow(dead_code)]
     pub fn new() -> AssetID {
         Self::from_template(Test::<TemplateID>::new())
     }
@@ -26,6 +27,7 @@ impl Test<AssetID> {
 
 impl Test<TokenID> {
     /// Generate random test [AssetID] on [Test<TemplateID>]
+    #[allow(dead_code)]
     pub fn new() -> TokenID {
         Self::from_asset(&Test::<AssetID>::new())
     }

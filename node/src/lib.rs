@@ -15,6 +15,7 @@ pub mod api;
 pub mod config;
 pub mod consensus;
 pub mod db;
+pub mod metrics;
 pub mod template;
 pub mod types;
 pub mod wallet;

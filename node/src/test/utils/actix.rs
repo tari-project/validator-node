@@ -1,8 +1,10 @@
 use super::{actix_test_pool, build_test_config, load_env};
 use crate::{
-    template::{actix_web_impl::ActixTemplate, Template, TemplateContext, TemplateRunner},
+    metrics::Metrics,
+    template::{self, actix_web_impl::ActixTemplate, Template, TemplateContext, TemplateRunner},
     types::{AssetID, TokenID},
 };
+use actix::{Actor, Addr};
 use actix_web::{client::ClientRequest, middleware::Logger, test, App};
 use std::ops::Deref;
 
@@ -13,6 +15,7 @@ use std::ops::Deref;
 pub struct TestAPIServer<T: Template + 'static> {
     server: test::TestServer,
     context: TemplateContext<T>,
+    pub metrics: Addr<Metrics>,
 }
 
 impl<T: Template + 'static> TestAPIServer<T> {
@@ -21,7 +24,8 @@ impl<T: Template + 'static> TestAPIServer<T> {
         let _ = pretty_env_logger::try_init();
         let pool = actix_test_pool();
         let config = build_test_config().unwrap();
-        let runner = TemplateRunner::<T>::create(pool, config);
+        let metrics = Metrics::default().start();
+        let runner = TemplateRunner::<T>::create(pool, config, Some(metrics.clone()));
         let context = runner.start();
         let srv_context = context.clone();
         let server = test::start(move || {
@@ -30,32 +34,20 @@ impl<T: Template + 'static> TestAPIServer<T> {
                 .into_iter()
                 .fold(app, |app, scope| app.service(scope.data(srv_context.clone())))
         });
-        Self { context, server }
+        Self {
+            context,
+            server,
+            metrics,
+        }
     }
 
     pub fn asset_call(&self, id: &AssetID, instruction: &str) -> ClientRequest {
-        let uri = format!(
-            "/asset_call/{}/{:04X}/{}/{}/{}",
-            id.template_id(),
-            id.features(),
-            id.raid_id().to_base58(),
-            id.hash(),
-            instruction
-        );
+        let uri = template::asset_call_path(id, instruction);
         self.server.post(uri)
     }
 
     pub fn token_call(&self, id: &TokenID, instruction: &str) -> ClientRequest {
-        let asset_id = id.asset_id();
-        let uri = format!(
-            "/token_call/{}/{:04X}/{}/{}/{}/{}",
-            asset_id.template_id(),
-            asset_id.features(),
-            asset_id.raid_id().to_base58(),
-            asset_id.hash(),
-            id.uid().to_simple(),
-            instruction
-        );
+        let uri = template::token_call_path(id, instruction);
         self.server.post(uri)
     }
 

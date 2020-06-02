@@ -38,3 +38,16 @@ impl TypeError {
         }
     }
 }
+
+use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+
+impl ResponseError for TypeError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::BAD_REQUEST
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        log::debug!("TypeError: {}", self.to_string());
+        HttpResponse::BadRequest().json(serde_json::json!({"error": self.to_string()}))
+    }
+}

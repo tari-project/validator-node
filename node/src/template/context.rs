@@ -13,11 +13,13 @@ use crate::{
         },
         utils::errors::DBError,
     },
+    metrics::{InstructionEvent, MetricEvent, Metrics},
     processing_err,
     types::*,
     validation_err,
     wallet::{NodeWallet, WalletStore},
 };
+use actix::Addr;
 use deadpool_postgres::{Client, Pool};
 use multiaddr::Multiaddr;
 use std::{
@@ -44,7 +46,9 @@ pub struct TemplateContext<T: Template + Clone + 'static> {
     pub(super) pool: Arc<Pool>,
     pub(super) wallets: Arc<Mutex<WalletStore>>,
     pub(super) node_address: Multiaddr,
-    pub(super) actor_address: Option<actix::Addr<TemplateRunner<T>>>,
+    // TODO: Implement Actors registry to decouple addresses
+    pub(super) actor_addr: Option<Addr<TemplateRunner<T>>>,
+    pub(super) metrics_addr: Option<Addr<Metrics>>,
 }
 
 impl<T: Template + Clone + 'static> TemplateContext<T> {
@@ -68,7 +72,9 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
             );
         }
         let client = self.pool.get().await.map_err(DBError::from)?;
-        Ok(Instruction::insert(data, &client).await?)
+        let instruction = Instruction::insert(data, &client).await?;
+        self.metrics_update(&instruction);
+        Ok(instruction)
     }
 
     /// Creates [InstructionContext] which can be used by [InstructionRunner] to process [Instruction]
@@ -116,8 +122,20 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
 
     /// [TemplateRunner] Actor's address, which is responsible for processing [Instruction]s
     #[inline]
-    pub fn addr(&self) -> &actix::Addr<TemplateRunner<T>> {
-        self.actor_address.as_ref().expect("TemplateRunner")
+    pub fn addr(&self) -> &Addr<TemplateRunner<T>> {
+        self.actor_addr.as_ref().expect("TemplateRunner")
+    }
+
+    /// Update [Metrics] Actor (if configured) with instruction update
+    pub fn metrics_update(&self, instruction: &Instruction) {
+        if let Some(addr) = self.metrics_addr.as_ref() {
+            let msg: MetricEvent = InstructionEvent {
+                id: instruction.id,
+                status: instruction.status,
+            }
+            .into();
+            addr.do_send(msg);
+        }
     }
 }
 
@@ -147,6 +165,10 @@ impl<T: Template + Clone> InstructionContext<T> {
         T::id()
     }
 
+    pub fn node_id(&self) -> NodeID {
+        NodeID::stub()
+    }
+
     /// Create and return token
     pub async fn create_token(&self, data: NewToken) -> Result<Token, TemplateError> {
         let id = Token::insert(data, &self.client).await?;
@@ -156,6 +178,8 @@ impl<T: Template + Clone> InstructionContext<T> {
     /// Create token_append_only_state associated with current [Instruction],
     /// returns updated token
     pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, TemplateError> {
+        // TODO: P1: as part of consensus multi-node this should create append only state within instruction,
+        // not in database. This also requires Instruction::execute impl.
         Ok(token.update(data, &self.instruction, &self.client).await?)
     }
 
@@ -208,6 +232,7 @@ impl<T: Template + Clone> InstructionContext<T> {
             },
         };
         self.instruction = self.instruction.clone().update(update, &self.client).await?;
+        self.template_context.metrics_update(&self.instruction);
         Ok(())
     }
 
@@ -307,6 +332,11 @@ impl<T: Template + Clone + 'static> DerefMut for AssetInstructionContext<T> {
 impl<T: Template + Clone> AssetInstructionContext<T> {
     pub fn new(context: InstructionContext<T>, asset: AssetState) -> Self {
         Self { context, asset }
+    }
+
+    #[inline]
+    pub fn asset_id(&self) -> &AssetID {
+        &self.asset.asset_id
     }
 
     /// Initialize from TemplateContext, instruction and asset_id

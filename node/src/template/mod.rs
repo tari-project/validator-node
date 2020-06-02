@@ -43,6 +43,7 @@ pub mod errors;
 pub use errors::TemplateError;
 
 pub mod actix_web_impl;
+pub use actix_web_impl::{asset_call_path, token_call_path};
 pub mod actors;
 pub use actors::{ContractCallMsg, TemplateRunner};
 

@@ -1,3 +1,4 @@
+use actix::Actor;
 use dotenv::dotenv;
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
@@ -5,8 +6,17 @@ use tari_validator_node::{
     api::server::actix_main,
     config::NodeConfig,
     db::{migrations, utils},
+    metrics::Metrics,
 };
-use tvnc::{Arguments, Commands};
+use tvnc::{console::ServerConsole, Arguments, Commands};
+
+async fn start_server(node_config: NodeConfig) -> anyhow::Result<()> {
+    let metrics_addr = Metrics::default().start();
+    let kill_console = ServerConsole::init(metrics_addr.clone()).await;
+    let res = actix_main(node_config, Some(metrics_addr), kill_console).await;
+    log::debug!("Terminating console: {:?}", res);
+    res
+}
 
 #[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
@@ -16,14 +26,11 @@ async fn main() -> anyhow::Result<()> {
     // initialize configuration files if needed
     args.init_configs()?;
     let config = args.load_configuration()?;
-
     let global_config = GlobalConfig::convert_from(config.clone())?;
-
-    // deriving our app configs
     let node_config = NodeConfig::load_from(&config, &global_config, true)?;
 
     match args.command {
-        Commands::Start => actix_main(node_config).await?,
+        Commands::Start => start_server(node_config).await?,
         Commands::Init => {
             println!("Initializing database {:?}", node_config.postgres.dbname);
             utils::db::create_database(node_config).await?;

@@ -1,4 +1,4 @@
-use crate::ui::{render_object_as_table, render_value_as_table};
+use crate::console::Terminal;
 use deadpool_postgres::Client;
 use serde_json::json;
 use structopt::StructOpt;
@@ -57,7 +57,7 @@ impl AssetCommands {
         match self {
             Self::Create(create) => {
                 let asset = create.run(&client).await?;
-                render_object_as_table("Asset created! Details:", json!(asset)).await;
+                Terminal::basic().render_object("Asset created! Details:", asset);
             },
             Self::List { template } => {
                 let assets = AssetState::find_by_template_id(&template, &client).await?;
@@ -72,18 +72,17 @@ impl AssetCommands {
                         "Description": asset.description
                     }))
                 }
-                render_value_as_table(
+                Terminal::basic().render_list(
                     format!("Assets of template {}", template).as_str(),
-                    json!(output),
+                    output,
                     &["Id", "Name", "Status", "FQDN", "Description"],
                     &[64, 20, 8, 15, 40],
-                )
-                .await;
+                );
             },
             Self::View { asset_id } => {
                 let asset = AssetState::find_by_asset_id(&asset_id, &client).await?;
                 if asset.is_some() {
-                    render_object_as_table("Asset details:", json!(asset)).await;
+                    Terminal::basic().render_object("Asset details:", asset);
                 } else {
                     println!("Asset not found!");
                 }

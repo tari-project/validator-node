@@ -1,5 +1,4 @@
-use super::AssetCommands;
-use crate::ui::render_value_as_table;
+use crate::console::Terminal;
 use serde_json::json;
 use structopt::StructOpt;
 use tari_validator_node::{
@@ -12,8 +11,6 @@ use tari_validator_node::{
 pub enum TemplateCommands {
     /// List templates
     List,
-    /// Work with template assets
-    Asset(AssetCommands),
 }
 
 impl TemplateCommands {
@@ -31,13 +28,9 @@ impl TemplateCommands {
                         "Assets": assets_len
                     }));
                 }
-                render_value_as_table("Available Templates", json!(templates), &["Id", "Name", "Assets"], &[
+                Terminal::basic().render_list("Available Templates", templates, &["Id", "Name", "Assets"], &[
                     10, 50, 10,
-                ])
-                .await;
-            },
-            TemplateCommands::Asset(cmd) => {
-                cmd.run(node_config).await?;
+                ]);
             },
         };
         Ok(())

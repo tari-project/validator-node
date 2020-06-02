@@ -28,7 +28,7 @@ pub struct TemplateID {
 }
 /// Display format for TemplateID, this should not be used for storing/decoding
 ///
-/// NOTE: for decodeable representation use [`TemplateID::to_hex()`] and [`TemplateID::from_hex()`]
+/// NOTE: -beta and -confidential are not supported when parsing back yet
 impl fmt::Display for TemplateID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}", self.template_type, self.template_version)?;
