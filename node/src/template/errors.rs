@@ -1,4 +1,4 @@
-use crate::{db::utils::errors::DBError, wallet::WalletError};
+use crate::{consensus::errors::ConsensusError, db::utils::errors::DBError, wallet::WalletError};
 use std::backtrace::Backtrace;
 use thiserror::Error;
 
@@ -35,6 +35,8 @@ pub enum TemplateError {
     },
     #[error("Internal Template error: {0}")]
     Internal(#[source] anyhow::Error),
+    #[error("Consensus error: {0}")]
+    ConsensusError(#[from] ConsensusError),
 }
 
 #[macro_export]

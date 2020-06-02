@@ -1,9 +1,9 @@
 use crate::{
     db::{
-        models::{consensus::*, AssetState, InstructionStatus, ProposalStatus, Token, ViewStatus},
+        models::{consensus::*, ProposalStatus},
         utils::errors::DBError,
     },
-    types::{AssetID, InstructionID, NodeID, ProposalID},
+    types::{AssetID, NodeID, ProposalID},
 };
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Client;
@@ -130,90 +130,18 @@ impl Proposal {
 
         Ok(SignedProposal::insert(params, &client).await?)
     }
-
-    /// Execute the proposal applying append only state to the database
-    pub async fn execute(self, leader: bool, client: &Client) -> Result<(), DBError> {
-        let view = if leader {
-            // Find pending view for asset, switch to commit
-            let asset_id = self.new_view.asset_id.clone();
-            let found_view = View::find_by_asset_status(&asset_id, ViewStatus::PreCommit, &client)
-                .await?
-                .first()
-                .map(|v| v.clone())
-                .ok_or_else(|| DBError::NotFound)?;
-
-            found_view
-                .update(
-                    UpdateView {
-                        status: Some(ViewStatus::Commit),
-                        proposal_id: Some(self.id),
-                        ..UpdateView::default()
-                    },
-                    &client,
-                )
-                .await?
-        } else {
-            View::insert(
-                self.new_view.clone(),
-                NewViewAdditionalParameters {
-                    status: Some(ViewStatus::Commit),
-                    proposal_id: Some(self.id),
-                },
-                &client,
-            )
-            .await?
-        };
-
-        for asset_state_append_only in &*view.append_only_state.asset_state {
-            AssetState::store_append_only_state(&asset_state_append_only, &client).await?;
-        }
-
-        for token_state_append_only in &*view.append_only_state.token_state {
-            Token::store_append_only_state(&token_state_append_only, &client).await?;
-        }
-
-        self.update(
-            UpdateProposal {
-                status: Some(ProposalStatus::Finalized),
-                ..UpdateProposal::default()
-            },
-            &client,
-        )
-        .await?;
-
-        let instruction_set: Vec<InstructionID> = view.instruction_set.iter().map(|i| InstructionID(*i)).collect();
-        let invalid_instruction_set: Vec<InstructionID> =
-            view.invalid_instruction_set.iter().map(|i| InstructionID(*i)).collect();
-
-        Instruction::update_instructions_status(&instruction_set, Some(self.id), InstructionStatus::Commit, &client)
-            .await?;
-        Instruction::update_instructions_status(
-            &invalid_instruction_set,
-            Some(self.id),
-            InstructionStatus::Invalid,
-            &client,
-        )
-        .await?;
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
-        db::models::{AssetStatus, NewAssetStateAppendOnly, NewTokenStateAppendOnly, TokenStatus},
+        db::models::AssetState,
         test::utils::{
-            builders::{
-                consensus::{InstructionBuilder, ProposalBuilder, ViewBuilder},
-                TokenBuilder,
-            },
+            builders::consensus::{ProposalBuilder, ViewBuilder},
             test_db_client,
         },
-        types::consensus::AppendOnlyState,
     };
-    use serde_json::json;
 
     #[actix_rt::test]
     async fn find_pending() {
@@ -272,58 +200,6 @@ mod test {
         let signed_proposal = proposal.sign(NodeID::stub(), &client).await.unwrap();
 
         assert_eq!(signed_proposal.proposal_id, proposal.id);
-    }
-
-    #[actix_rt::test]
-    async fn execute() {
-        let (client, _lock) = test_db_client().await;
-        let mut proposal = ProposalBuilder::default().build(&client).await.unwrap();
-
-        let token = TokenBuilder::default().build(&client).await.unwrap();
-        let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
-        let instruction = InstructionBuilder {
-            asset_id: Some(asset.asset_id.clone()),
-            token_id: Some(token.token_id.clone()),
-            ..InstructionBuilder::default()
-        }
-        .build(&client)
-        .await
-        .unwrap();
-
-        proposal.new_view.instruction_set = vec![instruction.id.0];
-        proposal.new_view.append_only_state = AppendOnlyState {
-            asset_state: vec![NewAssetStateAppendOnly {
-                asset_id: asset.asset_id.clone(),
-                instruction_id: instruction.id,
-                status: AssetStatus::Active,
-                state_data_json: json!({"asset-value": true, "asset-value2": 1}),
-            }],
-            token_state: vec![NewTokenStateAppendOnly {
-                token_id: token.token_id,
-                instruction_id: instruction.id,
-                status: TokenStatus::Active,
-                state_data_json: json!({"token-value": true, "token-value2": 1}),
-            }],
-        };
-
-        // Execute as non leader triggering new view commit along with persistence of append only data
-        let proposal_id = proposal.id.clone();
-        proposal.execute(false, &client).await.unwrap();
-
-        let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
-        assert_eq!(
-            asset.additional_data_json,
-            json!({"asset-value": true, "asset-value2": 1})
-        );
-        let token = Token::load(token.id, &client).await.unwrap();
-        assert_eq!(
-            token.additional_data_json,
-            json!({"token-value": true, "token-value2": 1})
-        );
-        let proposal = Proposal::load(proposal_id, &client).await.unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Finalized);
-        let view = View::load_for_proposal(proposal.id, &client).await.unwrap();
-        assert_eq!(view.status, ViewStatus::Commit);
     }
 
     #[actix_rt::test]

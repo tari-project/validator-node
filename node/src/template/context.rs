@@ -4,6 +4,7 @@
 
 use super::{Template, TemplateError, TemplateRunner, LOG_TARGET};
 use crate::{
+    consensus::{instruction_state, instruction_state::InstructionTransitionContext},
     db::{
         models::{
             consensus::instructions::*,
@@ -194,34 +195,16 @@ impl<T: Template + Clone> InstructionContext<T> {
     }
 
     /// Move current context's [Instruction] to a new state applying [ContextEvent]
-    // TODO: consider using https://github.com/fitzgen/state_machine_future for state machine impl
     pub async fn transition(&mut self, event: ContextEvent) -> Result<(), TemplateError> {
-        log::trace!(
-            target: LOG_TARGET,
-            "template={}, instruction={}, transition event {:?}",
-            T::id(),
-            self.instruction.id,
-            event
-        );
-        let update = match (self.instruction.status, event) {
-            (InstructionStatus::Scheduled, ContextEvent::StartProcessing) => UpdateInstruction {
-                status: Some(InstructionStatus::Processing),
-                ..UpdateInstruction::default()
+        let (status, result) = match (self.instruction.status, event) {
+            (InstructionStatus::Scheduled, ContextEvent::StartProcessing) => (InstructionStatus::Processing, None),
+            (InstructionStatus::Processing, ContextEvent::ProcessingResult { result }) => {
+                (InstructionStatus::Pending, Some(result))
             },
-            (InstructionStatus::Processing, ContextEvent::ProcessingResult { result }) => UpdateInstruction {
-                result: Some(result),
-                status: Some(InstructionStatus::Pending),
-                ..UpdateInstruction::default()
+            (InstructionStatus::Processing, ContextEvent::ProcessingFailed { result }) => {
+                (InstructionStatus::Invalid, Some(result))
             },
-            (InstructionStatus::Processing, ContextEvent::ProcessingFailed { result }) => UpdateInstruction {
-                result: Some(result),
-                status: Some(InstructionStatus::Invalid),
-                ..UpdateInstruction::default()
-            },
-            (InstructionStatus::Pending, ContextEvent::Commit) => UpdateInstruction {
-                status: Some(InstructionStatus::Commit),
-                ..UpdateInstruction::default()
-            },
+            (InstructionStatus::Pending, ContextEvent::Commit) => (InstructionStatus::Commit, None),
             (a, b) => {
                 return processing_err!(
                     "Invalid Instruction {} status {} transition {:?}",
@@ -231,8 +214,21 @@ impl<T: Template + Clone> InstructionContext<T> {
                 );
             },
         };
-        self.instruction = self.instruction.clone().update(update, &self.client).await?;
-        self.template_context.metrics_update(&self.instruction);
+        instruction_state::transition(
+            InstructionTransitionContext {
+                template_id: T::id(),
+                instruction_ids: vec![self.instruction.id],
+                proposal_id: None,
+                current_status: self.instruction.status,
+                status,
+                result,
+                metrics_addr: self.template_context.metrics_addr.clone(),
+            },
+            &self.client,
+        )
+        .await?;
+        self.instruction = Instruction::load(self.instruction.id, &self.client).await?;
+
         Ok(())
     }
 

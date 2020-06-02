@@ -11,5 +11,6 @@ mod consensus_committee;
 mod consensus_processor;
 mod consensus_worker;
 pub mod errors;
+pub mod instruction_state;
 
 const LOG_TARGET: &'static str = "tari_validator_node::consensus";
