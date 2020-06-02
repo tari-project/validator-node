@@ -46,6 +46,19 @@ cargo run -- asset view <asset-id>
 cargo run -- asset create <template-id> "asset name" --issuer pubkey
 ```
 
+### Token operations
+```
+cargo run -- token list <asset-id>
+cargo run -- token view <token-id>
+```
+
+### Instruction operations
+```
+cargo run -- instruction asset <asset-id> <contract-name> <data>
+cargo run -- instruction token <token-id> <contract-name> <data>
+cargo run -- instruction wallet <pubkey> <contract-name> <data>
+```
+
 ### Api Access management
 ```
 cargo run -- access grant api --pubkey XXX

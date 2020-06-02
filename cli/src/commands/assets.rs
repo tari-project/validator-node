@@ -25,11 +25,6 @@ pub enum AssetCommands {
         /// Work with tokens of asset
         asset_id: AssetID,
     },
-    /// List asset tokens
-    Tokens {
-        /// Work with tokens of asset
-        asset_id: AssetID,
-    },
 }
 
 #[derive(StructOpt, Debug)]
@@ -92,9 +87,6 @@ impl AssetCommands {
                 } else {
                     println!("Asset not found!");
                 }
-            },
-            Self::Tokens { asset_id } => {
-                unimplemented!();
             },
         };
         Ok(())

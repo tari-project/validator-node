@@ -51,8 +51,16 @@ async fn main() -> anyhow::Result<()> {
             println!("Template -> {:?}", cmd);
             cmd.run(node_config).await?;
         },
+        Commands::Instruction(cmd) => {
+            println!("Instruction -> {:?}", cmd);
+            cmd.run(node_config).await?;
+        },
         Commands::Asset(cmd) => {
             println!("Asset -> {:?}", cmd);
+            cmd.run(node_config).await?;
+        },
+        Commands::Token(cmd) => {
+            println!("Token -> {:?}", cmd);
             cmd.run(node_config).await?;
         },
     };

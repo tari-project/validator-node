@@ -4,6 +4,7 @@ use deadpool::Status as DeadpoolStatus;
 use deadpool_postgres::Pool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize)]
 struct Status {
@@ -22,7 +23,7 @@ impl From<DeadpoolStatus> for Status {
     }
 }
 
-pub async fn check(db: Data<Pool>) -> Result<HttpResponse, ApiError> {
+pub async fn check(db: Data<Arc<Pool>>) -> Result<HttpResponse, ApiError> {
     let status: Status = db.status().into();
     Ok(HttpResponse::Ok().json(json!(status)))
 }
