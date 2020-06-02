@@ -2,12 +2,16 @@ use structopt::StructOpt;
 
 pub mod access;
 pub use access::AccessCommands;
-pub mod wallets;
-pub use wallets::WalletCommands;
-pub mod templates;
-pub use templates::TemplateCommands;
 pub mod assets;
 pub use assets::AssetCommands;
+pub mod instructions;
+pub use instructions::InstructionCommands;
+pub mod templates;
+pub use templates::TemplateCommands;
+pub mod tokens;
+pub use tokens::TokenCommands;
+pub mod wallets;
+pub use wallets::WalletCommands;
 
 #[derive(StructOpt, Debug)]
 pub enum Commands {
@@ -25,8 +29,10 @@ pub enum Commands {
     Template(TemplateCommands),
     /// Work with template
     Asset(AssetCommands),
-    // TODO: Demo: cargo run  -- token list'
-    // TODO: Demo: cargo run  -- token view <token_id>'
+    /// Instruction commands
+    Instruction(InstructionCommands),
+    /// Token commands
+    Token(TokenCommands),
     // TODO: Demo: cargo run  -- instruction asset 0000000100000000000000000000000.0000000000000000000000 issue_tokens
     // --data '{"number": 6}' TODO: Demo: cargo run  -- instruction token sell_token --data '{"owner_pubkey":
     // pubkey, "price": 100.0, "timeout": }' --autopick walletPubkey, token_id

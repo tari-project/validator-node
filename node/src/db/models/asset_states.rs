@@ -33,6 +33,7 @@ pub struct AssetState {
     pub digital_asset_id: uuid::Uuid,
     pub blocked_until: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+    // TODO: switch view to use latest of append only or asset_states updated_at
     pub updated_at: DateTime<Utc>,
     pub additional_data_json: Value,
 }

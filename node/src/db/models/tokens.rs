@@ -16,7 +16,7 @@ use std::error::Error;
 use tokio_pg_mapper::{FromTokioPostgresRow, PostgresMapper};
 use tokio_postgres::types::{accepts, to_sql_checked, FromSql, IsNull, Json, ToSql, Type};
 
-#[derive(Clone, Serialize, Deserialize, PostgresMapper)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, PostgresMapper)]
 #[pg_mapper(table = "tokens_view")]
 pub struct Token {
     pub id: uuid::Uuid,
@@ -26,8 +26,34 @@ pub struct Token {
     pub asset_state_id: uuid::Uuid,
     pub initial_data_json: Value,
     pub created_at: DateTime<Utc>,
+    // TODO: switch view to use latest of append only or tokens updated_at
     pub updated_at: DateTime<Utc>,
     pub additional_data_json: Value,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DisplayToken {
+    pub token_id: TokenID,
+    pub issue_number: i64,
+    pub status: TokenStatus,
+    pub initial_data_json: Value,
+    pub additional_data_json: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<Token> for DisplayToken {
+    fn from(token: Token) -> Self {
+        Self {
+            token_id: token.token_id,
+            issue_number: token.issue_number,
+            status: token.status,
+            initial_data_json: token.initial_data_json,
+            additional_data_json: token.additional_data_json,
+            created_at: token.created_at,
+            updated_at: token.updated_at,
+        }
+    }
 }
 
 /// Query parameters for adding new token record
@@ -111,12 +137,23 @@ impl Token {
         Ok(Token::from_row(result)?)
     }
 
-    /// Find token record by token id )
+    /// Find token record by token id
     pub async fn find_by_token_id(token_id: &TokenID, client: &Client) -> Result<Option<Token>, DBError> {
         const QUERY: &'static str = "SELECT * FROM tokens_view WHERE token_id = $1";
         let stmt = client.prepare(QUERY).await?;
         let result = client.query_opt(&stmt, &[&token_id]).await?;
         Ok(result.map(Self::from_row).transpose()?)
+    }
+
+    /// Find token records by asset state id
+    pub async fn find_by_asset_state_id(asset_state_id: uuid::Uuid, client: &Client) -> Result<Vec<Token>, DBError> {
+        const QUERY: &'static str = "SELECT * FROM tokens_view WHERE asset_state_id = $1";
+        let stmt = client.prepare(QUERY).await?;
+        let results = client.query(&stmt, &[&asset_state_id]).await?;
+        Ok(results
+            .into_iter()
+            .map(Token::from_row)
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Store append only state
@@ -234,6 +271,26 @@ mod test {
         };
         Token::insert(params.clone(), &client).await.unwrap();
         assert!(Token::insert(params, &client).await.is_err());
+    }
+
+    #[actix_rt::test]
+    async fn find_by_asset_state_id() {
+        let (client, _lock) = test_db_client().await;
+        let token = TokenBuilder::default().build(&client).await.unwrap();
+        let token2 = TokenBuilder::default().build(&client).await.unwrap();
+
+        assert_eq!(
+            vec![token.clone()],
+            Token::find_by_asset_state_id(token.asset_state_id, &client)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            vec![token2.clone()],
+            Token::find_by_asset_state_id(token2.asset_state_id, &client)
+                .await
+                .unwrap()
+        );
     }
 
     #[actix_rt::test]

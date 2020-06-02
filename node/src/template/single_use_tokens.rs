@@ -150,10 +150,10 @@ impl TokenContracts {
             wallet_key: wallet_key.clone(),
         }
         .into();
-        let suninstruction = context
+        let subinstruction = context
             .create_subinstruction("sell_token".into(), subcontract.clone())
             .await?;
-        let message = subcontract.into_message(suninstruction);
+        let message = subcontract.into_message(subinstruction);
         let _ = context.defer(message).await?;
         // TODO: should start timeout timer once subinstruction moves to Commit
         let timeout = std::time::Instant::now();

@@ -38,7 +38,7 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
     let cors_config = config.cors.clone();
     let mut server = HttpServer::new(move || {
         let app = App::new()
-            .app_data(pool.clone())
+            .app_data(web::Data::new(pool.clone()))
             .wrap({
                 let mut cors = Cors::new();
                 cors = match cors_config.allowed_origins.as_str() {
@@ -57,7 +57,8 @@ pub async fn actix_main(config: NodeConfig) -> anyhow::Result<()> {
                     .finish()
             })
             .wrap(Logger::new(LOGGER_FORMAT).exclude("/status"))
-            .wrap(Authentication::new())
+            // TODO: Should we not be using a JWT but rather something more custom?
+            //.wrap(Authentication::new())
             .wrap(AppVersionHeader::new());
 
         // the problem we solving here is for every template scope we need to install distinct app_data with DB pool
