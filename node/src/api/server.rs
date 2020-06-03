@@ -36,7 +36,7 @@ pub async fn actix_main(
         config.actix.addr().to_socket_addrs()?.next().unwrap()
     );
 
-    let mut consensus_processor = ConsensusProcessor::new(config.clone());
+    let mut consensus_processor = ConsensusProcessor::new(config.clone(), metrics_addr.clone());
     let (kill_sender, kill_receiver) = mpsc::channel::<()>();
     // TODO: spawn consensus processors in separate Runtime
     actix_rt::spawn(async move {

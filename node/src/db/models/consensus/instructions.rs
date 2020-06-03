@@ -135,6 +135,7 @@ impl Instruction {
         instruction_ids: &[InstructionID],
         proposal_id: Option<ProposalID>,
         status: InstructionStatus,
+        result: Option<Value>,
         client: &Client,
     ) -> Result<(), DBError>
     {
@@ -142,6 +143,7 @@ impl Instruction {
             UPDATE instructions SET
                 status = $2,
                 proposal_id = $3,
+                result = COALESCE($4, result),
                 updated_at = NOW()
             WHERE id::uuid = ANY ($1)";
         let stmt = client.prepare_typed(QUERY, &[Type::UUID_ARRAY, Type::TEXT]).await?;
@@ -150,6 +152,7 @@ impl Instruction {
                 &instruction_ids.iter().map(|i| i.0).collect::<Vec<uuid::Uuid>>(),
                 &status,
                 &proposal_id,
+                &result,
             ])
             .await?;
 
@@ -260,6 +263,7 @@ mod test {
             &vec![instruction.id, instruction2.id],
             Some(proposal.id),
             InstructionStatus::Commit,
+            Some(json!("{}")),
             &client,
         )
         .await
