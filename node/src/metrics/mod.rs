@@ -78,7 +78,7 @@ mod test {
     async fn instruction_spark_actor_counters_timed() {
         let _ = pretty_env_logger::try_init();
         let addr = Metrics::default().start();
-        let metrics = addr
+        let _ = addr
             .send(MetricsConfig {
                 instructions_spark_sizes: 3,
             })

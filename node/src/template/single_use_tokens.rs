@@ -37,8 +37,8 @@ pub enum AssetContracts {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct IssueTokensParams {
-    token_ids: Option<Vec<TokenID>>,
-    amount: Option<u16>,
+    pub token_ids: Option<Vec<TokenID>>,
+    pub amount: Option<u16>,
 }
 
 // TODO: return type is converted to ContextEvent with Value parameter,
@@ -117,19 +117,19 @@ pub enum TokenContracts {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct SellTokenParams {
-    price: i64,
-    timeout_secs: u64,
-    user_pubkey: Pubkey,
+    pub price: i64,
+    pub timeout_secs: u64,
+    pub user_pubkey: Pubkey,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct SellTokenLockParams {
-    wallet_key: Pubkey,
+    pub wallet_key: Pubkey,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct TransferTokenParams {
-    user_pubkey: Pubkey,
+    pub user_pubkey: Pubkey,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]

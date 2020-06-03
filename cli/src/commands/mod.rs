@@ -12,6 +12,8 @@ pub mod tokens;
 pub use tokens::TokenCommands;
 pub mod wallets;
 pub use wallets::WalletCommands;
+pub mod make_it_rain;
+pub use make_it_rain::MakeItRain;
 
 #[derive(StructOpt, Debug)]
 pub enum Commands {

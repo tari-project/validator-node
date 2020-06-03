@@ -1,3 +1,4 @@
+use super::MakeItRain;
 use crate::console::Terminal;
 use deadpool_postgres::Client;
 use serde_json::json;
@@ -25,6 +26,15 @@ pub enum AssetCommands {
         /// Work with tokens of asset
         asset_id: AssetID,
     },
+    /// Runs load scenario on a Single Use Token asset:
+    ///
+    /// 1. Issue `tokens` amount of tokens
+    /// 2. Start `concurrency` parallel users
+    /// 3. For every user create unique pubkey and get chunk of tokens
+    /// 4. issue sell_token
+    /// 5. Once instruction goes to Commit - send redeem_token
+    /// 6. Repeat step 4 with next token from chunk
+    MakeItRain(MakeItRain),
 }
 
 #[derive(StructOpt, Debug)]
@@ -87,6 +97,9 @@ impl AssetCommands {
                     println!("Asset not found!");
                 }
             },
+            Self::MakeItRain(mir) => {
+                mir.run(node_config).await?;
+            },
         };
         Ok(())
     }
@@ -106,7 +119,7 @@ impl CreateAsset {
         .await?;
         let raid_id: RaidID = self
             .raid_id
-            .map(|rid| dbg!(rid).parse().unwrap())
+            .map(|rid| rid.parse().unwrap())
             .unwrap_or(RaidID::default());
         // TODO: this is a stub:
         let hash = AssetID::generate_hash(format!(

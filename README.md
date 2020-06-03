@@ -11,8 +11,11 @@ PG_DBNAME=validator_test cargo run -- init
 
 ### Toml config ~/.tari/config.toml
 ```
-[validator]
-postgres = { host = "localhost", user = "postgres", password = "password123" }
+[validator.postgres]
+host = "localhost"
+user = "postgres"
+password = "password123"
+pool = { max_size = 16, timeouts = { wait = { secs = 3, nanos = 0 }, recycle = { secs = 1, nanos = 0 } } }
 ```
 
 ### Logging config ~/.tari/log4rs.yml
@@ -124,11 +127,27 @@ Root Id                                   Status     Params
  **  c63f6d5c-a4d1-11ea-8040-000102030405 Commit     {"SellToken":{"price":1,"timeout_secs":300,"user_pubkey":"new_owner"}}
      c649f5ba-a4d1-11ea-8041-000000000000 Commit     {"SellTokenLock":{"wallet_key":"100cf9ffe39a5c7b6201910ace22e4a1d0e6bd22ab59f616a2d18cdfe8ea2b4e"}}
 
-> tvnc instruction token redeem 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405 'null'
+> tvnc instruction token 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405 redeem_token 'null'
 ...
 
 > tvnc token view 0000000100000000000000000000000.00000000000000000000000000000F1E776DD2D6A4D111EA8035000102030405
 Field                     Value
 additional_data_json      {"owner_pubkey":"issuer_key","used":true}
 
+```
+
+### Make it rain
+
+```
+> tvnc start
+```
+
+create unique asset and run make it rain in another console
+```
+> tvnc asset create 1.0 "make it rain <XXX>" --issuer owner
+Asset created! Details:
+...
+asset_id                  "0000000100000000000000000000000.0000000000000000000000000000...."
+
+> tvnc make-it-rain 0000000100000000000000000000000.0000000000000000000000000000.... -c 20 -t 200
 ```

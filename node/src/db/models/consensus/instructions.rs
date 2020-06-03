@@ -181,7 +181,7 @@ impl Instruction {
     }
 
     /// Load instruction record
-    pub async fn load(id: InstructionID, client: &Client) -> Result<Self, DBError> {
+    pub async fn load(id: InstructionID, client: &tokio_postgres::Client) -> Result<Self, DBError> {
         let stmt = "SELECT * FROM instructions WHERE id = $1::\"InstructionID\"";
         let row = client.query_one(stmt, &[&id]).await?;
         Ok(Self::from_row(row)?)
@@ -198,7 +198,7 @@ impl Instruction {
         Ok((Vec::new(), Vec::new()))
     }
 
-    pub async fn load_subinstructions(&self, client: &Client) -> Result<Vec<Instruction>, DBError> {
+    pub async fn load_subinstructions(&self, client: &tokio_postgres::Client) -> Result<Vec<Instruction>, DBError> {
         let stmt = "SELECT * FROM instructions WHERE parent_id = $1::\"InstructionID\"";
         let rows = client.query(stmt, &[&self.id]).await?;
         Ok(rows.into_iter().map(Self::from_row).collect::<Result<Vec<_>, _>>()?)
