@@ -45,21 +45,24 @@ where
     fn handle(&mut self, msg: M, _ctx: &mut Context<Self>) -> Self::Result {
         let context = self.context();
         let instruction = msg.instruction();
-        let token_context_fut = msg.clone().init_context(self.context());
-        log::trace!(
+        log::info!(
             target: LOG_TARGET,
-            "template={}, instruction={}, Actor received {:?} instruction",
+            "template={}, instruction={}, TemplateRunner received instruction: {:?}",
             Self::template_id(),
             msg.instruction().id,
             msg.params()
         );
+        let client_opt = self.get_shared_db_client();
+        let token_context_fut = msg.clone().init_context(self.context());
 
-        // TODO: make whole execution in a single DB transaction
         let fut = async move {
             let mut context = token_context_fut.await?;
+            if let Some(client) = client_opt {
+                context.set_db_client(client);
+            }
             context.transition(ContextEvent::StartProcessing).await?;
             // TODO: instruction needs to be able to run in an encapsulated way and return
-            // NewTokenStateAppendOnly and NewAssetStateAppendOnly vecs       as the
+            // NewTokenStateAppendOnly and NewAssetStateAppendOnly vecs as the
             // consensus workers need to be able to run an instruction set and confirm the
             // resulting state matches run contract
             let (result, mut context) = msg.call(context).await?;

@@ -1,19 +1,21 @@
 use actix::Actor;
 use dotenv::dotenv;
+use std::sync::Arc;
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
 use tari_validator_node::{
     api::server::actix_main,
     config::NodeConfig,
-    db::{migrations, utils},
+    db::{migrations, utils::db},
     metrics::Metrics,
 };
 use tvnc::{console::ServerConsole, Arguments, Commands};
 
 async fn start_server(node_config: NodeConfig) -> anyhow::Result<()> {
-    let metrics_addr = Metrics::default().start();
+    let pool = Arc::new(db::build_pool(&node_config.postgres)?);
+    let metrics_addr = Metrics::new(pool.clone()).start();
     let kill_console = ServerConsole::init(metrics_addr.clone()).await;
-    let res = actix_main(node_config, Some(metrics_addr), kill_console).await;
+    let res = actix_main(node_config, Some(metrics_addr), pool, kill_console).await;
     log::debug!("Terminating console: {:?}", res);
     res
 }
@@ -33,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Start => start_server(node_config).await?,
         Commands::Init => {
             println!("Initializing database {:?}", node_config.postgres.dbname);
-            utils::db::create_database(node_config).await?;
+            db::create_database(node_config).await?;
         },
         Commands::Migrate => {
             println!("Running migrations on database {:?}", node_config.postgres.dbname);
@@ -52,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             println!("Resetting database {:?}", node_config.postgres.dbname);
-            utils::db::reset_database(node_config).await?;
+            db::reset_database(node_config).await?;
         },
         Commands::Template(cmd) => {
             println!("Template -> {:?}", cmd);
@@ -60,7 +62,8 @@ async fn main() -> anyhow::Result<()> {
         },
         Commands::Instruction(cmd) => {
             println!("Instruction -> {:?}", cmd);
-            cmd.run(node_config).await?;
+            let client = db::db_client_raw(&node_config).await?;
+            cmd.run(node_config, &client).await?;
         },
         Commands::Asset(cmd) => {
             println!("Asset -> {:?}", cmd);

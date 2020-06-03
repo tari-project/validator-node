@@ -7,7 +7,11 @@
 use super::{events::*, LOG_TARGET};
 use crate::{db::models::InstructionStatus, types::InstructionID};
 use actix::{Context, Message, MessageResponse};
-use std::collections::{HashMap, HashSet, VecDeque};
+use deadpool_postgres::Pool;
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::Arc,
+};
 
 const SPARKLINE_MAX_SIZE_DEFAULT: usize = 80;
 
@@ -16,17 +20,27 @@ const SPARKLINE_MAX_SIZE_DEFAULT: usize = 80;
 /// 1. Turning events into displayable data
 /// 2. Handler for events processing
 pub struct Metrics {
+    pool: Option<Arc<Pool>>,
     instructions_scheduled_spark: Sparkline,
     instructions_processing_spark: Sparkline,
     instructions_pending_spark: Sparkline,
     instructions_invalid_spark: Sparkline,
     instructions_commit_spark: Sparkline,
+    current_processing_instructions: u64,
+    current_pending_instructions: u64,
     unique_instructions_counter: HashSet<InstructionID>,
     calls_counter: HashMap<String, u64>,
     // TODO: instruction_time_in_status: HashMap<(InstructionStatus,InstructionID),
 }
 
 impl Metrics {
+    pub fn new(pool: Arc<Pool>) -> Self {
+        Self {
+            pool: Some(pool),
+            ..Default::default()
+        }
+    }
+
     pub(super) fn configure(&mut self, config: MetricsConfig) {
         self.instructions_pending_spark
             .set_max_size(config.instructions_spark_sizes);
@@ -61,11 +75,26 @@ impl Metrics {
             },
             MetricEvent::Instruction(InstructionEvent { id, status, .. }) => {
                 match status {
-                    InstructionStatus::Pending => self.instructions_pending_spark.inc(),
+                    InstructionStatus::Pending => {
+                        self.instructions_pending_spark.inc();
+                        self.current_processing_instructions = self.current_processing_instructions.saturating_sub(1);
+                        self.current_pending_instructions += 1;
+                    },
                     InstructionStatus::Scheduled => self.instructions_scheduled_spark.inc(),
-                    InstructionStatus::Processing => self.instructions_processing_spark.inc(),
-                    InstructionStatus::Invalid => self.instructions_invalid_spark.inc(),
-                    InstructionStatus::Commit => self.instructions_commit_spark.inc(),
+                    InstructionStatus::Processing => {
+                        self.current_processing_instructions += 1;
+                        self.instructions_processing_spark.inc()
+                    },
+                    InstructionStatus::Invalid => {
+                        self.current_processing_instructions = self.current_processing_instructions.saturating_sub(1);
+                        self.instructions_invalid_spark.inc()
+                    },
+                    InstructionStatus::Commit => {
+                        self.instructions_pending_spark.inc();
+                        // TODO: for better precision should be HashSet of instruction_id. or separate status for when
+                        // it fails Commit.
+                        self.current_pending_instructions = self.current_pending_instructions.saturating_sub(1);
+                    },
                 };
                 self.unique_instructions_counter.insert(id);
             },
@@ -88,8 +117,11 @@ pub struct MetricsSnapshot {
     pub instructions_pending_spark: Vec<u64>,
     pub instructions_invalid_spark: Vec<u64>,
     pub instructions_commit_spark: Vec<u64>,
+    pub current_processing_instructions: u64,
+    pub current_pending_instructions: u64,
     pub total_unique_instructions: u64,
     pub total_calls: HashMap<String, u64>,
+    pub pool_status: Option<deadpool::Status>,
 }
 
 impl From<&Metrics> for MetricsSnapshot {
@@ -100,8 +132,11 @@ impl From<&Metrics> for MetricsSnapshot {
             instructions_pending_spark: metrics.instructions_pending_spark.to_vec(),
             instructions_invalid_spark: metrics.instructions_invalid_spark.to_vec(),
             instructions_commit_spark: metrics.instructions_commit_spark.to_vec(),
+            current_processing_instructions: metrics.current_processing_instructions,
+            current_pending_instructions: metrics.current_pending_instructions,
             total_unique_instructions: metrics.unique_instructions_counter.len() as u64,
             total_calls: metrics.calls_counter.clone(),
+            pool_status: metrics.pool.as_ref().map(|p| p.status()),
         }
     }
 }

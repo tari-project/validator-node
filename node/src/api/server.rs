@@ -2,13 +2,13 @@ use crate::{
     api::{middleware::*, routing},
     config::NodeConfig,
     consensus::ConsensusProcessor,
-    db::utils::db::build_pool,
     metrics::Metrics,
     template::{actix_web_impl::ActixTemplate, single_use_tokens::SingleUseTokenTemplate, TemplateRunner},
 };
 use actix::Addr;
 use actix_cors::Cors;
 use actix_web::{http, middleware::Logger, web, App, HttpResponse, HttpServer};
+use deadpool_postgres::Pool;
 use futures::{
     future::{select, Either},
     pin_mut,
@@ -26,12 +26,10 @@ const LOGGER_FORMAT: &'static str = r#"{"level": "INFO", "target":"api::request"
 pub async fn actix_main(
     config: NodeConfig,
     metrics_addr: Option<Addr<Metrics>>,
+    pool: Arc<Pool>,
     mut kill_console: Sender<()>,
 ) -> anyhow::Result<()>
 {
-    let pool = Arc::new(build_pool(&config.postgres)?);
-    let pool_actors = Arc::new(build_pool(&config.postgres)?);
-
     println!(
         "Server starting at {}",
         config.actix.addr().to_socket_addrs()?.next().unwrap()
@@ -45,7 +43,9 @@ pub async fn actix_main(
     });
 
     // TODO: so far predefined templates only... make templates runners configurable from main
-    let sut_runner = TemplateRunner::<SingleUseTokenTemplate>::create(pool_actors, config.clone(), metrics_addr);
+    // TODO: make distinct pool per template, though /status endpoint will need to provide status of all pools in that
+    // case
+    let sut_runner = TemplateRunner::<SingleUseTokenTemplate>::create(pool.clone(), config.clone(), metrics_addr);
     let sut_context = sut_runner.start();
 
     let cors_config = config.cors.clone();

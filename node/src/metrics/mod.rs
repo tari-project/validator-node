@@ -10,7 +10,11 @@ pub const LOG_TARGET: &'static str = "tari_validator_node::metrics";
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{db::models::InstructionStatus, test::utils::Test, types::InstructionID};
+    use crate::{
+        db::models::InstructionStatus,
+        test::utils::Test,
+        types::{InstructionID, TemplateID},
+    };
     use actix::Actor;
     use std::time::Duration;
     use tokio::time::delay_for;
@@ -45,8 +49,11 @@ mod test {
         let addr = Metrics::default().start();
 
         let id = Test::<InstructionID>::new();
+        let template_id = Test::<TemplateID>::new();
+
         let event: MetricEvent = InstructionEvent {
             id,
+            template_id,
             status: InstructionStatus::Pending,
         }
         .into();
@@ -56,6 +63,7 @@ mod test {
         addr.send(event).await.unwrap();
         let event2: MetricEvent = InstructionEvent {
             id,
+            template_id,
             status: InstructionStatus::Processing,
         }
         .into();
@@ -66,6 +74,7 @@ mod test {
         let id2 = Test::<InstructionID>::new();
         let event3: MetricEvent = InstructionEvent {
             id: id2,
+            template_id,
             status: InstructionStatus::Pending,
         }
         .into();
@@ -89,8 +98,10 @@ mod test {
         assert_eq!(metrics.instructions_scheduled_spark, vec![0, 0, 0]);
 
         let id = Test::<InstructionID>::new();
+        let template_id = Test::<TemplateID>::new();
         let event: MetricEvent = InstructionEvent {
             id,
+            template_id,
             status: InstructionStatus::Scheduled,
         }
         .into();
@@ -105,12 +116,14 @@ mod test {
 
         let event: MetricEvent = InstructionEvent {
             id,
+            template_id,
             status: InstructionStatus::Scheduled,
         }
         .into();
         addr.send(event).await.unwrap();
         let event2: MetricEvent = InstructionEvent {
             id,
+            template_id,
             status: InstructionStatus::Processing,
         }
         .into();
@@ -123,12 +136,14 @@ mod test {
         let id2 = Test::<InstructionID>::new();
         let event3: MetricEvent = InstructionEvent {
             id,
+            template_id,
             status: InstructionStatus::Pending,
         }
         .into();
         addr.send(event3).await.unwrap();
         let event4: MetricEvent = InstructionEvent {
             id: id2,
+            template_id,
             status: InstructionStatus::Scheduled,
         }
         .into();

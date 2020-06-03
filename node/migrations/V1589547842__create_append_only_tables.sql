@@ -8,7 +8,8 @@ CREATE TABLE token_state_append_only (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX index_token_state_append_only_uuid ON token_state_append_only (id);
-CREATE INDEX index_token_state_append_only_token_id_status_created_at ON token_state_append_only (token_id, instruction_id, created_at);
+CREATE INDEX index_token_state_instruction_id ON token_state_append_only (instruction_id);
+CREATE INDEX index_token_state_append_only_token_id_created_at ON token_state_append_only (token_id, created_at);
 
 CREATE OR REPLACE VIEW tokens_view AS
 SELECT
@@ -36,7 +37,8 @@ CREATE TABLE asset_state_append_only (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX index_asset_state_append_only_uuid ON asset_state_append_only (id);
-CREATE INDEX index_asset_state_append_only_asset_state_id_status_created_at ON asset_state_append_only (asset_id, instruction_id, created_at);
+CREATE INDEX index_asset_state_append_only_instruction_id ON asset_state_append_only (instruction_id);
+CREATE INDEX index_asset_state_append_only_asset_state_id_created_at ON asset_state_append_only (asset_id, created_at);
 
 CREATE OR REPLACE VIEW asset_states_view AS
 SELECT

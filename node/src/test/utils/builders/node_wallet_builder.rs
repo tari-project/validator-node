@@ -16,6 +16,7 @@ impl Default for NodeWalletBuilder {
 }
 
 impl NodeWalletBuilder {
+    #[allow(dead_code)]
     pub fn build(self) -> anyhow::Result<NodeWallet> {
         Ok(NodeWallet::new(self.address, self.name)?)
     }
