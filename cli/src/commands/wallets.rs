@@ -22,7 +22,7 @@ pub enum WalletCommands {
         /// Public key of a wallet
         pubkey: String,
     },
-    /// Set wallet's balance to amount of micro-tari
+    /// Set wallet's balance to amount of micro-XTR
     Balance {
         /// Public key of a wallet
         pubkey: String,

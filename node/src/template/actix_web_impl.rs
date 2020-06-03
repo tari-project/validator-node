@@ -366,7 +366,7 @@ mod test {
         assert_eq!(
             format!("{}", error),
             "AssetID should be 64-char string, got 000100010000001000000000000002.00000000000000000000000000000003 \
-             instread"
+             instead"
         );
     }
 
