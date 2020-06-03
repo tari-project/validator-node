@@ -28,9 +28,7 @@ pub struct Terminal {
 impl Default for Terminal {
     fn default() -> Self {
         let backend = CrosstermBackend::new(io::stdout());
-        crossterm::terminal::enable_raw_mode().unwrap();
-        let mut inner = TUITerminal::new(backend).unwrap();
-        inner.hide_cursor().unwrap();
+        let inner = TUITerminal::new(backend).unwrap();
         Self {
             inner,
             alternate: false,
@@ -49,7 +47,7 @@ impl Drop for Terminal {
                 log::warn!("Failed to leave alternate terminal screen");
             }
         }
-        let _ = self.show_cursor();
+        let _ = self.inner.show_cursor();
         let _ = crossterm::terminal::disable_raw_mode();
     }
 }
@@ -81,6 +79,8 @@ impl Terminal {
     pub fn alternate() -> Self {
         use crossterm::{execute, terminal::EnterAlternateScreen};
         let mut this: Terminal = Default::default();
+        crossterm::terminal::enable_raw_mode().unwrap();
+        this.inner.hide_cursor().unwrap();
         if let Ok(_) = execute!(io::stdout(), EnterAlternateScreen) {
             this.alternate = true;
         } else {
@@ -89,7 +89,7 @@ impl Terminal {
         this
     }
 
-    pub fn render_list<T: Serialize>(&mut self, name: &str, value: T, fields: &[&str], sizes: &[u16]) {
+    pub fn render_list<T: Serialize>(&mut self, name: &str, value: Vec<T>, fields: &[&str], sizes: &[u16]) {
         let value = serde_json::json!(value);
         if !value.is_array() {
             return println!("{:#}", value);
@@ -124,7 +124,8 @@ impl Terminal {
 
         self.inner
             .draw(|mut f| {
-                let size = f.size();
+                let mut size = f.size();
+                size.height -= 1;
                 f.render_widget(
                     table
                         .header_style(Style::default().fg(Color::Yellow))
