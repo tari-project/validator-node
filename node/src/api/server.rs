@@ -30,6 +30,7 @@ pub async fn actix_main(
 ) -> anyhow::Result<()>
 {
     let pool = Arc::new(build_pool(&config.postgres)?);
+    let pool_actors = Arc::new(build_pool(&config.postgres)?);
 
     println!(
         "Server starting at {}",
@@ -44,7 +45,7 @@ pub async fn actix_main(
     });
 
     // TODO: so far predefined templates only... make templates runners configurable from main
-    let sut_runner = TemplateRunner::<SingleUseTokenTemplate>::create(pool.clone(), config.clone(), metrics_addr);
+    let sut_runner = TemplateRunner::<SingleUseTokenTemplate>::create(pool_actors, config.clone(), metrics_addr);
     let sut_context = sut_runner.start();
 
     let cors_config = config.cors.clone();

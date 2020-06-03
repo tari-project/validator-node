@@ -20,6 +20,11 @@ pub async fn connect_raw(pg: PgConfig) -> Result<tokio_postgres::Client, DBError
     Ok(client)
 }
 
+pub async fn db_client_raw(config: &NodeConfig) -> Result<tokio_postgres::Client, DBError> {
+    let pg_config = config.postgres.get_pg_config()?;
+    connect_raw(pg_config).await
+}
+
 /// Pick single DB client from a pool
 pub async fn db_client(config: &NodeConfig) -> Result<deadpool_postgres::Client, DBError> {
     let pool = build_pool(&config.postgres)?;

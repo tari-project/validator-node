@@ -1,16 +1,16 @@
 use crate::console::Terminal;
 use awc::Client as WebClient;
-use deadpool_postgres::Client;
 use serde_json::Value;
 use std::time::Duration;
 use structopt::StructOpt;
 use tari_validator_node::{
     config::NodeConfig,
-    db::{models::consensus::instructions::*, utils::db::db_client},
+    db::{models::consensus::instructions::*, utils::db::db_client_raw},
     template::{asset_call_path, token_call_path},
     types::{AssetID, InstructionID, TokenID},
 };
 use tokio::time::delay_for;
+use tokio_postgres::Client;
 
 const WAIT: Duration = Duration::from_secs(1);
 
@@ -36,8 +36,8 @@ pub enum InstructionCommands {
 }
 
 impl InstructionCommands {
-    pub async fn run(self, node_config: NodeConfig) -> anyhow::Result<()> {
-        let client = db_client(&node_config).await?;
+    pub async fn run(self, node_config: NodeConfig) -> anyhow::Result<Option<Instruction>> {
+        let client = db_client_raw(&node_config).await?;
         match self {
             Self::Asset {
                 asset_id,
@@ -52,6 +52,7 @@ impl InstructionCommands {
                     let instruction: Instruction = resp.json().await.unwrap();
                     delay_for(WAIT).await;
                     display_instruction_status(instruction.id, &client).await?;
+                    return Ok(Some(instruction));
                 } else {
                     println!("Request Failed: {:?}", resp.body().await);
                 }
@@ -69,6 +70,7 @@ impl InstructionCommands {
                     let instruction: Instruction = resp.json().await.unwrap();
                     delay_for(WAIT).await;
                     display_instruction_status(instruction.id, &client).await?;
+                    return Ok(Some(instruction));
                 } else {
                     println!("Request Failed: {:?}", resp.body().await);
                 }
@@ -78,10 +80,11 @@ impl InstructionCommands {
             },
             Self::View { instruction_id } => {
                 let instruction = Instruction::load(instruction_id, &client).await?;
-                Terminal::basic().render_object("Instruction details", instruction);
+                Terminal::basic().render_object("Instruction details", instruction.clone());
+                return Ok(Some(instruction));
             },
         };
-        Ok(())
+        Ok(None)
     }
 }
 

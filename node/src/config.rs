@@ -39,15 +39,52 @@ impl NodeConfig {
         if env {
             let actix = Environment::with_prefix("ACTIX").collect()?;
             let pg = Environment::with_prefix("PG").collect()?;
+            let pg_pool = Environment::with_prefix("PG_POOL").collect()?;
+            let pg_pool_timeouts_recycle = Environment::with_prefix("PG_POOL_TIMEOUTS_RECYCLE").collect()?;
+            let pg_pool_timeouts_create = Environment::with_prefix("PG_POOL_TIMEOUTS_CREATE").collect()?;
+            let pg_pool_timeouts_wait = Environment::with_prefix("PG_POOL_TIMEOUTS_WAIT").collect()?;
             let cors = Environment::with_prefix("CORS").collect()?;
             let consensus = Environment::with_prefix("CONSENSUS").collect()?;
-            config.set("validator.actix", actix)?;
-            config.set("validator.postgres", pg)?;
-            config.set("validator.cors", cors)?;
-            config.set("validator.consensus", consensus)?;
+            config.set("validator.actix", actix).unwrap();
+            config.set("validator.postgres", pg).unwrap();
+            if pg_pool.len() > 0 && pg_pool.contains_key("max_size") {
+                config.set("validator.postgres.pool", pg_pool).unwrap();
+            }
+            // TODO: this ideally should be fixed in deadpool config loader crate:
+            if pg_pool_timeouts_wait.len() > 0 {
+                if pg_pool_timeouts_wait.contains_key("secs") && pg_pool_timeouts_wait.contains_key("nanos") {
+                    config
+                        .set("validator.postgres.pool.timeouts.wait", pg_pool_timeouts_wait)
+                        .unwrap();
+                } else {
+                    panic!("PG_POOL_TIMEOUTS_WAIT should define _SECS and _NANOS suffixes")
+                }
+            }
+            if pg_pool_timeouts_create.len() > 0 {
+                if pg_pool_timeouts_create.contains_key("secs") && pg_pool_timeouts_create.contains_key("nanos") {
+                    config
+                        .set("validator.postgres.pool.timeouts.create", pg_pool_timeouts_create)
+                        .unwrap();
+                } else {
+                    panic!("PG_POOL_TIMEOUTS_CREATE should define _SECS and _NANOS suffixes")
+                }
+            }
+            if pg_pool_timeouts_recycle.len() > 0 {
+                if pg_pool_timeouts_recycle.contains_key("secs") && pg_pool_timeouts_recycle.contains_key("nanos") {
+                    config
+                        .set("validator.postgres.pool.timeouts.recycle", pg_pool_timeouts_recycle)
+                        .unwrap();
+                } else {
+                    panic!("PG_POOL_TIMEOUTS_RECYCLE should define _SECS and _NANOS suffixes")
+                }
+            }
+            config.set("validator.cors", cors).unwrap();
+            config.set("validator.consensus", consensus).unwrap();
         }
         if config.get_str("validator.public_address").is_err() {
-            config.set("validator.public_address", global.public_address.to_string())?;
+            config
+                .set("validator.public_address", global.public_address.to_string())
+                .unwrap();
         }
         <Self as DefaultConfigLoader>::load_from(&config)
     }

@@ -158,27 +158,27 @@ loggers:
     additive: false
   # Route log events sent to the "tari_validator_node" logger to the "other" appender
   tari_validator_node:
-    level: info
+    level: trace
     appenders:
       - validator
     additive: false
   actix_server:
-    level: info
+    level: debug
     appenders:
       - validator
     additive: false
   actix_web:
-    level: info
+    level: debug
     appenders:
       - actix_web
     additive: false
   actix_http:
-    level: info
+    level: debug
     appenders:
       - validator
     additive: false
   actix:
-    level: info
+    level: debug
     appenders:
       - validator
     additive: false
