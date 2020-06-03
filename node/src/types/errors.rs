@@ -10,7 +10,7 @@ pub enum TypeError {
     },
     #[error("Failed to parse {field} from source string {raw}")]
     ParseFieldRaw { field: &'static str, raw: String },
-    #[error("{obj} should be {len}-char string, got {raw} instread")]
+    #[error("{obj} should be {len}-char string, got {raw} instead")]
     SourceLen { obj: &'static str, len: usize, raw: String },
     #[error("Failed to generate uuid {0}")]
     Uuid(#[from] uuid::Error),

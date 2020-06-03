@@ -38,7 +38,7 @@ pub enum AssetContracts {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct IssueTokensParams {
     pub token_ids: Option<Vec<TokenID>>,
-    pub amount: Option<u16>,
+    pub quantity: Option<u16>,
 }
 
 // TODO: return type is converted to ContextEvent with Value parameter,
@@ -49,19 +49,19 @@ pub struct IssueTokensParams {
 impl AssetContracts {
     pub async fn issue_tokens(
         context: &mut AssetInstructionContext<SingleUseTokenTemplate>,
-        IssueTokensParams { token_ids, amount }: IssueTokensParams,
+        IssueTokensParams { token_ids, quantity }: IssueTokensParams,
     ) -> Result<Vec<Token>, TemplateError>
     {
         let token_ids: Vec<TokenID> = if let Some(token_ids) = token_ids {
             token_ids
         } else {
-            if let Some(amount) = amount {
-                (0..amount)
+            if let Some(quantity) = quantity {
+                (0..quantity)
                     .map(|_| TokenID::new(context.asset_id(), &context.node_id()))
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(anyhow::Error::from)?
             } else {
-                return validation_err!("Either token_ids or amount should be specified in request json body");
+                return validation_err!("Either token_ids or quantity should be specified in request json body");
             }
         };
         let mut tokens = Vec::with_capacity(token_ids.len());
@@ -98,7 +98,7 @@ pub enum TokenContracts {
     /// 2. waiting for `price` to appear in the `wallet_key`, or `timeout_secs`
     /// 3. reassings token to `user_pubkey`
     /// NOTICE: ontract methods should implemented on this enum,
-    /// also *Params struct should be distict for every method
+    /// also *Params struct should be distinct for every method
     /// and passed as 2nd parameter
     #[contract(method = "sell_token")]
     SellToken(SellTokenParams),
@@ -136,10 +136,10 @@ pub struct TransferTokenParams {
 pub struct RedeemTokenParams;
 
 impl TokenContracts {
-    /// Sell token for a `price` amount of tari to user with `user_pubkey`
+    /// Sell token for a `price` of XTR to user with `user_pubkey`
     ///
     /// ### Input Parameters:
-    /// - price - amount of tari
+    /// - price - quantity of XTR
     /// - user_pubkey - new owner of a token
     /// - timeout_secs - timeout before Instruction is cancelled as expired
     ///
@@ -431,7 +431,7 @@ mod test {
         let token_ids: Vec<_> = (0..10).map(|_| Test::<TokenID>::from_asset(asset_id)).collect();
         let contract: AssetContracts = IssueTokensParams {
             token_ids: Some(token_ids.clone()),
-            amount: None,
+            quantity: None,
         }
         .into();
 
@@ -445,7 +445,7 @@ mod test {
         let asset_id = context.asset_id().clone();
         let contract: AssetContracts = IssueTokensParams {
             token_ids: None,
-            amount: Some(10),
+            quantity: Some(10),
         }
         .into();
         let (tokens, _) = contract.call(context).await.unwrap();
@@ -462,14 +462,14 @@ mod test {
         let token_ids: Option<Vec<_>> = Some((0..10).map(|_| Test::<TokenID>::new()).collect());
         let contract: AssetContracts = IssueTokensParams {
             token_ids,
-            amount: None,
+            quantity: None,
         }
         .into();
         assert!(contract.call(context).await.is_err());
         let context = build_context().await;
         let contract: AssetContracts = IssueTokensParams {
             token_ids: None,
-            amount: None,
+            quantity: None,
         }
         .into();
         assert!(contract.call(context).await.is_err());

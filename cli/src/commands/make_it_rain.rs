@@ -21,7 +21,7 @@ const MAX_RETRIES: usize = 600;
 #[derive(StructOpt, Debug, Clone)]
 /// Runs load scenario on a Single Use Token asset:
 ///
-/// 1. Issue `tokens` amount of tokens
+/// 1. Issue `tokens` quantity of tokens
 /// 2. Start `concurrency` parallel users
 /// 3. For every user create unique pubkey and get chunk of tokens
 /// 4. issue sell_token
@@ -51,7 +51,7 @@ impl MakeItRain {
         let instruction = InstructionCommands::Asset {
             asset_id: self.asset_id.clone(),
             contract_name: "issue_tokens".into(),
-            data: json!({"amount": self.tokens}),
+            data: json!({"quantity": self.tokens}),
         }
         .run(node_config.clone())
         .await?

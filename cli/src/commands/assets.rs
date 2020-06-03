@@ -28,7 +28,7 @@ pub enum AssetCommands {
     },
     /// Runs load scenario on a Single Use Token asset:
     ///
-    /// 1. Issue `tokens` amount of tokens
+    /// 1. Issue `tokens` quantity of tokens
     /// 2. Start `concurrency` parallel users
     /// 3. For every user create unique pubkey and get chunk of tokens
     /// 4. issue sell_token

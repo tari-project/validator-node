@@ -23,7 +23,7 @@ pub struct Metrics {
     instructions_commit_spark: Sparkline,
     unique_instructions_counter: HashSet<InstructionID>,
     calls_counter: HashMap<String, u64>,
-    // TODO: insturction_time_in_status: HashMap<(InstructionStatus,InstructionID),
+    // TODO: instruction_time_in_status: HashMap<(InstructionStatus,InstructionID),
 }
 
 impl Metrics {

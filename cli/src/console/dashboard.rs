@@ -63,18 +63,18 @@ impl Dashboard {
         f.render_widget(block, area);
 
         let data = [
-            ("Scheduled", &self.metrics.instructions_scheduled_spark),
-            ("Processing", &self.metrics.instructions_processing_spark),
-            ("Pending", &self.metrics.instructions_pending_spark),
-            ("Invalid", &self.metrics.instructions_invalid_spark),
-            ("Commit", &self.metrics.instructions_commit_spark),
+            ("Scheduled", &self.metrics.instructions_scheduled_spark, Color::Yellow),
+            ("Processing", &self.metrics.instructions_processing_spark, Color::Blue),
+            ("Pending", &self.metrics.instructions_pending_spark, Color::Gray),
+            ("Invalid", &self.metrics.instructions_invalid_spark, Color::Red),
+            ("Commit", &self.metrics.instructions_commit_spark, Color::Green),
         ];
 
-        for (chunk, (title, data)) in chunks.into_iter().zip(&data) {
+        for (chunk, (title, data, color)) in chunks.into_iter().zip(&data) {
             let sparkline = Sparkline::default()
                 .block(Block::default().title(title))
                 .data(data.as_slice())
-                .style(Style::default().fg(Color::Yellow));
+                .style(Style::default().fg(*color));
             f.render_widget(sparkline, chunk);
         }
     }

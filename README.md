@@ -98,9 +98,9 @@ Asset created! Details:
 ...
 asset_id                  "0000000100000000000000000000000.00000000000000000000000000000F1E"
 
-> tvnc instruction asset 0000000100000000000000000000000.00000000000000000000000000000F1E issue_tokens '{"amount":10}'
+> tvnc instruction asset 0000000100000000000000000000000.00000000000000000000000000000F1E issue_tokens '{"quantity":10}'
 Root Id                                   Status     Params
- **  77674150-a4d1-11ea-8034-000102030405 Pending    {"IssueTokens":{"amount":10,"token_ids":null}}
+ **  77674150-a4d1-11ea-8034-000102030405 Pending    {"IssueTokens":{"quantity":10,"token_ids":null}}
 
 > tvnc token list 0000000100000000000000000000000.00000000000000000000000000000C77
 Id                                                                                               IssueNumber          Status
@@ -149,5 +149,5 @@ Asset created! Details:
 ...
 asset_id                  "0000000100000000000000000000000.0000000000000000000000000000...."
 
-> tvnc make-it-rain 0000000100000000000000000000000.0000000000000000000000000000.... -c 20 -t 200
+> tvnc asset  make-it-rain 0000000100000000000000000000000.0000000000000000000000000000.... -c 20 -t 200
 ```
