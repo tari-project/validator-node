@@ -50,7 +50,7 @@ impl AssetContracts {
     pub async fn issue_tokens(
         context: &mut AssetInstructionContext<SingleUseTokenTemplate>,
         IssueTokensParams { token_ids, quantity }: IssueTokensParams,
-    ) -> Result<Vec<Token>, TemplateError>
+    ) -> Result<Vec<TokenID>, TemplateError>
     {
         let token_ids: Vec<TokenID> = if let Some(token_ids) = token_ids {
             token_ids
@@ -64,26 +64,24 @@ impl AssetContracts {
                 return validation_err!("Either token_ids or quantity should be specified in request json body");
             }
         };
-        let mut tokens = Vec::with_capacity(token_ids.len());
         let asset = &context.asset;
         let data = TokenData {
             owner_pubkey: asset.asset_issuer_pub_key.clone(),
             used: false,
         };
-        let new_token = move |token_id| NewToken {
-            token_id,
+        let new_token = move |token_id: &TokenID| NewToken {
+            token_id: token_id.clone(),
             asset_state_id: asset.id.clone(),
             initial_data_json: json!(data),
             ..NewToken::default()
         };
-        for data in token_ids.into_iter().map(new_token) {
+        for data in token_ids.iter().map(new_token) {
             if data.token_id.asset_id() != asset.asset_id {
                 return validation_err!("Token ID {} does not match asset {}", data.token_id, asset.asset_id);
             }
-            let token = context.create_token(data).await?;
-            tokens.push(token);
+            context.create_token(data).await?;
         }
-        Ok(tokens)
+        Ok(token_ids)
     }
 }
 
@@ -175,7 +173,12 @@ impl TokenContracts {
         while context.check_balance(&wallet_key).await? < price {
             tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
             if timeout.elapsed() > timeout_secs {
-                // TODO: any failure in instrustion should also fail all subinstructions
+                // TODO: any failure in instruction should also fail all subinstructions in transaction
+                let data = UpdateToken {
+                    status: Some(TokenStatus::Active),
+                    ..Default::default()
+                };
+                let _ = context.update_token(data).await;
                 return validation_err!("Timeout expired for sell_token");
             }
         }
@@ -436,9 +439,9 @@ mod test {
         .into();
 
         let (tokens, _) = contract.call(context).await.unwrap();
-        let tokens: Vec<Token> = serde_json::from_value(tokens).unwrap();
-        for (token, token_id) in tokens.iter().zip(token_ids.iter()) {
-            assert_eq!(token.token_id, *token_id);
+        let result: Vec<TokenID> = serde_json::from_value(tokens).unwrap();
+        for (token_id1, token_id2) in result.iter().zip(token_ids.iter()) {
+            assert_eq!(token_id1, token_id2);
         }
 
         let context = build_context().await;
@@ -449,9 +452,9 @@ mod test {
         }
         .into();
         let (tokens, _) = contract.call(context).await.unwrap();
-        let tokens: Vec<Token> = serde_json::from_value(tokens).unwrap();
-        for token in tokens.iter() {
-            assert_eq!(token.token_id.asset_id(), asset_id);
+        let token_ids: Vec<TokenID> = serde_json::from_value(tokens).unwrap();
+        for token_id in token_ids.iter() {
+            assert_eq!(token_id.asset_id(), asset_id);
         }
     }
 
@@ -650,7 +653,8 @@ mod test {
         for _ in 0u8..10 {
             tokio::time::delay_for(std::time::Duration::from_millis(100)).await;
             let instruction = Instruction::load(id, &client).await.unwrap();
-            if instruction.status != InstructionStatus::Scheduled {
+            if instruction.status != InstructionStatus::Scheduled && instruction.status != InstructionStatus::Processing
+            {
                 assert_eq!(instruction.status, InstructionStatus::Invalid);
                 return;
             }

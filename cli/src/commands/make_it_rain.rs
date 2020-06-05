@@ -1,22 +1,28 @@
 use super::InstructionCommands;
 use crate::console::Terminal;
+use deadpool::managed::PoolConfig;
 use deadpool_postgres::{Client, Pool};
 use serde_json::{json, Value};
-use std::time::Duration;
+use std::{collections::HashMap, ops::AddAssign, time::Duration};
 use structopt::StructOpt;
 use tari_validator_node::{
     config::NodeConfig,
     db::{
-        models::{asset_states::*, consensus::instructions::*, tokens::*, wallet::*, TokenStatus},
+        models::{consensus::instructions::*, wallet::*},
         utils::db::build_pool,
     },
     template::single_use_tokens::{SellTokenLockParams, TokenContracts},
-    types::{AssetID, Pubkey},
+    types::{AssetID, Pubkey, TokenID},
 };
-use tokio::time::delay_for;
+use tokio::{sync::Mutex, time::delay_for};
 
 const WAIT: Duration = Duration::from_millis(100);
 const MAX_RETRIES: usize = 600;
+
+lazy_static::lazy_static! {
+    static ref TERMINAL: Mutex<Terminal> = Mutex::new(Terminal::basic());
+    static ref COUNTERS: Mutex<HashMap<String, Counters>> = Mutex::new(HashMap::new());
+}
 
 #[derive(StructOpt, Debug, Clone)]
 /// Runs load scenario on a Single Use Token asset:
@@ -35,127 +41,131 @@ pub struct MakeItRain {
     // timeout: u16,
     /// How many parallel threads to run
     #[structopt(short = "c", long, default_value = "4")]
-    concurrecy: u16,
+    concurrency: u16,
     /// How many tokens to issue for test (total requests)
     #[structopt(short = "t", long, default_value = "100")]
     tokens: u16,
+    /// Timeout for sell_token instruction
+    #[structopt(long, default_value = "30")]
+    timeout: u64,
 }
 
 impl MakeItRain {
-    const FIELDS: &'static [&'static str] = &["User", "Success", "Failed", "Error", "Avg sell ms", "Avg redeem ms"];
-    const SIZES: &'static [u16] = &[10, 10, 10, 10, 10, 10];
-
-    pub async fn run(self, node_config: NodeConfig) -> anyhow::Result<()> {
+    pub async fn run(self, mut node_config: NodeConfig) -> anyhow::Result<()> {
+        node_config.postgres.pool = Some(PoolConfig {
+            max_size: self.concurrency as usize,
+            ..Default::default()
+        });
         let pool = build_pool(&node_config.postgres)?;
-        // Create and retrieve available tokens:
-        let instruction = InstructionCommands::Asset {
-            asset_id: self.asset_id.clone(),
-            contract_name: "issue_tokens".into(),
-            data: json!({"quantity": self.tokens}),
-        }
-        .run(node_config.clone())
-        .await?
-        .expect("Failed to retrieve instruction for issue_tokens");
-        let client = pool.get().await?;
-        Self::wait_status(&instruction, InstructionStatus::Commit, &client).await?;
-
-        // retrieve available tokens
-        let asset = AssetState::find_by_asset_id(&self.asset_id, &client).await?.unwrap();
-        let tokens = Token::find_by_asset_state_id(asset.id.clone(), &client).await?;
-        drop(client);
-        let mut available_tokens: Vec<_> = tokens
-            .into_iter()
-            .filter(|token| token.status == TokenStatus::Available)
-            .collect();
-        available_tokens.truncate(self.tokens as usize);
         // split by concurrent streams
-        let chunks = available_tokens.chunks((self.tokens / self.concurrecy) as usize);
-        let scenarios_futures = chunks
-            .map(|tokens| tokens.iter().cloned().collect())
-            .enumerate()
-            .into_iter()
-            .map(|(i, tokens)| {
-                let key = format!("user {}", i);
-                self.clone()
-                    .user_scenario(key, tokens, node_config.clone(), pool.clone())
-            });
+        let user_futures = (0..self.concurrency).into_iter().map(|i| {
+            let key = format!("user {}", i);
+            self.clone().user_scenario(key, &node_config, &pool)
+        });
         // run user emulations in parallel
-        let results = futures::future::join_all(scenarios_futures).await;
-        Terminal::basic().render_list("Make it rain stats by threads", results, Self::FIELDS, Self::SIZES);
+        let results = futures::future::join_all(user_futures).await;
+        delay_for(Duration::from_millis(1000)).await;
+        println!("Errors (if any):");
+        for (i, result) in results.iter().enumerate() {
+            if let Err(err) = result {
+                println!("{}. {}", i, err)
+            }
+        }
         Ok(())
     }
 
     /// Running scenario:
-    /// 3. For every user create unique pubkey and get chunk of tokens
-    /// 4. issue sell_token
+    /// 2. For every user create unique pubkey
+    /// 2. issue tokens
+    /// 4. pick next created token, issue sell_token
     /// 5. If user random goes over the fake threshold - send money to sell_token wallet
     /// 6. Once instruction goes to Commit - send redeem_token
     /// 7. repeat for other tokens
-    async fn user_scenario(self, key: Pubkey, tokens: Vec<Token>, node_config: NodeConfig, pool: Pool) -> Value {
-        let mut counters = Counters::default();
-        for token in tokens.into_iter() {
-            match Self::process_token(&key, &token, &node_config, &pool).await {
-                Ok(Some((sell_duration, redeem_duration))) => {
-                    counters.sell_timings.push(sell_duration);
-                    counters.redeem_timings.push(redeem_duration);
-                    counters.success += 1;
-                },
-                Ok(None) => {
-                    counters.instruction_failed += 1;
+    async fn user_scenario(self, key: Pubkey, node_config: &NodeConfig, pool: &Pool) -> anyhow::Result<()> {
+        let client = pool.get().await?;
+        let mut counters = Counters::new(&key);
+        let quantity = self.tokens / self.concurrency;
+        // issue tokens
+        let token_ids = match self.issue_tokens(quantity, node_config, &client).await {
+            Ok(token_ids) => token_ids,
+            Err(err) => {
+                counters.failed += 1;
+                println!("User {} failed to issue tokens: {}", key, err);
+                return Err(err);
+            },
+        };
+
+        // run scenario for every token one by one
+        for token_id in token_ids.into_iter() {
+            match self.process_token(&key, &token_id, &node_config, &client).await {
+                Ok((sell_duration, redeem_duration)) => {
+                    counters.success(sell_duration, redeem_duration);
                 },
                 Err(err) => {
-                    counters.error += 1;
-                    println!("User {} failed to process token {}: {}", key, token.token_id, err);
+                    counters.failed();
+                    println!("User {} failed to process token {}: {}", key, token_id, err);
+                    return Err(err);
                 },
-            }
+            };
         }
-        json!({
-            "User": key,
-            "Success": counters.success,
-            "Failed": counters.instruction_failed,
-            "Error": counters.error,
-            "Avg sell ms": counters.avg_sell(),
-            "Avg redeem ms": counters.avg_redeem(),
-        })
+        Ok(())
+    }
+
+    async fn issue_tokens(
+        &self,
+        quantity: u16,
+        node_config: &NodeConfig,
+        client: &Client,
+    ) -> anyhow::Result<Vec<TokenID>>
+    {
+        let instruction = InstructionCommands::Asset {
+            asset_id: self.asset_id.clone(),
+            contract_name: "issue_tokens".into(),
+            data: json!({ "quantity": quantity }),
+            silent: true,
+            wait_commit: true,
+        }
+        .run(node_config.clone(), client)
+        .await?;
+        Ok(serde_json::from_value(instruction.result)?)
     }
 
     async fn process_token(
+        &self,
         key: &String,
-        token: &Token,
+        token_id: &TokenID,
         node_config: &NodeConfig,
-        pool: &Pool,
-    ) -> anyhow::Result<Option<(Duration, Duration)>>
+        client: &Client,
+    ) -> anyhow::Result<(Duration, Duration)>
     {
         let time = std::time::Instant::now();
-        let sell_token = Self::sell_token(&key, &token, &node_config).await?;
-        if let Some(instruction) = sell_token {
-            let client = pool.get().await?;
-            Self::fill_wallet(&instruction, &client).await?;
-            Self::wait_status(&instruction, InstructionStatus::Pending, &client).await?;
-            drop(client);
-            let sell_timings = time.elapsed();
-            let time = std::time::Instant::now();
-            let redeem_token = Self::redeem_token(&token, &node_config).await?;
-            if let Some(instruction) = redeem_token {
-                let client = pool.get().await?;
-                Self::wait_status(&instruction, InstructionStatus::Pending, &client).await?;
-                let redeem_timings = time.elapsed();
-                Ok(Some((sell_timings, redeem_timings)))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
+        let instruction = self.sell_token(&key, &token_id, &node_config, &client).await?;
+        Self::fill_wallet(&instruction, &client).await?;
+        InstructionCommands::wait_status(&instruction, InstructionStatus::Pending, &client, true).await?;
+        let sell_timings = time.elapsed();
+        let time = std::time::Instant::now();
+        let instruction = Self::redeem_token(&token_id, &node_config, &client).await?;
+        InstructionCommands::wait_status(&instruction, InstructionStatus::Pending, &client, true).await?;
+        let redeem_timings = time.elapsed();
+        Ok((sell_timings, redeem_timings))
     }
 
-    async fn sell_token(key: &String, token: &Token, node_config: &NodeConfig) -> anyhow::Result<Option<Instruction>> {
+    async fn sell_token(
+        &self,
+        key: &String,
+        token_id: &TokenID,
+        node_config: &NodeConfig,
+        client: &Client,
+    ) -> anyhow::Result<Instruction>
+    {
         InstructionCommands::Token {
-            token_id: token.token_id.clone(),
+            token_id: token_id.clone(),
             contract_name: "sell_token".into(),
-            data: json!({"price": 1, "timeout_secs": 10, "user_pubkey": key}),
+            data: json!({"price": 1, "timeout_secs": self.timeout, "user_pubkey": key}),
+            silent: true,
+            wait_commit: false,
         }
-        .run(node_config.clone())
+        .run(node_config.clone(), client)
         .await
     }
 
@@ -171,13 +181,16 @@ impl MakeItRain {
                 if let TokenContracts::SellTokenLock(SellTokenLockParams { wallet_key }) = contract {
                     break wallet_key;
                 } else {
-                    panic!("Expected SellTokenLock contract");
+                    panic!("Expected SellTokenLock subinstruction");
                 }
             }
             delay_for(WAIT).await;
             retries += 1;
             if retries > MAX_RETRIES {
-                return Err(anyhow::anyhow!("Timeout waiting for subinstruction"));
+                return Err(anyhow::anyhow!(
+                    "Timeout waiting for subinstruction of {}",
+                    instruction.id
+                ));
             }
         };
         let wallet = Wallet::select_by_key(&wallet_key, &client).await?;
@@ -185,59 +198,106 @@ impl MakeItRain {
         Ok(())
     }
 
-    async fn redeem_token(token: &Token, node_config: &NodeConfig) -> anyhow::Result<Option<Instruction>> {
+    async fn redeem_token(
+        token_id: &TokenID,
+        node_config: &NodeConfig,
+        client: &Client,
+    ) -> anyhow::Result<Instruction>
+    {
         InstructionCommands::Token {
-            token_id: token.token_id.clone(),
+            token_id: token_id.clone(),
             contract_name: "redeem_token".into(),
             data: Value::Null,
+            silent: true,
+            wait_commit: false,
         }
-        .run(node_config.clone())
+        .run(node_config.clone(), client)
         .await
-    }
-
-    async fn wait_status(instruction: &Instruction, status: InstructionStatus, client: &Client) -> anyhow::Result<()> {
-        let mut retries = 0;
-        loop {
-            let instruction = Instruction::load(instruction.id, &client).await?;
-            if instruction.status == status ||
-                instruction.status == InstructionStatus::Commit ||
-                instruction.status == InstructionStatus::Invalid
-            {
-                break;
-            }
-            delay_for(WAIT).await;
-            retries += 1;
-            if retries > MAX_RETRIES {
-                return Err(anyhow::anyhow!("Timeout waiting for instruction commit"));
-            }
-        }
-        Ok(())
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default, Debug)]
 struct Counters {
-    success: usize,
-    instruction_failed: usize,
-    error: usize,
-    sell_timings: Vec<Duration>,
-    redeem_timings: Vec<Duration>,
+    name: String,
+    success: u64,
+    failed: u64,
+    sell_avg: Option<u64>,
+    redeem_avg: Option<u64>,
 }
 
 impl Counters {
-    fn avg_sell(&self) -> Option<u64> {
-        Self::avg_duration(&self.sell_timings)
-    }
-
-    fn avg_redeem(&self) -> Option<u64> {
-        Self::avg_duration(&self.redeem_timings)
-    }
-
-    fn avg_duration(measurements: &Vec<Duration>) -> Option<u64> {
-        if measurements.len() > 0 {
-            Some(measurements.iter().map(|d| d.as_millis() as u64).sum::<u64>() / measurements.len() as u64)
-        } else {
-            None
+    fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            ..Default::default()
         }
+    }
+
+    fn success(&mut self, sell: Duration, redeem: Duration) {
+        *self += Counters {
+            name: "".into(),
+            success: 1,
+            failed: 0,
+            sell_avg: Some(sell.as_millis() as u64),
+            redeem_avg: Some(redeem.as_millis() as u64),
+        };
+        actix_rt::spawn(Self::update_display(self.clone()));
+    }
+
+    fn failed(&mut self) {
+        self.failed += 1;
+        actix_rt::spawn(Self::update_display(self.clone()));
+    }
+}
+
+impl AddAssign for Counters {
+    fn add_assign(&mut self, rhs: Self) {
+        let total_success = self.success + rhs.success;
+        if self.sell_avg.is_some() {
+            let total_ms = self.sell_avg.unwrap() * self.success + rhs.sell_avg.unwrap() * rhs.success;
+            self.sell_avg = Some(total_ms / total_success);
+        } else {
+            self.sell_avg = rhs.sell_avg;
+        }
+        if self.redeem_avg.is_some() {
+            let total_ms = self.redeem_avg.unwrap() * self.success + rhs.redeem_avg.unwrap() * rhs.success;
+            self.redeem_avg = Some(total_ms / total_success);
+        } else {
+            self.redeem_avg = rhs.redeem_avg;
+        }
+        self.success = total_success;
+    }
+}
+
+impl Counters {
+    const FIELDS: &'static [&'static str] = &["User", "Success", "Failed", "Avg sell ms", "Avg redeem ms"];
+    const SIZES: &'static [u16] = &[10, 10, 10, 14, 14];
+
+    async fn update_display(record: Counters) {
+        let mut counters = COUNTERS.lock().await;
+        counters.insert(record.name.clone(), record);
+        let mut total = Counters::new("Total");
+        let mut counters: Vec<Value> = counters
+            .values()
+            .map(|next| {
+                total += next.clone();
+                next.to_display()
+            })
+            .collect();
+        counters.insert(0, total.to_display());
+        TERMINAL
+            .lock()
+            .await
+            .render_list("Make it rain: stats by threads", counters, Self::FIELDS, Self::SIZES);
+    }
+
+    fn to_display(&self) -> Value {
+        json!({
+            "User": self.name,
+            "Success": self.success,
+            "Failed": self.failed,
+            "Avg sell ms": self.sell_avg,
+            "Avg redeem ms": self.redeem_avg,
+        })
     }
 }

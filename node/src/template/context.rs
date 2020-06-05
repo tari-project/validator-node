@@ -41,8 +41,8 @@ use tokio::sync::Mutex;
 /// [validator_template_macros::contract]
 #[derive(Clone)]
 pub struct TemplateContext<T: Template + Clone + 'static> {
-    // TODO: this is not secure, we provide access to context to template,
-    // To make it safe our templates should be completely sandboxed,
+    // TODO: possibly via unsafe code might get direct access to pool pointer via context
+    // To make it safe our templates should be completely sandboxed, e.g. via WASM etc
     // having only access to the context methods...
     pub(super) pool: Arc<Pool>,
     pub(super) wallets: Arc<Mutex<WalletStore>>,
@@ -72,7 +72,7 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
                 data.status
             );
         }
-        let client = self.pool.get().await.map_err(DBError::from)?;
+        let client = self.get_db_client().await?;
         let instruction = Instruction::insert(data, &client).await?;
         self.metrics_update(&instruction);
         Ok(instruction)
@@ -80,12 +80,12 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
 
     /// Creates [InstructionContext] which can be used by [InstructionRunner] to process [Instruction]
     pub async fn instruction_context(&self, instruction: Instruction) -> Result<InstructionContext<T>, TemplateError> {
-        let client = self.pool.get().await.map_err(DBError::from)?;
+        let client = self.get_db_client().await?;
         let instruction = Instruction::load(instruction.id, &client).await?;
         Ok(InstructionContext {
-            client,
             instruction,
             template_context: self.clone(),
+            client: None,
         })
     }
 
@@ -138,13 +138,17 @@ impl<T: Template + Clone + 'static> TemplateContext<T> {
             addr.do_send(msg);
         }
     }
+
+    async fn get_db_client(&self) -> Result<Client, TemplateError> {
+        Ok(self.pool.get().await.map_err(DBError::from)?)
+    }
 }
 
 /// Provides environment and methods for Instruction's code to execute
 pub struct InstructionContext<T: Template + Clone + 'static> {
     template_context: TemplateContext<T>,
-    client: Client,
     instruction: Instruction,
+    client: Option<Arc<Client>>,
 }
 
 use super::actors::{ContractCallMsg, MessageResult};
@@ -166,32 +170,37 @@ impl<T: Template + Clone> InstructionContext<T> {
         T::id()
     }
 
+    #[inline]
     pub fn node_id(&self) -> NodeID {
         NodeID::stub()
     }
 
     /// Create and return token
-    pub async fn create_token(&self, data: NewToken) -> Result<Token, TemplateError> {
-        let id = Token::insert(data, &self.client).await?;
-        Ok(Token::load(id, &self.client).await?)
+    pub async fn create_token(&self, data: NewToken) -> Result<(), TemplateError> {
+        let client = self.get_db_client().await?;
+        let _ = Token::insert(data, &client).await?;
+        Ok(())
     }
 
     /// Create token_append_only_state associated with current [Instruction],
     /// returns updated token
     pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, TemplateError> {
+        let client = self.get_db_client().await?;
         // TODO: P1: as part of consensus multi-node this should create append only state within instruction,
         // not in database. This also requires Instruction::execute impl.
-        Ok(token.update(data, &self.instruction, &self.client).await?)
+        Ok(token.update(data, &self.instruction, &client).await?)
     }
 
     /// Load token by [TokenID]
     pub async fn load_token(&self, id: TokenID) -> Result<Option<Token>, TemplateError> {
-        Ok(Token::find_by_token_id(&id, &self.client).await?)
+        let client = self.get_db_client().await?;
+        Ok(Token::find_by_token_id(&id, &client).await?)
     }
 
     /// Load asset by [AssetID]
     pub async fn load_asset(&self, id: AssetID) -> Result<Option<AssetState>, TemplateError> {
-        Ok(AssetState::find_by_asset_id(&id, &self.client).await?)
+        let client = self.get_db_client().await?;
+        Ok(AssetState::find_by_asset_id(&id, &client).await?)
     }
 
     /// Move current context's [Instruction] to a new state applying [ContextEvent]
@@ -214,6 +223,7 @@ impl<T: Template + Clone> InstructionContext<T> {
                 );
             },
         };
+        let client = self.get_db_client().await?;
         instruction_state::transition(
             InstructionTransitionContext {
                 template_id: T::id(),
@@ -224,10 +234,10 @@ impl<T: Template + Clone> InstructionContext<T> {
                 result,
                 metrics_addr: self.template_context.metrics_addr.clone(),
             },
-            &self.client,
+            &client,
         )
         .await?;
-        self.instruction = Instruction::load(self.instruction.id, &self.client).await?;
+        self.instruction = Instruction::load(self.instruction.id, &client).await?;
 
         Ok(())
     }
@@ -266,7 +276,7 @@ impl<T: Template + Clone> InstructionContext<T> {
     where M: ContractCallMsg<Template = T, Result = MessageResult> + std::fmt::Debug + 'static {
         log::trace!(
             target: LOG_TARGET,
-            "template={}, instruction={}, sending message to actor: {:?}",
+            "template={}, instruction={}, defer message to actor: {:?}",
             T::id(),
             self.instruction.id,
             msg.params()
@@ -275,7 +285,7 @@ impl<T: Template + Clone> InstructionContext<T> {
         self.template_context.addr().send(msg).await??;
         log::trace!(
             target: LOG_TARGET,
-            "template={}, instruction={}, actor completed processing message",
+            "template={}, instruction={}, deferred message processed succesfully",
             T::id(),
             self.instruction.id
         );
@@ -285,24 +295,34 @@ impl<T: Template + Clone> InstructionContext<T> {
     /// Create temporary wallet for accepting payment in transaction
     /// Method will return temp_wallet [Pubkey]
     pub async fn create_temp_wallet(&mut self) -> Result<Pubkey, TemplateError> {
-        let transaction = self.client.transaction().await.map_err(DBError::from)?;
         let wallet_name = self.instruction.id.to_string();
         let wallet = NodeWallet::new(self.template_context.node_address.clone(), wallet_name)?;
-        let wallet = self
-            .template_context
-            .wallets
-            .lock()
-            .await
-            .add(wallet, &transaction)
-            .await?;
+        let mut wallets = self.template_context.wallets.lock().await;
+
+        let mut client = self.template_context.get_db_client().await?;
+        let transaction = client.transaction().await.map_err(DBError::from)?;
+        let wallet = wallets.add(wallet, &transaction).await?;
         transaction.commit().await.map_err(DBError::from)?;
         Ok(wallet.public_key_hex())
     }
 
     /// Check balance on a wallet identified by wallet_key
     pub async fn check_balance(&self, pubkey: &Pubkey) -> Result<i64, TemplateError> {
-        let wallet = Wallet::select_by_key(pubkey, &self.client).await?;
+        let client = self.get_db_client().await?;
+        let wallet = Wallet::select_by_key(pubkey, &client).await?;
         Ok(wallet.balance)
+    }
+
+    pub(crate) fn set_db_client(&mut self, client: Arc<Client>) {
+        self.client = Some(client);
+    }
+
+    async fn get_db_client(&self) -> Result<Arc<Client>, TemplateError> {
+        if self.client.is_some() {
+            Ok(self.client.as_ref().unwrap().clone())
+        } else {
+            Ok(Arc::new(self.template_context.get_db_client().await?))
+        }
     }
 }
 
@@ -401,9 +421,8 @@ impl<T: Template + Clone> TokenInstructionContext<T> {
     /// returns updated token
     pub async fn update_token(&mut self, data: UpdateToken) -> Result<(), TemplateError> {
         let token = self.token.clone();
-        self.token = token
-            .update(data, &self.context.instruction, &self.context.client)
-            .await?;
+        let client = &self.context.get_db_client().await?;
+        self.token = token.update(data, &self.context.instruction, &client).await?;
         Ok(())
     }
 }

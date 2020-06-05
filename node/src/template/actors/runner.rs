@@ -5,8 +5,8 @@ use crate::{
     types::TemplateID,
     wallet::WalletStore,
 };
-use actix::prelude::*;
-use deadpool_postgres::Pool;
+use actix::{fut, prelude::*};
+use deadpool_postgres::{Client, Pool};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -14,6 +14,8 @@ use tokio::sync::Mutex;
 /// Executes instruction code within [TemplateContext]
 pub struct TemplateRunner<T: Template + Clone + 'static> {
     context: TemplateContext<T>,
+    // This DB client is available for non-transactional operations
+    client: Option<Arc<Client>>,
 }
 
 impl<T: Template + Clone> TemplateRunner<T> {
@@ -61,7 +63,7 @@ impl<T: Template + Clone> TemplateRunner<T> {
             actor_addr: None,
             metrics_addr,
         };
-        Self { context }
+        Self { context, client: None }
     }
 
     /// Start Actor returning TemplateContext
@@ -82,6 +84,26 @@ impl<T: Template + Clone> TemplateRunner<T> {
     pub fn context(&self) -> TemplateContext<T> {
         self.context.clone()
     }
+
+    /// Get shared DB client
+    ///
+    /// Shared DB client is using query pipelining, it can be used for all DB operations
+    /// which can be performed on not mutable reference to postgres client (query, execute).
+    /// It is available opportunistically and helping to save DB pool of draining
+    /// significantly minimizing number of required open DB connections.
+    pub fn get_shared_db_client(&mut self) -> Option<Arc<Client>> {
+        if let Some(client) = self.client.take() {
+            if !client.is_closed() {
+                self.client = Some(client);
+            }
+        }
+        if self.client.is_none() {
+            self.context.addr().do_send(UpdateSharedClient);
+            None
+        } else {
+            self.client.clone()
+        }
+    }
 }
 
 impl<T: Template + Clone + 'static> Unpin for TemplateRunner<T> {}
@@ -91,5 +113,34 @@ impl<T: Template + Clone + 'static> Actor for TemplateRunner<T> {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.context.actor_addr = Some(ctx.address());
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct UpdateSharedClient;
+
+/// Actor is accepting TokenCallMsg and tries to perform activity
+impl<T> Handler<UpdateSharedClient> for TemplateRunner<T>
+where T: Template + 'static
+{
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, _: UpdateSharedClient, _ctx: &mut Context<Self>) -> Self::Result {
+        if self.client.is_none() {
+            let pool = self.context.pool.clone();
+            let pool_fut = async move { pool.get().await };
+            let fut = fut::wrap_future(pool_fut).map(|res, actor: &mut Self, _ctx| {
+                match res {
+                    Ok(client) => {
+                        actor.client = Some(Arc::new(client));
+                    },
+                    _ => {},
+                };
+            });
+            Box::pin(fut)
+        } else {
+            Box::pin(fut::ready(()))
+        }
     }
 }
