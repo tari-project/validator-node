@@ -147,25 +147,28 @@ impl AssetState {
 
     /// Load asset record
     pub async fn load(id: uuid::Uuid, client: &Client) -> Result<AssetState, DBError> {
-        let stmt = "SELECT * FROM asset_states_view WHERE id = $1";
-        let result = client.query_one(stmt, &[&id]).await?;
+        const QUERY: &'static str = "SELECT * FROM asset_states_view WHERE id = $1";
+        let stmt = client.prepare(QUERY).await?;
+        let result = client.query_one(&stmt, &[&id]).await?;
         Ok(AssetState::from_row(result)?)
     }
 
     /// Find asset state record by asset id
     pub async fn find_by_asset_id(asset_id: &AssetID, client: &Client) -> Result<Option<AssetState>, DBError> {
-        let stmt = "SELECT * FROM asset_states_view WHERE asset_id = $1";
-        let result = client.query_opt(stmt, &[&asset_id]).await?;
+        const QUERY: &'static str = "SELECT * FROM asset_states_view WHERE asset_id = $1";
+        let stmt = client.prepare(QUERY).await?;
+        let result = client.query_opt(&stmt, &[&asset_id]).await?;
         Ok(result.map(AssetState::from_row).transpose()?)
     }
 
     /// Find asset state records by template id mask
     pub async fn find_by_template_id(template_id: &TemplateID, client: &Client) -> Result<Vec<AssetState>, DBError> {
-        let stmt = "SELECT * FROM asset_states_view WHERE asset_id LIKE $1";
+        const QUERY: &'static str = "SELECT * FROM asset_states_view WHERE asset_id LIKE $1";
+        let stmt = client.prepare(QUERY).await?;
         let mut mask = template_id.to_hex();
         mask.truncate(12);
         let mask = format!("{}%", mask);
-        let results = client.query(stmt, &[&mask]).await?;
+        let results = client.query(&stmt, &[&mask]).await?;
         Ok(results
             .into_iter()
             .map(AssetState::from_row)

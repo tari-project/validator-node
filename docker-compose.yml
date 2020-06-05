@@ -2,12 +2,17 @@ version: '3'
 services:
   database:
     image: "postgres"
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
     environment:
       - POSTGRES_USER=$PG_USER
       - POSTGRES_PASSWORD=$PG_PASSWORD
       - POSTGRES_DB=$PG_DBNAME
     volumes:
       - database-data:/var/lib/postgresql/data/
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf
     ports:
       - 5432:5432
 volumes:
