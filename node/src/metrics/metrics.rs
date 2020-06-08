@@ -75,22 +75,22 @@ impl Metrics {
             },
             MetricEvent::Instruction(InstructionEvent { id, status, .. }) => {
                 match status {
-                    InstructionStatus::Pending => {
-                        self.instructions_pending_spark.inc();
-                        self.current_processing_instructions = self.current_processing_instructions.saturating_sub(1);
-                        self.current_pending_instructions += 1;
-                    },
                     InstructionStatus::Scheduled => self.instructions_scheduled_spark.inc(),
                     InstructionStatus::Processing => {
                         self.current_processing_instructions += 1;
                         self.instructions_processing_spark.inc()
+                    },
+                    InstructionStatus::Pending => {
+                        self.instructions_pending_spark.inc();
+                        self.current_processing_instructions = self.current_processing_instructions.saturating_sub(1);
+                        self.current_pending_instructions += 1;
                     },
                     InstructionStatus::Invalid => {
                         self.current_processing_instructions = self.current_processing_instructions.saturating_sub(1);
                         self.instructions_invalid_spark.inc()
                     },
                     InstructionStatus::Commit => {
-                        self.instructions_pending_spark.inc();
+                        self.instructions_commit_spark.inc();
                         // TODO: for better precision should be HashSet of instruction_id. or separate status for when
                         // it fails Commit.
                         self.current_pending_instructions = self.current_pending_instructions.saturating_sub(1);

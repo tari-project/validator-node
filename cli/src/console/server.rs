@@ -17,7 +17,7 @@ lazy_static::lazy_static! {
 pub struct ServerConsole {
     metrics: Addr<Metrics>,
     terminal: Terminal,
-    dashboard: Dashboard,
+    dashboard: Option<Dashboard>,
     kill_signal: oneshot::Receiver<()>,
 }
 
@@ -28,16 +28,22 @@ impl ServerConsole {
     ///
     /// # Panics
     /// Should be called once during lifetime of program, otherwise will panic
-    pub async fn init(metrics: Addr<Metrics>) -> oneshot::Sender<()> {
+    pub async fn init(metrics: Addr<Metrics>, dashboard: bool) -> oneshot::Sender<()> {
         if *INITIALIZED.lock().await {
             panic!("Tried to initialize ServerConsole when one already initalized");
         }
         let (kill_sender, kill_signal) = oneshot::channel();
+        let terminal = if dashboard {
+            Terminal::alternate()
+        } else {
+            Terminal::basic()
+        };
+        let dashboard = if dashboard { Some(Dashboard::default()) } else { None };
         actix_rt::spawn(
             Self {
-                terminal: Terminal::alternate(),
+                terminal,
                 metrics,
-                dashboard: Dashboard::default(),
+                dashboard,
                 kill_signal,
             }
             .run(),
@@ -46,14 +52,12 @@ impl ServerConsole {
     }
 
     async fn run(mut self) {
-        if let Ok(tui::layout::Rect { width, .. }) = self.terminal.size() {
-            self.metrics
-                .send(MetricsConfig {
-                    instructions_spark_sizes: width as usize,
-                })
-                .await
-                .expect("Failed to configure terminal size");
-        }
+        self.metrics
+            .send(MetricsConfig {
+                instructions_spark_sizes: Dashboard::sparkline_width(&self.terminal) as usize,
+            })
+            .await
+            .expect("Failed to configure terminal size");
         let mut events = self
             .terminal
             .events_receiver()
@@ -64,21 +68,23 @@ impl ServerConsole {
                 // got kill signal
                 break;
             };
-            if let Ok(metrics) = self.metrics.send(GetMetrics).await {
-                self.dashboard.update_metrics(metrics);
+            if let Some(dashboard) = &mut self.dashboard {
+                if let Ok(metrics) = self.metrics.send(GetMetrics).await {
+                    dashboard.update_metrics(metrics);
+                }
+                dashboard.draw(&mut self.terminal);
             }
-            self.dashboard.draw(&mut self.terminal);
 
             // Wait timeout or for event from terminal
             match timeout(WAIT, events.recv()).await {
                 Ok(Some(Event::Key(key))) => {
                     self.process_key(key);
                 },
-                Ok(Some(Event::Resize(width, ..))) => {
+                Ok(Some(Event::Resize(..))) => {
                     if let Err(err) = self
                         .metrics
                         .send(MetricsConfig {
-                            instructions_spark_sizes: width as usize,
+                            instructions_spark_sizes: Dashboard::sparkline_width(&self.terminal) as usize,
                         })
                         .await
                     {

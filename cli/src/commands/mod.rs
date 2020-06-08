@@ -20,7 +20,11 @@ pub enum Commands {
     /// Init configs and create the database, also running migrations
     Init,
     /// Start node
-    Start,
+    Start {
+        /// Disable interactive server dashboard
+        #[structopt(long)]
+        no_dashboard: bool,
+    },
     /// Run the migrations
     Migrate,
     /// API access management
@@ -50,6 +54,6 @@ pub enum Commands {
 }
 impl Default for Commands {
     fn default() -> Self {
-        Commands::Start
+        Commands::Start { no_dashboard: false }
     }
 }
