@@ -173,7 +173,7 @@ impl TokenContracts {
         while context.check_balance(&wallet_key).await? < price {
             tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
             if timeout.elapsed() > timeout_secs {
-                // TODO: any failure in instrustion should also fail all subinstructions in transaction
+                // TODO: any failure in instruction should also fail all subinstructions in transaction
                 let data = UpdateToken {
                     status: Some(TokenStatus::Active),
                     ..Default::default()

@@ -24,6 +24,11 @@ lazy_static::lazy_static! {
     static ref COUNTERS: Mutex<HashMap<String, Counters>> = Mutex::new(HashMap::new());
 }
 
+lazy_static::lazy_static! {
+    static ref TERMINAL: Mutex<Terminal> = Mutex::new(Terminal::basic());
+    static ref COUNTERS: Mutex<HashMap<String, Counters>> = Mutex::new(HashMap::new());
+}
+
 #[derive(StructOpt, Debug, Clone)]
 /// Runs load scenario on a Single Use Token asset:
 ///
