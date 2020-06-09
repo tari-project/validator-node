@@ -185,11 +185,12 @@ impl<T: Template + Clone> InstructionContext<T> {
 
     /// Create token_append_only_state associated with current [Instruction],
     /// returns updated token
-    pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<Token, TemplateError> {
+    pub async fn update_token(&self, token: Token, data: UpdateToken) -> Result<(), TemplateError> {
         let client = self.get_db_client().await?;
         // TODO: P1: as part of consensus multi-node this should create append only state within instruction,
         // not in database. This also requires Instruction::execute impl.
-        Ok(token.update(data, &self.instruction, &client).await?)
+        token.update(data, &self.instruction, &client).await?;
+        Ok(())
     }
 
     /// Load token by [TokenID]
@@ -423,7 +424,7 @@ impl<T: Template + Clone> TokenInstructionContext<T> {
     pub async fn update_token(&mut self, data: UpdateToken) -> Result<(), TemplateError> {
         let token = self.token.clone();
         let client = &self.context.get_db_client().await?;
-        self.token = token.update(data, &self.context.instruction, &client).await?;
+        token.update(data, &self.context.instruction, &client).await?;
         Ok(())
     }
 }

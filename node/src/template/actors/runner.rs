@@ -8,7 +8,7 @@ use crate::{
 use actix::{fut, prelude::*};
 use deadpool_postgres::{Client, Pool};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 /// Implements [Actor] for Template
 /// Executes instruction code within [TemplateContext]
@@ -16,6 +16,7 @@ pub struct TemplateRunner<T: Template + Clone + 'static> {
     context: TemplateContext<T>,
     // This DB client is available for non-transactional operations
     client: Option<Arc<Client>>,
+    pub(super) bandwidth: Arc<Semaphore>,
 }
 
 impl<T: Template + Clone> TemplateRunner<T> {
@@ -63,7 +64,12 @@ impl<T: Template + Clone> TemplateRunner<T> {
             actor_addr: None,
             metrics_addr,
         };
-        Self { context, client: None }
+        let bandwidth = Arc::new(Semaphore::new(config.template.runner_max_jobs));
+        Self {
+            context,
+            client: None,
+            bandwidth,
+        }
     }
 
     /// Start Actor returning TemplateContext

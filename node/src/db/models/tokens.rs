@@ -107,8 +107,16 @@ impl Token {
     /// - status
     /// - additional_data_json merged with UpdateToken::append_state_data_json
     // TODO: this is very expensive - think on optimization later
-    pub async fn update(self, data: UpdateToken, instruction: &Instruction, client: &Client) -> Result<Self, DBError> {
-        let mut token = Self::load(self.id, &client).await?;
+    pub async fn update(
+        self,
+        data: UpdateToken,
+        instruction: &Instruction,
+        client: &Client,
+    ) -> Result<uuid::Uuid, DBError>
+    {
+        let mut token = Self::find_by_token_id(&self.token_id, &client)
+            .await?
+            .ok_or(DBError::NotFound)?;
         let state_data_json: Value = match data.append_state_data_json {
             Some(Object(mut update)) => {
                 let mut obj = Map::<String, Value>::new();
@@ -126,8 +134,7 @@ impl Token {
             status: data.status.unwrap_or_else(|| token.status.clone()),
             state_data_json,
         };
-        Self::store_append_only_state(&state, client).await?;
-        Self::load(token.id, &client).await
+        Ok(Self::store_append_only_state(&state, client).await?)
     }
 
     /// Load token record
@@ -391,6 +398,7 @@ mod test {
         .build(&client)
         .await
         .unwrap();
+        let token_id = token.id.clone();
         let asset = AssetState::load(token.asset_state_id, &client).await.unwrap();
         let instruction = InstructionBuilder {
             asset_id: Some(asset.asset_id),
@@ -401,7 +409,8 @@ mod test {
         .unwrap();
 
         let update = UpdateToken::default();
-        let token2 = token.clone().update(update, &instruction, &client).await.unwrap();
+        token.clone().update(update, &instruction, &client).await.unwrap();
+        let token2 = Token::load(token_id.clone(), &client).await.unwrap();
         assert_eq!(token.id, token2.id);
         assert_eq!(token.status, token2.status);
         assert_eq!(token.additional_data_json, token2.additional_data_json);
@@ -411,7 +420,8 @@ mod test {
             append_state_data_json: Some(json!({"append_initial": true})),
             ..UpdateToken::default()
         };
-        let token = token.update(update, &instruction, &client).await.unwrap();
+        token.update(update, &instruction, &client).await.unwrap();
+        let token = Token::load(token_id.clone(), &client).await.unwrap();
         assert_eq!(
             token.additional_data_json,
             json!({"value": true, "value2": 4, "append_initial": true})
@@ -422,7 +432,8 @@ mod test {
             append_state_data_json: Some(json!({"append_additional": true})),
             ..UpdateToken::default()
         };
-        let token = token.update(update, &instruction, &client).await.unwrap();
+        token.update(update, &instruction, &client).await.unwrap();
+        let token = Token::load(token_id.clone(), &client).await.unwrap();
         assert_eq!(
             token.additional_data_json,
             json!({"value": true, "value2": 4, "append_initial": true, "append_additional": true})
@@ -433,11 +444,12 @@ mod test {
             status: Some(TokenStatus::Retired),
             ..UpdateToken::default()
         };
-        let token2 = token
+        token
             .clone()
             .update(update.clone(), &instruction, &client)
             .await
             .unwrap();
+        let token2 = Token::load(token_id, &client).await.unwrap();
         assert_eq!(token2.status, TokenStatus::Retired);
         assert_eq!(token2.additional_data_json, token.additional_data_json);
     }

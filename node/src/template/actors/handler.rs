@@ -53,9 +53,20 @@ where
             msg.params()
         );
         let client_opt = self.get_shared_db_client();
+        // Do not block subinstructions
+        let permit = if instruction.parent_id.is_none() {
+            Some(self.bandwidth.clone().acquire_owned())
+        } else {
+            None
+        };
         let token_context_fut = msg.clone().init_context(self.context());
 
         let fut = async move {
+            let _lock = if permit.is_some() {
+                Some(permit.unwrap().await)
+            } else {
+                None
+            };
             let mut context = token_context_fut.await?;
             if let Some(client) = client_opt {
                 context.set_db_client(client);

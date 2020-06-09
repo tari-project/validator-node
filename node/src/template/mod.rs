@@ -49,6 +49,8 @@ pub use actors::{ContractCallMsg, TemplateRunner};
 
 pub mod single_use_tokens;
 
+pub mod config;
+
 mod context;
 pub use context::{
     AssetInstructionContext,

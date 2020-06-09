@@ -23,11 +23,22 @@ pool = { max_size = 16, timeouts = { wait = { secs = 3, nanos = 0 }, recycle = {
 See example [config/log4rs.yml.example](config/log4rs.yml.example)
 
 ### Env vars overloading
-- PG_DBNAME - database
-- PG_USER - db user
-- PG_PASSWORD - db password
-- PG_HOST - db host
+- `PG_DBNAME` - database name
+- `PG_USER` - db user
+- `PG_PASSWORD` - db password
+- `PG_HOST` - db host
+- `PG_POOL_MAX_SIZE` - max size of DB pool
+- `TEMPLATE_RUNNER_MAX_JOBS` - limit of concurrent jobs per template (Default: CPUS * 10)
+
+Add limitation for max number of parallel jobs per template:
 Tests expect same
+
+### Start server
+```
+> tvnc start
+OR
+tvnc start -no-dashboard
+```
 
 ### Migrate DBs
 ```

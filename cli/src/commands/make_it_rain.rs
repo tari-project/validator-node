@@ -2,6 +2,7 @@ use super::InstructionCommands;
 use crate::console::Terminal;
 use deadpool::managed::PoolConfig;
 use deadpool_postgres::{Client, Pool};
+use rand::Rng;
 use serde_json::{json, Value};
 use std::{collections::HashMap, ops::AddAssign, time::Duration};
 use structopt::StructOpt;
@@ -81,6 +82,9 @@ impl MakeItRain {
     /// 6. Once instruction goes to Commit - send redeem_token
     /// 7. repeat for other tokens
     async fn user_scenario(self, key: Pubkey, node_config: &NodeConfig, pool: &Pool) -> anyhow::Result<()> {
+        let delay_ms: u16 = rand::thread_rng().gen::<u16>() / 128 * self.concurrency;
+        delay_for(Duration::from_millis(delay_ms as u64)).await;
+
         let client = pool.get().await?;
         let mut counters = Counters::new(&key);
         let quantity = self.tokens / self.concurrency;
@@ -97,8 +101,8 @@ impl MakeItRain {
         // run scenario for every token one by one
         for token_id in token_ids.into_iter() {
             match self.process_token(&key, &token_id, &node_config, &client).await {
-                Ok((sell_duration, redeem_duration)) => {
-                    counters.success(sell_duration, redeem_duration);
+                Ok((wallet_duration, sell_duration, redeem_duration)) => {
+                    counters.success(wallet_duration, sell_duration, redeem_duration);
                 },
                 Err(err) => {
                     counters.failed();
@@ -135,21 +139,23 @@ impl MakeItRain {
         token_id: &TokenID,
         node_config: &NodeConfig,
         client: &Client,
-    ) -> anyhow::Result<(Duration, Duration)>
+    ) -> anyhow::Result<(Duration, Duration, Duration)>
     {
-        let refresh = Duration::from_millis(200 * self.concurrency as u64);
+        let refresh = Duration::from_millis(20 * self.concurrency as u64);
         let time = std::time::Instant::now();
         let instruction = self.sell_token(&key, &token_id, &node_config, &client).await?;
-        Self::fill_wallet(&instruction, &client, refresh.clone()).await?;
+        let wallet = Self::wait_wallet(&instruction, &client, refresh.clone()).await?;
+        let wait_wallet_time = time.elapsed();
+        Self::fill_wallet(wallet, &client).await?;
         InstructionCommands::wait_status(&instruction, InstructionStatus::Pending, &client, true, refresh.clone())
             .await?;
-        let sell_timings = time.elapsed();
+        let sell_time = time.elapsed();
         let time = std::time::Instant::now();
         let instruction = Self::redeem_token(&token_id, &node_config, &client).await?;
         InstructionCommands::wait_status(&instruction, InstructionStatus::Pending, &client, true, refresh.clone())
             .await?;
-        let redeem_timings = time.elapsed();
-        Ok((sell_timings, redeem_timings))
+        let redeem_time = time.elapsed();
+        Ok((wait_wallet_time, sell_time, redeem_time))
     }
 
     async fn sell_token(
@@ -171,9 +177,14 @@ impl MakeItRain {
         .await
     }
 
-    async fn fill_wallet(instruction: &Instruction, client: &Client, refresh_interval: Duration) -> anyhow::Result<()> {
+    async fn wait_wallet(
+        instruction: &Instruction,
+        client: &Client,
+        refresh_interval: Duration,
+    ) -> anyhow::Result<Pubkey>
+    {
         let mut retries = 0;
-        let wallet_key = loop {
+        loop {
             let subinstructions = instruction
                 .load_subinstructions(&client)
                 .await
@@ -181,7 +192,7 @@ impl MakeItRain {
             if subinstructions.len() > 0 {
                 let contract: TokenContracts = serde_json::from_value(subinstructions[0].params.clone()).unwrap();
                 if let TokenContracts::SellTokenLock(SellTokenLockParams { wallet_key }) = contract {
-                    break wallet_key;
+                    return Ok(wallet_key);
                 } else {
                     panic!("Expected SellTokenLock subinstruction");
                 }
@@ -194,7 +205,10 @@ impl MakeItRain {
                     instruction.id
                 ));
             }
-        };
+        }
+    }
+
+    async fn fill_wallet(wallet_key: Pubkey, client: &Client) -> anyhow::Result<()> {
         let wallet = Wallet::select_by_key(&wallet_key, &client).await?;
         wallet.set_balance(1, &client).await?;
         Ok(())
@@ -223,6 +237,7 @@ struct Counters {
     name: String,
     success: u64,
     failed: u64,
+    wallet_avg: Option<u64>,
     sell_avg: Option<u64>,
     redeem_avg: Option<u64>,
 }
@@ -235,11 +250,12 @@ impl Counters {
         }
     }
 
-    fn success(&mut self, sell: Duration, redeem: Duration) {
+    fn success(&mut self, wallet: Duration, sell: Duration, redeem: Duration) {
         *self += Counters {
             name: "".into(),
             success: 1,
             failed: 0,
+            wallet_avg: Some(wallet.as_millis() as u64),
             sell_avg: Some(sell.as_millis() as u64),
             redeem_avg: Some(redeem.as_millis() as u64),
         };
@@ -255,6 +271,12 @@ impl Counters {
 impl AddAssign for Counters {
     fn add_assign(&mut self, rhs: Self) {
         let total_success = self.success + rhs.success;
+        if self.wallet_avg.is_some() {
+            let total_ms = self.wallet_avg.unwrap() * self.success + rhs.wallet_avg.unwrap() * rhs.success;
+            self.wallet_avg = Some(total_ms / total_success);
+        } else {
+            self.wallet_avg = rhs.wallet_avg;
+        }
         if self.sell_avg.is_some() {
             let total_ms = self.sell_avg.unwrap() * self.success + rhs.sell_avg.unwrap() * rhs.success;
             self.sell_avg = Some(total_ms / total_success);
@@ -272,8 +294,15 @@ impl AddAssign for Counters {
 }
 
 impl Counters {
-    const FIELDS: &'static [&'static str] = &["User", "Success", "Failed", "Avg sell ms", "Avg redeem ms"];
-    const SIZES: &'static [u16] = &[10, 10, 10, 14, 14];
+    const FIELDS: &'static [&'static str] = &[
+        "User",
+        "Success",
+        "Failed",
+        "Wait wallet ms",
+        "Avg sell ms",
+        "Avg redeem ms",
+    ];
+    const SIZES: &'static [u16] = &[10, 10, 10, 16, 14, 14];
 
     async fn update_display(record: Counters) {
         let mut counters = COUNTERS.lock().await;
@@ -298,6 +327,7 @@ impl Counters {
             "User": self.name,
             "Success": self.success,
             "Failed": self.failed,
+            "Wait wallet ms": self.wallet_avg,
             "Avg sell ms": self.sell_avg,
             "Avg redeem ms": self.redeem_avg,
         })

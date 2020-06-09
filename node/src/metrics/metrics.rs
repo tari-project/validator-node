@@ -197,7 +197,10 @@ impl Sparkline {
 #[cfg(test)]
 mod test {
     use super::*;
-    // TODO: more unit tests - there is limited coverage with super module tests
+    use crate::{
+        test::utils::Test,
+        types::{InstructionID, TemplateID},
+    };
 
     #[test]
     fn sparkline_shifts() {
@@ -261,5 +264,135 @@ mod test {
         sparks.shift();
         sparks.inc();
         assert_eq!(sparks.to_vec(), vec![1, 1]);
+    }
+
+    #[test]
+    fn instructions_counters_positive() {
+        let mut metrics = Metrics::default();
+        let id = Test::<InstructionID>::new();
+        let template_id = Test::<TemplateID>::new();
+        metrics.process_event(
+            InstructionEvent {
+                id: id.clone(),
+                template_id: template_id.clone(),
+                status: InstructionStatus::Scheduled,
+            }
+            .into(),
+        );
+        let snapshot = MetricsSnapshot::from(&metrics);
+        assert_eq!(snapshot.current_processing_instructions, 0);
+        assert_eq!(snapshot.current_pending_instructions, 0);
+        assert_eq!(snapshot.total_unique_instructions, 1);
+        assert_eq!(snapshot.instructions_scheduled_spark.last(), Some(&1));
+        assert_eq!(snapshot.instructions_processing_spark.last(), Some(&0));
+
+        metrics.process_event(
+            InstructionEvent {
+                id: id.clone(),
+                template_id: template_id.clone(),
+                status: InstructionStatus::Processing,
+            }
+            .into(),
+        );
+        let snapshot = MetricsSnapshot::from(&metrics);
+        assert_eq!(snapshot.current_processing_instructions, 1);
+        assert_eq!(snapshot.current_pending_instructions, 0);
+        assert_eq!(snapshot.total_unique_instructions, 1);
+        assert_eq!(snapshot.instructions_processing_spark.last(), Some(&1));
+        assert_eq!(snapshot.instructions_pending_spark.last(), Some(&0));
+
+        metrics.process_event(
+            InstructionEvent {
+                id: id.clone(),
+                template_id: template_id.clone(),
+                status: InstructionStatus::Pending,
+            }
+            .into(),
+        );
+        let snapshot = MetricsSnapshot::from(&metrics);
+        assert_eq!(snapshot.current_processing_instructions, 0);
+        assert_eq!(snapshot.current_pending_instructions, 1);
+        assert_eq!(snapshot.total_unique_instructions, 1);
+        assert_eq!(snapshot.instructions_pending_spark.last(), Some(&1));
+        assert_eq!(snapshot.instructions_commit_spark.last(), Some(&0));
+
+        metrics.process_event(
+            InstructionEvent {
+                id: id.clone(),
+                template_id: template_id.clone(),
+                status: InstructionStatus::Commit,
+            }
+            .into(),
+        );
+        let snapshot = MetricsSnapshot::from(&metrics);
+        assert_eq!(snapshot.current_processing_instructions, 0);
+        assert_eq!(snapshot.current_pending_instructions, 0);
+        assert_eq!(snapshot.total_unique_instructions, 1);
+        assert_eq!(snapshot.instructions_scheduled_spark.last(), Some(&1));
+        assert_eq!(snapshot.instructions_processing_spark.last(), Some(&1));
+        assert_eq!(snapshot.instructions_pending_spark.last(), Some(&1));
+        assert_eq!(snapshot.instructions_commit_spark.last(), Some(&1));
+    }
+
+    #[test]
+    fn instructions_counters_invalid() {
+        let mut metrics = Metrics::default();
+        let id = Test::<InstructionID>::new();
+        let template_id = Test::<TemplateID>::new();
+        metrics.process_event(
+            InstructionEvent {
+                id: id.clone(),
+                template_id: template_id.clone(),
+                status: InstructionStatus::Processing,
+            }
+            .into(),
+        );
+        let snapshot = MetricsSnapshot::from(&metrics);
+        assert_eq!(snapshot.current_processing_instructions, 1);
+        assert_eq!(snapshot.current_pending_instructions, 0);
+        assert_eq!(snapshot.total_unique_instructions, 1);
+
+        metrics.process_event(
+            InstructionEvent {
+                id: id.clone(),
+                template_id: template_id.clone(),
+                status: InstructionStatus::Invalid,
+            }
+            .into(),
+        );
+        let snapshot = MetricsSnapshot::from(&metrics);
+        assert_eq!(snapshot.current_processing_instructions, 0);
+        assert_eq!(snapshot.current_pending_instructions, 0);
+        assert_eq!(snapshot.total_unique_instructions, 1);
+        assert_eq!(snapshot.instructions_scheduled_spark.last(), Some(&0));
+        assert_eq!(snapshot.instructions_processing_spark.last(), Some(&1));
+        assert_eq!(snapshot.instructions_pending_spark.last(), Some(&0));
+        assert_eq!(snapshot.instructions_commit_spark.last(), Some(&0));
+        assert_eq!(snapshot.instructions_invalid_spark.last(), Some(&1));
+    }
+
+    #[test]
+    fn instructions_unique() {
+        let mut metrics = Metrics::default();
+        let template_id = Test::<TemplateID>::new();
+        let statuses = [
+            InstructionStatus::Scheduled,
+            InstructionStatus::Processing,
+            InstructionStatus::Pending,
+            InstructionStatus::Invalid,
+            InstructionStatus::Commit,
+        ];
+        for c in 1..10usize {
+            metrics.process_event(
+                InstructionEvent {
+                    id: Test::<InstructionID>::new(),
+                    template_id: template_id.clone(),
+                    status: statuses[c % 5],
+                }
+                .into(),
+            );
+            let snapshot = MetricsSnapshot::from(&metrics);
+            assert_eq!(snapshot.total_unique_instructions, c as u64);
+        }
     }
 }
