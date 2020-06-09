@@ -1,5 +1,6 @@
 use actix::Actor;
 use dotenv::dotenv;
+use std::sync::Arc;
 use structopt::StructOpt;
 use tari_common::GlobalConfig;
 use tari_validator_node::{
@@ -10,10 +11,11 @@ use tari_validator_node::{
 };
 use tvnc::{console::ServerConsole, Arguments, Commands};
 
-async fn start_server(node_config: NodeConfig) -> anyhow::Result<()> {
-    let metrics_addr = Metrics::default().start();
-    let kill_console = ServerConsole::init(metrics_addr.clone()).await;
-    let res = actix_main(node_config, Some(metrics_addr), kill_console).await;
+async fn start_server(node_config: NodeConfig, no_dashboard: bool) -> anyhow::Result<()> {
+    let pool = Arc::new(db::build_pool(&node_config.postgres)?);
+    let metrics_addr = Metrics::new(pool.clone()).start();
+    let kill_console = ServerConsole::init(metrics_addr.clone(), !no_dashboard).await;
+    let res = actix_main(node_config, Some(metrics_addr), pool, kill_console).await;
     log::debug!("Terminating console: {:?}", res);
     res
 }
@@ -30,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let node_config = NodeConfig::load_from(&config, &global_config, true)?;
 
     match args.command {
-        Commands::Start => start_server(node_config).await?,
+        Commands::Start { no_dashboard } => start_server(node_config, no_dashboard).await?,
         Commands::Init => {
             println!("Initializing database {:?}", node_config.postgres.dbname);
             db::create_database(node_config).await?;

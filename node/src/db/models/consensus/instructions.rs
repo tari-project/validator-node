@@ -57,7 +57,7 @@ pub struct UpdateInstruction {
 
 impl Instruction {
     pub async fn find_pending(client: &Client) -> Result<Option<(AssetID, Vec<Self>)>, DBError> {
-        let stmt = "
+        const QUERY: &'static str = "
             SELECT i.*
             FROM instructions i
             JOIN (
@@ -71,8 +71,9 @@ impl Instruction {
             AND i.status = 'Pending'
         ";
 
+        let stmt = client.prepare(QUERY).await?;
         let instructions: Vec<Instruction> = client
-            .query(stmt, &[])
+            .query(&stmt, &[])
             .await?
             .into_iter()
             .map(|row| Instruction::from_row(row))
@@ -182,8 +183,9 @@ impl Instruction {
 
     /// Load instruction record
     pub async fn load(id: InstructionID, client: &tokio_postgres::Client) -> Result<Self, DBError> {
-        let stmt = "SELECT * FROM instructions WHERE id = $1::\"InstructionID\"";
-        let row = client.query_one(stmt, &[&id]).await?;
+        const QUERY: &'static str = "SELECT * FROM instructions WHERE id = $1::\"InstructionID\"";
+        let stmt = client.prepare(QUERY).await?;
+        let row = client.query_one(&stmt, &[&id]).await?;
         Ok(Self::from_row(row)?)
     }
 
@@ -199,8 +201,9 @@ impl Instruction {
     }
 
     pub async fn load_subinstructions(&self, client: &tokio_postgres::Client) -> Result<Vec<Instruction>, DBError> {
-        let stmt = "SELECT * FROM instructions WHERE parent_id = $1::\"InstructionID\"";
-        let rows = client.query(stmt, &[&self.id]).await?;
+        const QUERY: &'static str = "SELECT * FROM instructions WHERE parent_id = $1::\"InstructionID\"";
+        let stmt = client.prepare(QUERY).await?;
+        let rows = client.query(&stmt, &[&self.id]).await?;
         Ok(rows.into_iter().map(Self::from_row).collect::<Result<Vec<_>, _>>()?)
     }
 }

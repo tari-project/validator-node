@@ -112,7 +112,7 @@ impl InstructionCommands {
             };
 
             if wait_commit {
-                Ok(Self::wait_status(&instruction, InstructionStatus::Commit, client, silent).await?)
+                Ok(Self::wait_status(&instruction, InstructionStatus::Commit, client, silent, WAIT).await?)
             } else {
                 Ok(Instruction::load(instruction.id, client).await?)
             }
@@ -126,6 +126,7 @@ impl InstructionCommands {
         status: InstructionStatus,
         client: &Client,
         silent: bool,
+        refresh_interval: Duration,
     ) -> anyhow::Result<Instruction>
     {
         let mut retries = 0;
@@ -143,7 +144,7 @@ impl InstructionCommands {
                     instruction.result
                 ));
             }
-            delay_for(WAIT).await;
+            delay_for(refresh_interval).await;
             retries += 1;
             if retries > MAX_RETRIES {
                 return Err(anyhow::anyhow!(

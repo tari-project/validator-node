@@ -8,7 +8,10 @@
 //! // tx.send(event)
 //! ```
 
-use crate::{db::models::InstructionStatus, types::InstructionID};
+use crate::{
+    db::models::InstructionStatus,
+    types::{InstructionID, TemplateID},
+};
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +42,7 @@ impl From<ContractCallEvent> for MetricEvent {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct InstructionEvent {
     pub id: InstructionID,
+    pub template_id: TemplateID,
     pub status: InstructionStatus,
 }
 

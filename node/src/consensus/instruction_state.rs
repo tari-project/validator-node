@@ -30,6 +30,7 @@ impl InstructionTransitionContext {
             for instruction_id in &self.instruction_ids {
                 let msg: MetricEvent = InstructionEvent {
                     id: instruction_id.clone(),
+                    template_id: self.template_id,
                     status: self.status,
                 }
                 .into();

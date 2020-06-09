@@ -25,4 +25,5 @@ EXECUTE PROCEDURE set_issue_number();
 
 -- Indices
 CREATE INDEX index_tokens_uuid ON tokens (id);
+CREATE INDEX index_tokens_token_id ON tokens (token_id);
 CREATE INDEX index_tokens_asset_state_id_issue_number ON tokens (asset_state_id, issue_number);

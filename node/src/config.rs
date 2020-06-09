@@ -1,6 +1,7 @@
 use crate::{
     api::config::{ActixConfig, CorsConfig},
     consensus::ConsensusConfig,
+    template::config::TemplateConfig,
 };
 use config::{Config, Environment, Source, Value};
 use deadpool::managed::PoolConfig;
@@ -26,6 +27,8 @@ pub struct NodeConfig {
     pub public_address: Option<multiaddr::Multiaddr>,
     /// will load from [validator.consensus], overloaded with CONSENSUS_* env vars
     pub consensus: ConsensusConfig,
+    /// will load from [validator.consensus], overloaded with CONSENSUS_* env vars
+    pub template: TemplateConfig,
 }
 
 impl NetworkConfigPath for NodeConfig {
@@ -42,10 +45,12 @@ impl NodeConfig {
             let pg = Environment::with_prefix("PG").collect()?;
             let cors = Environment::with_prefix("CORS").collect()?;
             let consensus = Environment::with_prefix("CONSENSUS").collect()?;
+            let template = Environment::with_prefix("TEMPLATE").collect()?;
             config.set("validator.actix", actix).unwrap();
             config.set("validator.postgres", pg).unwrap();
             config.set("validator.cors", cors).unwrap();
             config.set("validator.consensus", consensus).unwrap();
+            config.set("validator.template", template).unwrap();
             if let Some(pg_pool) = Self::pg_pool_from_env()? {
                 config.set("validator.postgres.pool", pg_pool.collect()?).unwrap();
             }
@@ -156,6 +161,7 @@ mod test {
     actix = { workers = 3, port = 9999 }
     cors = { allowed_origins = "https://www.tari.com"}
     consensus = { workers = 10 }
+    template = { runner_max_jobs = 10 }
     "#;
 
     #[test]
@@ -178,6 +184,7 @@ mod test {
         );
         assert_eq!(cfg.cors.allowed_origins, "https://www.tari.com".to_string());
         assert_eq!(cfg.consensus.workers, Some(10));
+        assert_eq!(cfg.template.runner_max_jobs, 10);
     }
 
     const TEST_CONFIG_NETWORK: &'static str = r#"
