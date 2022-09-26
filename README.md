@@ -1,3 +1,8 @@
+# THIS REPO HAS BEEN ARCHIVED
+
+See tari-project/dan for Tari 2nd layer development
+
+
 # Tari Validator Node
 
 
